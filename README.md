@@ -10,6 +10,17 @@ Mobile-first **court rental + membership** web app (Figma UI/UX).
 - React Router
 - Supabase Auth + Postgres (optional; demo mode without keys)
 
+## Live site
+**https://bapdagreat.github.io/rally-point-web/**
+
+Share that URL with admins. Sign-in uses Supabase accounts (not demo logins).
+
+### Redeploy
+```bash
+npm run build
+npx gh-pages -d dist
+```
+
 ## Quick start (demo, no Supabase)
 ```bash
 cd Rally-Point-web
