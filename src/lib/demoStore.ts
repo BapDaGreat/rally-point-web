@@ -1,18 +1,24 @@
 import type {
+  Booking,
+  BookingStatus,
   CheckIn,
   Court,
+  CourtDayAvailability,
   CourtSession,
   DashboardStats,
   Member,
   MembershipType,
   Notification,
+  PaymentMethod,
   Profile,
   Role,
   Transaction,
   WalkIn,
 } from '../types'
+import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, hourLabel, localRangeISO } from '../types'
+import { makePaymentRef } from './payments'
 
-const KEY = 'rally_point_demo_v1'
+const KEY = 'rally_point_demo_v2'
 
 function uid(prefix = 'id') {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`
@@ -33,12 +39,40 @@ export interface DemoDB {
   members: Member[]
   courts: Court[]
   sessions: CourtSession[]
+  bookings: Booking[]
   checkins: CheckIn[]
   transactions: Transaction[]
   notifications: Notification[]
   walkins: WalkIn[]
   passwords: Record<string, string>
   sessionUserId: string | null
+}
+
+function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string) {
+  return new Date(aStart) < new Date(bEnd) && new Date(bStart) < new Date(aEnd)
+}
+
+function isSlotFree(db: DemoDB, courtId: string, start_at: string, end_at: string, ignoreBookingId?: string) {
+  for (const s of db.sessions) {
+    if (s.court_id !== courtId) continue
+    if (s.status !== 'playing' && s.status !== 'scheduled' && s.status !== 'pending_payment') continue
+    if (overlaps(start_at, end_at, s.start_at, s.end_at)) return false
+  }
+  for (const b of db.bookings) {
+    if (b.court_id !== courtId) continue
+    if (ignoreBookingId && b.id === ignoreBookingId) continue
+    if (b.status !== 'confirmed' && b.status !== 'pending_payment') continue
+    if (overlaps(start_at, end_at, b.start_at, b.end_at)) return false
+  }
+  return true
+}
+
+function hydrateBooking(db: DemoDB, b: Booking): Booking {
+  return {
+    ...b,
+    court: db.courts.find((c) => c.id === b.court_id),
+    member: db.members.find((m) => m.id === b.member_id),
+  }
 }
 
 function seed(): DemoDB {
@@ -266,6 +300,7 @@ function seed(): DemoDB {
     members,
     courts,
     sessions,
+    bookings: [],
     checkins,
     transactions,
     notifications,
@@ -282,7 +317,11 @@ function seed(): DemoDB {
 function load(): DemoDB {
   try {
     const raw = localStorage.getItem(KEY)
-    if (raw) return JSON.parse(raw) as DemoDB
+    if (raw) {
+      const db = JSON.parse(raw) as DemoDB
+      if (!Array.isArray(db.bookings)) db.bookings = []
+      return db
+    }
   } catch {
     /* ignore */
   }
@@ -298,6 +337,7 @@ function save(db: DemoDB) {
 export const demoStore = {
   reset() {
     localStorage.removeItem(KEY)
+    localStorage.removeItem('rally_point_demo_v1')
     return load()
   },
   get() {
@@ -389,6 +429,152 @@ export const demoStore = {
         court: db.courts.find((c) => c.id === s.court_id),
         member: s.member_id ? db.members.find((m) => m.id === s.member_id) : undefined,
       }))
+  },
+  availability(dateYmd: string): CourtDayAvailability[] {
+    const db = load()
+    const now = new Date()
+    return db.courts.map((court) => {
+      const slots = []
+      for (let h = CLUB_OPEN_HOUR; h < CLUB_CLOSE_HOUR; h++) {
+        const { start_at, end_at } = localRangeISO(dateYmd, h, 1)
+        const start = new Date(start_at)
+        let available = court.status !== 'maintenance' && isSlotFree(db, court.id, start_at, end_at)
+        if (start.getTime() < now.getTime() - 5 * 60000) available = false
+        slots.push({ startHour: h, label: hourLabel(h), available })
+      }
+      return { court, slots }
+    })
+  },
+  createBooking(opts: {
+    court_id: string
+    member_id: string
+    dateYmd: string
+    startHour: number
+    hours: number
+    user_id: string
+  }): Booking {
+    const db = load()
+    const court = db.courts.find((c) => c.id === opts.court_id)
+    if (!court) throw new Error('Court not found')
+    if (court.status === 'maintenance') throw new Error('Court under maintenance')
+    if (opts.hours < 1 || opts.hours > 3) throw new Error('Book 1–3 hours')
+    if (opts.startHour + opts.hours > CLUB_CLOSE_HOUR) throw new Error('Outside club hours')
+
+    const { start_at, end_at } = localRangeISO(opts.dateYmd, opts.startHour, opts.hours)
+    if (new Date(start_at).getTime() < Date.now() - 5 * 60000) {
+      throw new Error('That time has already passed')
+    }
+    if (!isSlotFree(db, opts.court_id, start_at, end_at)) {
+      throw new Error('That slot is no longer available')
+    }
+
+    const amount = court.hourly_rate * opts.hours
+    const booking: Booking = {
+      id: uid('bk'),
+      court_id: opts.court_id,
+      member_id: opts.member_id,
+      start_at,
+      end_at,
+      hours: opts.hours,
+      amount,
+      status: 'pending_payment',
+      payment_method: null,
+      payment_ref: null,
+      session_id: null,
+      created_at: todayISO(),
+    }
+    db.bookings.unshift(booking)
+    save(db)
+    return hydrateBooking(db, booking)
+  },
+  confirmBookingPayment(opts: { booking_id: string; method: PaymentMethod; user_id: string }): Booking {
+    const db = load()
+    const b = db.bookings.find((x) => x.id === opts.booking_id)
+    if (!b) throw new Error('Booking not found')
+    if (b.status !== 'pending_payment') throw new Error('Booking is not awaiting payment')
+    if (!isSlotFree(db, b.court_id, b.start_at, b.end_at, b.id)) {
+      b.status = 'cancelled'
+      save(db)
+      throw new Error('Slot taken — booking cancelled. Pick another time.')
+    }
+
+    const court = db.courts.find((c) => c.id === b.court_id)
+    const ref = makePaymentRef(opts.method)
+    b.status = 'confirmed'
+    b.payment_method = opts.method
+    b.payment_ref = ref
+
+    const session: CourtSession = {
+      id: uid('ses'),
+      court_id: b.court_id,
+      member_id: b.member_id,
+      start_at: b.start_at,
+      end_at: b.end_at,
+      status: 'scheduled',
+      amount: b.amount,
+      created_by: opts.user_id,
+      booking_id: b.id,
+      notes: `Online booking · ${opts.method} · ${ref}`,
+    }
+    db.sessions.push(session)
+    b.session_id = session.id
+
+    const minsUntil = (new Date(b.start_at).getTime() - Date.now()) / 60000
+    if (minsUntil <= 60 && court) court.status = 'occupied'
+
+    db.transactions.unshift({
+      id: uid('tx'),
+      member_id: b.member_id,
+      amount: b.amount,
+      type: 'booking',
+      description: `${court?.name ?? 'Court'} booking · ${opts.method.toUpperCase()} · ${ref}`,
+      created_at: todayISO(),
+      created_by: opts.user_id,
+    })
+    db.notifications.unshift({
+      id: uid('n'),
+      user_id: opts.user_id,
+      title: 'Booking confirmed',
+      body: `${court?.name ?? 'Court'} reserved. Show this confirmation at the desk.`,
+      read: false,
+      created_at: todayISO(),
+    })
+    save(db)
+    return hydrateBooking(db, b)
+  },
+  cancelBooking(bookingId: string, userId: string) {
+    const db = load()
+    const b = db.bookings.find((x) => x.id === bookingId)
+    if (!b) throw new Error('Booking not found')
+    if (b.status === 'cancelled' || b.status === 'completed') return
+    b.status = 'cancelled' as BookingStatus
+    if (b.session_id) {
+      const s = db.sessions.find((x) => x.id === b.session_id)
+      if (s && (s.status === 'scheduled' || s.status === 'pending_payment')) s.status = 'cancelled'
+    }
+    db.notifications.unshift({
+      id: uid('n'),
+      user_id: userId,
+      title: 'Booking cancelled',
+      body: 'Your court booking was cancelled.',
+      read: false,
+      created_at: todayISO(),
+    })
+    save(db)
+  },
+  myBookings(memberId: string) {
+    const db = load()
+    return db.bookings
+      .filter((b) => b.member_id === memberId)
+      .sort((a, b) => +new Date(b.start_at) - +new Date(a.start_at))
+      .map((b) => hydrateBooking(db, b))
+  },
+  allBookings() {
+    const db = load()
+    return db.bookings
+      .slice()
+      .sort((a, b) => +new Date(b.start_at) - +new Date(a.start_at))
+      .map((b) => hydrateBooking(db, b))
   },
   createRental(opts: {
     court_id: string

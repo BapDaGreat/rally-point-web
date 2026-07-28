@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   Activity,
-  Bell,
+  CalendarDays,
   Home,
   LayoutDashboard,
   LogOut,
@@ -16,9 +16,9 @@ import { useAuth } from '../context/AuthContext'
 
 const memberTabs = [
   { to: '/member', end: true, label: 'Home', icon: Home },
+  { to: '/member/book', label: 'Book', icon: CalendarDays },
   { to: '/member/pay', label: 'Pay', icon: Wallet },
   { to: '/member/transactions', label: 'Txns', icon: Receipt },
-  { to: '/member/notifications', label: 'Alerts', icon: Bell },
   { to: '/member/profile', label: 'Profile', icon: UserRound },
 ]
 
@@ -26,6 +26,7 @@ const staffTabs = [
   { to: '/staff', end: true, label: 'Home', icon: LayoutDashboard },
   { to: '/staff/members', label: 'Members', icon: Users },
   { to: '/staff/checkin', label: 'Check-in', icon: UserRound },
+  { to: '/staff/bookings', label: 'Bookings', icon: CalendarDays },
   { to: '/staff/courts', label: 'Courts', icon: Home },
 ]
 
@@ -33,8 +34,8 @@ const adminTabs = [
   { to: '/admin', end: true, label: 'Home', icon: LayoutDashboard },
   { to: '/admin/members', label: 'Members', icon: Users },
   { to: '/admin/ops', label: 'Ops', icon: Home },
+  { to: '/admin/bookings', label: 'Bookings', icon: CalendarDays },
   { to: '/admin/transactions', label: 'Txns', icon: Receipt },
-  { to: '/admin/users', label: 'Users', icon: UserRound },
 ]
 
 function tabsFor(role: Role) {

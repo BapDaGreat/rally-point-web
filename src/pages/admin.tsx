@@ -55,13 +55,19 @@ export function AdminHome() {
             </section>
 
             <div className="grid grid-cols-2 gap-3">
-              <Link to="/admin/members" className="btn-secondary text-sm">
-                <Users size={16} /> Members
-              </Link>
-              <Link to="/admin/ops" className="btn-primary text-sm">
-                Floor ops
-              </Link>
-            </div>
+                          <Link to="/admin/members" className="btn-secondary text-sm">
+                            <Users size={16} /> Members
+                          </Link>
+                          <Link to="/admin/ops" className="btn-primary text-sm">
+                            Floor ops
+                          </Link>
+                          <Link to="/admin/bookings" className="btn-secondary text-sm">
+                            Bookings
+                          </Link>
+                          <Link to="/admin/users" className="btn-secondary text-sm">
+                            Users
+                          </Link>
+                        </div>
 
             <section className="card p-4">
               <div className="flex items-center justify-between mb-1">

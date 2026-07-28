@@ -9,6 +9,7 @@ import {
   MemberProfile,
   MemberTransactions,
 } from './pages/member'
+import { MemberBook } from './pages/MemberBook'
 import { StaffCheckIn, StaffCourts, StaffHome, StaffMembers } from './pages/staff'
 import {
   AdminHome,
@@ -18,6 +19,7 @@ import {
   AdminTransactions,
   AdminUsers,
 } from './pages/admin'
+import { AdminBookings, StaffBookings } from './pages/BookingsDesk'
 import { LoadingBlock } from './components/Shell'
 
 function homeFor(role: Role) {
@@ -51,6 +53,7 @@ export default function App() {
 
         <Route element={<Protected roles={['member', 'admin']} />}>
           <Route path="/member" element={<MemberHome />} />
+          <Route path="/member/book" element={<MemberBook />} />
           <Route path="/member/pay" element={<MemberPay />} />
           <Route path="/member/transactions" element={<MemberTransactions />} />
           <Route path="/member/notifications" element={<MemberNotifications />} />
@@ -61,6 +64,7 @@ export default function App() {
           <Route path="/staff" element={<StaffHome />} />
           <Route path="/staff/members" element={<StaffMembers />} />
           <Route path="/staff/checkin" element={<StaffCheckIn />} />
+          <Route path="/staff/bookings" element={<StaffBookings />} />
           <Route path="/staff/courts" element={<StaffCourts />} />
         </Route>
 
@@ -70,6 +74,7 @@ export default function App() {
           <Route path="/admin/members/new" element={<AdminMemberForm />} />
           <Route path="/admin/members/:id" element={<AdminMemberForm />} />
           <Route path="/admin/ops" element={<AdminOps />} />
+          <Route path="/admin/bookings" element={<AdminBookings />} />
           <Route path="/admin/transactions" element={<AdminTransactions />} />
           <Route path="/admin/users" element={<AdminUsers />} />
         </Route>

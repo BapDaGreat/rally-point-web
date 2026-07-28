@@ -61,24 +61,32 @@ export function MemberHome() {
             </section>
 
             <div className="grid grid-cols-2 gap-3">
-              <Link to="/member/pay" className="card p-4 active:scale-[0.99] transition">
-                <CreditCard className="text-brand-700" size={22} />
-                <p className="font-bold mt-2">Pay online</p>
-                <p className="text-xs text-slate-500 mt-0.5">Renew membership</p>
-              </Link>
-              <Link to="/member/notifications" className="card p-4 active:scale-[0.99] transition">
-                <div className="flex items-center justify-between">
-                  <Bell className="text-brand-700" size={22} />
-                  {unread ? (
-                    <span className="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5">
-                      {unread}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="font-bold mt-2">Alerts</p>
-                <p className="text-xs text-slate-500 mt-0.5">Club updates</p>
-              </Link>
-            </div>
+                          <Link to="/member/book" className="card p-4 active:scale-[0.99] transition">
+                            <CalendarDays className="text-brand-700" size={22} />
+                            <p className="font-bold mt-2">Book court</p>
+                            <p className="text-xs text-slate-500 mt-0.5">Slots · GCash / Maya</p>
+                          </Link>
+                          <Link to="/member/pay" className="card p-4 active:scale-[0.99] transition">
+                            <CreditCard className="text-brand-700" size={22} />
+                            <p className="font-bold mt-2">Pay online</p>
+                            <p className="text-xs text-slate-500 mt-0.5">Renew membership</p>
+                          </Link>
+                        </div>
+
+                        <Link to="/member/notifications" className="card p-4 flex items-center gap-3 active:scale-[0.99] transition">
+                          <Bell className="text-brand-700 shrink-0" size={22} />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold">Alerts</p>
+                            <p className="text-xs text-slate-500">Club updates & booking confirms</p>
+                          </div>
+                          {unread ? (
+                            <span className="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5">
+                              {unread}
+                            </span>
+                          ) : (
+                            <ChevronRight className="text-slate-300" size={18} />
+                          )}
+                        </Link>
 
             <section className="card p-4">
               <div className="flex items-center justify-between mb-1">

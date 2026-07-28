@@ -2,9 +2,12 @@ export type Role = 'member' | 'staff' | 'admin'
 
 export type MembershipType = 'basic' | 'standard' | 'premium'
 export type MemberStatus = 'active' | 'expired' | 'pending' | 'suspended'
-export type SessionStatus = 'scheduled' | 'playing' | 'completed' | 'cancelled'
-export type TxType = 'membership' | 'court_rental' | 'walk_in' | 'extension' | 'other'
+export type SessionStatus = 'scheduled' | 'playing' | 'completed' | 'cancelled' | 'pending_payment'
+export type TxType = 'membership' | 'court_rental' | 'walk_in' | 'extension' | 'booking' | 'other'
 export type CourtStatus = 'available' | 'occupied' | 'maintenance'
+export type PaymentMethod = 'gcash' | 'maya' | 'card' | 'demo_wallet'
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'cancelled'
+export type BookingStatus = 'pending_payment' | 'confirmed' | 'cancelled' | 'completed' | 'no_show'
 
 export interface Profile {
   id: string
@@ -49,8 +52,47 @@ export interface CourtSession {
   amount: number
   created_by?: string | null
   notes?: string | null
+  booking_id?: string | null
   court?: Court
   member?: Member
+}
+
+export interface Booking {
+  id: string
+  court_id: string
+  member_id: string
+  start_at: string
+  end_at: string
+  hours: number
+  amount: number
+  status: BookingStatus
+  payment_method?: PaymentMethod | null
+  payment_ref?: string | null
+  session_id?: string | null
+  created_at: string
+  court?: Court
+  member?: Member
+}
+
+export interface TimeSlot {
+  startHour: number
+  label: string
+  available: boolean
+}
+
+export interface CourtDayAvailability {
+  court: Court
+  slots: TimeSlot[]
+}
+
+export interface PaymentIntent {
+  id: string
+  booking_id: string
+  amount: number
+  method: PaymentMethod
+  status: PaymentStatus
+  checkout_url?: string | null
+  created_at: string
 }
 
 export interface CheckIn {
@@ -99,6 +141,10 @@ export interface DashboardStats {
   courts_occupied: number
 }
 
+/** Club open hours (local) */
+export const CLUB_OPEN_HOUR = 6
+export const CLUB_CLOSE_HOUR = 22
+
 export function peso(n: number) {
   return `Php ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
@@ -115,4 +161,24 @@ export function fmtTime(iso: string) {
 
 export function fmtDateTime(iso: string) {
   return `${fmtDate(iso)} · ${fmtTime(iso)}`
+}
+
+export function hourLabel(h: number) {
+  const d = new Date()
+  d.setHours(h, 0, 0, 0)
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
+export function ymdLocal(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+export function localRangeISO(dateYmd: string, startHour: number, hours: number) {
+  const [y, m, d] = dateYmd.split('-').map(Number)
+  const start = new Date(y, m - 1, d, startHour, 0, 0, 0)
+  const end = new Date(start.getTime() + hours * 3600000)
+  return { start_at: start.toISOString(), end_at: end.toISOString() }
 }

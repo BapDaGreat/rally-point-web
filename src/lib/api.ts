@@ -1,24 +1,33 @@
 import { demoStore } from './demoStore'
 import { isDemoMode, supabase } from './supabase'
+import { paymentConfig, simulateCheckout, startCheckout } from './payments'
 import type {
+  Booking,
   CheckIn,
   Court,
+  CourtDayAvailability,
   CourtSession,
   DashboardStats,
   Member,
   MembershipType,
   MemberStatus,
   Notification,
+  PaymentMethod,
   Profile,
   Role,
   Transaction,
   WalkIn,
 } from '../types'
+import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, hourLabel, localRangeISO } from '../types'
 
 function startOfToday() {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
   return d.toISOString()
+}
+
+function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string) {
+  return new Date(aStart) < new Date(bEnd) && new Date(bStart) < new Date(aEnd)
 }
 
 export const api = {
@@ -86,8 +95,7 @@ export const api = {
         status: input.status ?? 'active',
         join_date: input.join_date ?? new Date().toISOString().slice(0, 10),
         expiry_date:
-          input.expiry_date ??
-          new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+          input.expiry_date ?? new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
       })
       if (error) throw error
     }
@@ -113,6 +121,204 @@ export const api = {
       court: row.court as Court,
       member: row.member as Member,
     })) as CourtSession[]
+  },
+
+  async availability(dateYmd: string): Promise<CourtDayAvailability[]> {
+    if (isDemoMode) return demoStore.availability(dateYmd)
+    const courts = await this.listCourts()
+    const dayStart = localRangeISO(dateYmd, CLUB_OPEN_HOUR, 1).start_at
+    const dayEnd = localRangeISO(dateYmd, CLUB_CLOSE_HOUR - 1, 1).end_at
+    const { data: sessions } = await supabase!
+      .from('court_sessions')
+      .select('*')
+      .in('status', ['playing', 'scheduled', 'pending_payment'])
+      .lt('start_at', dayEnd)
+      .gt('end_at', dayStart)
+
+    let bookings: Booking[] = []
+    const res = await supabase!
+      .from('bookings')
+      .select('*')
+      .in('status', ['confirmed', 'pending_payment'])
+      .lt('start_at', dayEnd)
+      .gt('end_at', dayStart)
+    if (!res.error) bookings = (res.data ?? []) as Booking[]
+
+    const now = new Date()
+    return courts.map((court) => {
+      const slots = []
+      for (let h = CLUB_OPEN_HOUR; h < CLUB_CLOSE_HOUR; h++) {
+        const { start_at, end_at } = localRangeISO(dateYmd, h, 1)
+        let available = court.status !== 'maintenance'
+        if (new Date(start_at).getTime() < now.getTime() - 5 * 60000) available = false
+        for (const s of sessions ?? []) {
+          if (s.court_id === court.id && overlaps(start_at, end_at, s.start_at, s.end_at)) available = false
+        }
+        for (const b of bookings) {
+          if (b.court_id === court.id && overlaps(start_at, end_at, b.start_at, b.end_at)) available = false
+        }
+        slots.push({ startHour: h, label: hourLabel(h), available })
+      }
+      return { court, slots }
+    })
+  },
+
+  async createBooking(opts: {
+    court_id: string
+    member_id: string
+    dateYmd: string
+    startHour: number
+    hours: number
+    user_id: string
+  }): Promise<Booking> {
+    if (isDemoMode) return demoStore.createBooking(opts)
+    const { start_at, end_at } = localRangeISO(opts.dateYmd, opts.startHour, opts.hours)
+    const { data: court, error: cErr } = await supabase!
+      .from('courts')
+      .select('*')
+      .eq('id', opts.court_id)
+      .single()
+    if (cErr) throw cErr
+    const amount = Number(court.hourly_rate) * opts.hours
+    const { data, error } = await supabase!
+      .from('bookings')
+      .insert({
+        court_id: opts.court_id,
+        member_id: opts.member_id,
+        start_at,
+        end_at,
+        hours: opts.hours,
+        amount,
+        status: 'pending_payment',
+      })
+      .select('*, court:courts(*), member:members(*)')
+      .single()
+    if (error) throw error
+    return {
+      ...data,
+      court: data.court as Court,
+      member: data.member as Member,
+    } as Booking
+  },
+
+  async payBooking(opts: {
+    booking_id: string
+    method: PaymentMethod
+    user_id: string
+  }): Promise<Booking> {
+    if (isDemoMode) {
+      const intent = await startCheckout({
+        bookingId: opts.booking_id,
+        amount: 1,
+        method: opts.method,
+        description: 'Court booking',
+      })
+      const paid = await simulateCheckout(intent)
+      if (paid.status !== 'paid') throw new Error('Payment failed')
+      return demoStore.confirmBookingPayment(opts)
+    }
+
+    const { data: booking, error } = await supabase!
+      .from('bookings')
+      .select('*, court:courts(*)')
+      .eq('id', opts.booking_id)
+      .single()
+    if (error) throw error
+
+    const intent = await startCheckout({
+      bookingId: opts.booking_id,
+      amount: Number(booking.amount),
+      method: opts.method,
+      description: `Court booking ${opts.booking_id}`,
+    })
+    const result = await simulateCheckout({ ...intent, amount: Number(booking.amount) })
+    if (result.status !== 'paid') throw new Error('Payment failed or cancelled')
+
+    const { data: session, error: sErr } = await supabase!
+      .from('court_sessions')
+      .insert({
+        court_id: booking.court_id,
+        member_id: booking.member_id,
+        start_at: booking.start_at,
+        end_at: booking.end_at,
+        status: 'scheduled',
+        amount: booking.amount,
+        created_by: opts.user_id,
+        notes: `Online booking · ${opts.method} · ${result.ref}`,
+      })
+      .select()
+      .single()
+    if (sErr) throw sErr
+
+    await supabase!
+      .from('bookings')
+      .update({
+        status: 'confirmed',
+        payment_method: opts.method,
+        payment_ref: result.ref,
+        session_id: session.id,
+      })
+      .eq('id', opts.booking_id)
+
+    await supabase!.from('transactions').insert({
+      member_id: booking.member_id,
+      amount: booking.amount,
+      type: 'booking',
+      description: `${(booking.court as Court)?.name ?? 'Court'} booking · ${opts.method.toUpperCase()} · ${result.ref}`,
+      created_by: opts.user_id,
+    })
+
+    await supabase!.from('notifications').insert({
+      user_id: opts.user_id,
+      title: 'Booking confirmed',
+      body: 'Your court is reserved. Show this confirmation at the desk.',
+      read: false,
+    })
+
+    const { data: final } = await supabase!
+      .from('bookings')
+      .select('*, court:courts(*), member:members(*)')
+      .eq('id', opts.booking_id)
+      .single()
+    return {
+      ...final,
+      court: final?.court as Court,
+      member: final?.member as Member,
+    } as Booking
+  },
+
+  async myBookings(memberId: string): Promise<Booking[]> {
+    if (isDemoMode) return demoStore.myBookings(memberId)
+    const { data, error } = await supabase!
+      .from('bookings')
+      .select('*, court:courts(*), member:members(*)')
+      .eq('member_id', memberId)
+      .order('start_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []).map((b) => ({
+      ...b,
+      court: b.court as Court,
+      member: b.member as Member,
+    })) as Booking[]
+  },
+
+  async listBookings(): Promise<Booking[]> {
+    if (isDemoMode) return demoStore.allBookings()
+    const { data, error } = await supabase!
+      .from('bookings')
+      .select('*, court:courts(*), member:members(*)')
+      .order('start_at', { ascending: false })
+      .limit(100)
+    if (error) throw error
+    return (data ?? []).map((b) => ({
+      ...b,
+      court: b.court as Court,
+      member: b.member as Member,
+    })) as Booking[]
+  },
+
+  paymentMethods() {
+    return paymentConfig.methods
   },
 
   async createRental(opts: {
