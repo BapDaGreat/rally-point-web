@@ -1,0 +1,234 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-brand-50: #f0fdfa;
+  --color-brand-100: #ccfbf1;
+  --color-brand-200: #99f6e4;
+  --color-brand-300: #5eead4;
+  --color-brand-400: #2dd4bf;
+  --color-brand-500: #14b8a6;
+  --color-brand-600: #0d9488;
+  --color-brand-700: #0f766e;
+  --color-brand-800: #115e59;
+  --color-brand-900: #134e4a;
+  --color-ink: #0f172a;
+  --color-muted: #64748b;
+  --color-surface: #ffffff;
+  --color-canvas: #f1f5f9;
+  --color-danger: #ef4444;
+  --color-warn: #f59e0b;
+  --color-ok: #22c55e;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  min-height: 100dvh;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  overscroll-behavior-y: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.app-shell {
+  width: 100%;
+  max-width: 430px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  background: var(--color-surface);
+  position: relative;
+  box-shadow: 0 0 0 1px rgb(15 23 42 / 0.06);
+}
+
+@media (min-width: 768px) {
+  body {
+    background: linear-gradient(160deg, #0f766e 0%, #0f172a 45%, #020617 100%);
+  }
+  .app-shell {
+    min-height: min(100dvh, 920px);
+    margin-top: 24px;
+    margin-bottom: 24px;
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow:
+      0 25px 50px -12px rgb(0 0 0 / 0.45),
+      0 0 0 1px rgb(255 255 255 / 0.06);
+  }
+}
+
+.safe-bottom {
+  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.bottom-nav {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgb(226 232 240);
+  z-index: 40;
+}
+
+.card {
+  background: white;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 16px;
+}
+
+.stat-card {
+  background: linear-gradient(145deg, #0f766e, #115e59);
+  color: white;
+  border-radius: 16px;
+  padding: 1rem;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 48px;
+  border-radius: 14px;
+  background: var(--color-brand-700);
+  color: white;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.btn-primary:hover {
+  background: var(--color-brand-800);
+}
+.btn-primary:active {
+  transform: scale(0.98);
+}
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 48px;
+  border-radius: 14px;
+  background: white;
+  color: var(--color-brand-800);
+  font-weight: 700;
+  border: 1px solid rgb(203 213 225);
+  cursor: pointer;
+}
+
+.input {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid rgb(203 213 225);
+  padding: 0.75rem 0.9rem;
+  background: #f8fafc;
+  color: var(--color-ink);
+}
+.input:focus {
+  outline: 2px solid rgb(13 148 136 / 0.35);
+  border-color: var(--color-brand-600);
+  background: white;
+}
+
+.label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 0.35rem;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.pill-ok {
+  background: #dcfce7;
+  color: #166534;
+}
+.pill-warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+.pill-muted {
+  background: #e2e8f0;
+  color: #475569;
+}
+.pill-brand {
+  background: #ccfbf1;
+  color: #115e59;
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid rgb(241 245 249);
+}
+.list-row:last-child {
+  border-bottom: none;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite linear;
+  border-radius: 8px;
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.toast {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+  z-index: 50;
+  background: #0f172a;
+  color: white;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.25);
+}
