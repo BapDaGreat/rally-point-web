@@ -117,14 +117,20 @@ export function StaffMembers() {
       <AppHeader title="Members" subtitle={`${members.length} total`} right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-3">
         <div className="relative">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            className="input pl-9"
-            placeholder="Search name, code, phone…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-        </div>
+                  <Search
+                    size={16}
+                    className="pointer-events-none absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-slate-400"
+                    aria-hidden
+                  />
+                  <input
+                    className="input input-with-icon"
+                    type="search"
+                    placeholder="Search name, code, phone…"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    aria-label="Search members"
+                  />
+                </div>
         {loading ? (
           <LoadingBlock />
         ) : (

@@ -233,7 +233,8 @@ textarea {
   min-height: 48px;
   border-radius: 12px;
   border: 1px solid rgb(203 213 225);
-  padding: 0.75rem 0.9rem;
+  padding-block: 0.75rem;
+  padding-inline: 0.9rem;
   background: #f8fafc;
   color: var(--color-ink);
 }
@@ -241,6 +242,9 @@ textarea {
   outline: 2px solid rgb(13 148 136 / 0.35);
   border-color: var(--color-brand-600);
   background: white;
+}
+.input-with-icon {
+  padding-left: 2.75rem;
 }
 
 .label {
