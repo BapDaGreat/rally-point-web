@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bell, ChevronRight, CreditCard, CalendarDays } from 'lucide-react'
-import { AppHeader, BottomNav, LoadingBlock, SignOutButton } from '../components/Shell'
+import { AppHeader, AppShell, LoadingBlock, SignOutButton } from '../components/Shell'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import type { Member, Notification, Transaction } from '../types'
@@ -33,7 +33,7 @@ export function MemberHome() {
   const unread = notifs.filter((n) => !n.read).length
 
   return (
-    <div className="app-shell">
+    <AppShell role="member">
       <AppHeader
         title={`Hi, ${user?.full_name.split(' ')[0] ?? 'there'}`}
         subtitle="Member home"
@@ -104,8 +104,7 @@ export function MemberHome() {
           </>
         )}
       </main>
-      <BottomNav role="member" />
-    </div>
+      </AppShell>
   )
 }
 
@@ -137,7 +136,7 @@ export function MemberPay() {
   }
 
   return (
-    <div className="app-shell">
+    <AppShell role="member">
       <AppHeader title="Online payment" subtitle="Membership renewal" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-4">
         <section className="card p-4">
@@ -175,8 +174,7 @@ export function MemberPay() {
         </section>
       </main>
       {msg ? <div className="toast">{msg}</div> : null}
-      <BottomNav role="member" />
-    </div>
+      </AppShell>
   )
 }
 
@@ -194,7 +192,7 @@ export function MemberTransactions() {
   }, [user])
 
   return (
-    <div className="app-shell">
+    <AppShell role="member">
       <AppHeader title="Transactions" subtitle="Your payments" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4">
         {loading ? (
@@ -215,8 +213,7 @@ export function MemberTransactions() {
           </section>
         )}
       </main>
-      <BottomNav role="member" />
-    </div>
+      </AppShell>
   )
 }
 
@@ -234,7 +231,7 @@ export function MemberNotifications() {
   }, [user])
 
   return (
-    <div className="app-shell">
+    <AppShell role="member">
       <AppHeader title="Notifications" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-2">
         {rows.map((n) => (
@@ -253,8 +250,7 @@ export function MemberNotifications() {
           </button>
         ))}
       </main>
-      <BottomNav role="member" />
-    </div>
+      </AppShell>
   )
 }
 
@@ -268,7 +264,7 @@ export function MemberProfile() {
   }, [user])
 
   return (
-    <div className="app-shell">
+    <AppShell role="member">
       <AppHeader title="Profile" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-4">
         <section className="card p-4 flex items-center gap-3">
@@ -296,8 +292,7 @@ export function MemberProfile() {
           Renew membership <ChevronRight size={16} />
         </Link>
       </main>
-      <BottomNav role="member" />
-    </div>
+      </AppShell>
   )
 }
 

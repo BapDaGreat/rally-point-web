@@ -117,7 +117,7 @@ function compile(gl: WebGLRenderingContext, type: number, src: string) {
   return sh
 }
 
-function ShaderCanvas({ className }: { className?: string }) {
+export function ShaderCanvas({ className }: { className?: string }) {
   const ref = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -201,7 +201,7 @@ function ShaderCanvas({ className }: { className?: string }) {
       className={className}
       aria-hidden
       style={{
-        position: 'absolute',
+        position: className?.includes('fixed') ? 'fixed' : 'absolute',
         inset: 0,
         width: '100%',
         height: '100%',

@@ -1,9 +1,9 @@
-import { useRef, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { Shield, UserRound } from 'lucide-react'
+import { ArrowRight, Shield, UserRound } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import type { Role } from '../types'
-import { AnimatedShaderHero } from '../components/ui/animated-shader-hero'
+import { ShaderCanvas } from '../components/ui/animated-shader-hero'
 
 const demos: { role: Role; email: string; password: string; label: string }[] = [
   { role: 'admin', email: 'admin@rallypoint.local', password: 'admin123', label: 'Admin' },
@@ -20,7 +20,6 @@ function homeFor(role: Role) {
 export default function LoginPage() {
   const { user, loading, signIn, demo } = useAuth()
   const nav = useNavigate()
-  const formRef = useRef<HTMLDivElement>(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -47,109 +46,139 @@ export default function LoginPage() {
     }
   }
 
-  function scrollToForm() {
-    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
-
   return (
-    <div className="app-shell flex flex-col overflow-y-auto">
-      <AnimatedShaderHero
-        minHeight="auto"
-        className="flex-1 min-h-[100dvh]"
-        trustBadge={{
-          text: demo ? 'Demo mode · local data' : 'Connected to Supabase',
-          icons: ['✨'],
-        }}
-        headline={{
-          line1: 'Rally Point',
-          line2: 'Courts. Members. Ops.',
-        }}
-        subtitle="Court rental & membership for phone-first clubs — check-in, rentals, walk-ins, and revenue in one place."
-        buttons={{
-          primary: {
-            text: 'Sign in',
-            onClick: scrollToForm,
-          },
-          secondary: {
-            text: 'PHP pricing',
-            onClick: scrollToForm,
-          },
-        }}
-      >
-        <div
-          ref={formRef}
-          className="rounded-2xl border border-white/15 bg-white/95 p-4 text-slate-900 shadow-2xl shadow-black/40 backdrop-blur-xl"
-        >
-          <p className="mb-3 text-center text-xs font-bold uppercase tracking-wide text-slate-400">
-            Club access
-          </p>
-          <form onSubmit={onSubmit} className="space-y-3">
-            <div>
-              <label className="label" htmlFor="email">
-                Email
-              </label>
-              <input
-                id="email"
-                className="input"
-                type="email"
-                autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="password">
-                Password
-              </label>
-              <input
-                id="password"
-                className="input"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            {error ? (
-              <p className="text-sm font-semibold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
-                {error}
-              </p>
-            ) : null}
-            <button className="btn-primary" type="submit" disabled={busy}>
-              {busy ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
+    <div className="app-shell app-shell-bleed relative min-h-[100dvh] text-white overflow-hidden">
+      <ShaderCanvas className="!fixed inset-0" />
+      <div
+        className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(20,184,166,0.22),transparent_50%)]"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none fixed inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/50"
+        aria-hidden
+      />
 
-          {demo ? (
-            <div className="mt-5">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
-                Quick demo logins
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                {demos.map((d) => (
-                  <button
-                    key={d.role}
-                    type="button"
-                    className="card p-3 text-left active:scale-[0.98] transition"
-                    onClick={() => {
-                      setEmail(d.email)
-                      setPassword(d.password)
-                    }}
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center mb-2">
-                      {d.role === 'admin' ? <Shield size={16} /> : <UserRound size={16} />}
-                    </div>
-                    <p className="text-sm font-bold text-slate-800">{d.label}</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5 truncate">{d.password}</p>
-                  </button>
-                ))}
-              </div>
+      {/* Desktop: split brand | form. Mobile: stacked hero concept. */}
+      <div className="relative z-10 mx-auto grid min-h-[100dvh] w-full max-w-6xl grid-cols-1 lg:grid-cols-2 lg:items-center lg:gap-12 px-5 py-10 sm:px-8 lg:px-10">
+        {/* Brand panel — login concept */}
+        <div className="flex flex-col justify-center text-center lg:text-left pt-6 lg:pt-0 pb-8 lg:pb-0">
+          <div className="mb-5 inline-flex self-center lg:self-start items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white/90 backdrop-blur-md">
+            <span aria-hidden>✨</span>
+            {demo ? 'Demo mode · local data' : 'Connected to Supabase'}
+          </div>
+
+          <h1 className="text-4xl sm:text-5xl xl:text-6xl font-extrabold leading-[1.05] tracking-tight">
+            <span className="block text-white">Rally Point</span>
+            <span className="mt-1 block bg-gradient-to-r from-teal-200 via-cyan-200 to-violet-300 bg-clip-text text-transparent">
+              Courts. Members. Ops.
+            </span>
+          </h1>
+
+          <p className="mt-5 max-w-md mx-auto lg:mx-0 text-[15px] sm:text-base leading-relaxed text-white/75">
+            Court rental & membership for phone-first clubs — check-in, rentals, walk-ins, and revenue
+            in one place. Works on desk and floor.
+          </p>
+
+          <div className="mt-8 hidden lg:flex flex-wrap gap-3">
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-teal-200/80">Members</p>
+              <p className="text-sm font-semibold text-white/90">Plans · check-in · pay</p>
             </div>
-          ) : null}
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-teal-200/80">Staff</p>
+              <p className="text-sm font-semibold text-white/90">Courts · walk-ins</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-teal-200/80">Admin</p>
+              <p className="text-sm font-semibold text-white/90">Revenue · users</p>
+            </div>
+          </div>
         </div>
-      </AnimatedShaderHero>
+
+        {/* Access card */}
+        <div className="flex items-center justify-center lg:justify-end pb-8 lg:pb-0">
+          <div className="w-full max-w-md rounded-3xl border border-white/15 bg-white p-5 sm:p-7 text-slate-900 shadow-2xl shadow-black/40">
+            <div className="mb-5">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Club access</p>
+              <h2 className="mt-1 text-xl font-extrabold text-slate-900">Sign in</h2>
+              <p className="mt-1 text-sm text-slate-500">Use your club account to continue.</p>
+            </div>
+
+            <form onSubmit={onSubmit} className="space-y-3.5">
+              <div>
+                <label className="label" htmlFor="email">
+                  Email
+                </label>
+                <input
+                  id="email"
+                  className="input"
+                  type="email"
+                  autoComplete="username"
+                  placeholder="you@club.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="password">
+                  Password
+                </label>
+                <input
+                  id="password"
+                  className="input"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+              {error ? (
+                <p className="text-sm font-semibold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+                  {error}
+                </p>
+              ) : null}
+              <button className="btn-primary gap-2" type="submit" disabled={busy}>
+                {busy ? 'Signing in…' : 'Sign in'}
+                {!busy ? <ArrowRight size={18} /> : null}
+              </button>
+            </form>
+
+            {demo ? (
+              <div className="mt-6 pt-5 border-t border-slate-100">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
+                  Quick demo logins
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {demos.map((d) => (
+                    <button
+                      key={d.role}
+                      type="button"
+                      className="card p-3 text-left active:scale-[0.98] transition hover:border-teal-300"
+                      onClick={() => {
+                        setEmail(d.email)
+                        setPassword(d.password)
+                      }}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center mb-2">
+                        {d.role === 'admin' ? <Shield size={16} /> : <UserRound size={16} />}
+                      </div>
+                      <p className="text-sm font-bold text-slate-800">{d.label}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5 truncate">{d.password}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-5 text-center text-[11px] text-slate-400">
+                PHP pricing · mobile & desktop
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

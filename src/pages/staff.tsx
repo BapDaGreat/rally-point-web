@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Clock3, Search, UserPlus } from 'lucide-react'
-import { AppHeader, BottomNav, LoadingBlock, SignOutButton } from '../components/Shell'
+import { AppHeader, AppShell, LoadingBlock, SignOutButton } from '../components/Shell'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import type { CheckIn, Court, CourtSession, Member } from '../types'
@@ -22,7 +22,7 @@ export function StaffHome() {
   }, [])
 
   return (
-    <div className="app-shell">
+    <AppShell role="staff">
       <AppHeader title="Staff desk" subtitle="Live floor" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-4">
         {loading ? (
@@ -84,8 +84,7 @@ export function StaffHome() {
           </>
         )}
       </main>
-      <BottomNav role="staff" />
-    </div>
+      </AppShell>
   )
 }
 
@@ -114,7 +113,7 @@ export function StaffMembers() {
   }, [members, q])
 
   return (
-    <div className="app-shell">
+    <AppShell role="staff">
       <AppHeader title="Members" subtitle={`${members.length} total`} right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-3">
         <div className="relative">
@@ -151,8 +150,7 @@ export function StaffMembers() {
           </section>
         )}
       </main>
-      <BottomNav role="staff" />
-    </div>
+      </AppShell>
   )
 }
 
@@ -187,7 +185,7 @@ export function StaffCheckIn() {
   }
 
   return (
-    <div className="app-shell">
+    <AppShell role="staff">
       <AppHeader title="Check in" subtitle="Member arrival" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4">
         <form className="card p-4 space-y-3" onSubmit={submit}>
@@ -211,8 +209,7 @@ export function StaffCheckIn() {
         </form>
       </main>
       {msg ? <div className="toast">{msg}</div> : null}
-      <BottomNav role="staff" />
-    </div>
+      </AppShell>
   )
 }
 
@@ -301,7 +298,7 @@ export function StaffCourts() {
   }
 
   return (
-    <div className="app-shell">
+    <AppShell role="staff">
       <AppHeader title="Court ops" subtitle="Rent · play · extend" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-3 space-y-3">
         <div className="flex gap-1 overflow-x-auto no-scrollbar pb-1">
@@ -468,7 +465,6 @@ export function StaffCourts() {
         </section>
       </main>
       {msg ? <div className="toast">{msg}</div> : null}
-      <BottomNav role="staff" />
-    </div>
+      </AppShell>
   )
 }

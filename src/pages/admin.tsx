@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Clock3, Pencil, Plus, Search, UserPlus, Users } from 'lucide-react'
-import { AppHeader, BottomNav, LoadingBlock, SignOutButton } from '../components/Shell'
+import { AppHeader, AppShell, LoadingBlock, SignOutButton } from '../components/Shell'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import type {
@@ -32,7 +32,7 @@ export function AdminHome() {
   }, [])
 
   return (
-    <div className="app-shell">
+    <AppShell role="admin">
       <AppHeader title="Admin home" subtitle={user?.full_name} right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-4">
         {loading || !stats ? (
@@ -83,8 +83,7 @@ export function AdminHome() {
           </>
         )}
       </main>
-      <BottomNav role="admin" />
-    </div>
+      </AppShell>
   )
 }
 
@@ -113,7 +112,7 @@ export function AdminMembers() {
   }, [members, q])
 
   return (
-    <div className="app-shell">
+    <AppShell role="admin">
       <AppHeader
         title="Members"
         subtitle={`${members.length} on file`}
@@ -156,8 +155,7 @@ export function AdminMembers() {
           </section>
         )}
       </main>
-      <BottomNav role="admin" />
-    </div>
+      </AppShell>
   )
 }
 
@@ -219,7 +217,7 @@ export function AdminMemberForm() {
   }
 
   return (
-    <div className="app-shell">
+    <AppShell role="admin">
       <AppHeader title={isNew ? 'New member' : 'Update member'} right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4">
         {loading ? (
@@ -275,8 +273,7 @@ export function AdminMemberForm() {
           </form>
         )}
       </main>
-      <BottomNav role="admin" />
-    </div>
+      </AppShell>
   )
 }
 
@@ -370,7 +367,7 @@ export function AdminOps() {
   }
 
   return (
-    <div className="app-shell">
+    <AppShell role="admin">
       <AppHeader title="Floor ops" subtitle="Check-in · courts · walk-in" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-3 space-y-3">
         <div className="flex gap-1 overflow-x-auto pb-1">
@@ -509,8 +506,7 @@ export function AdminOps() {
         ) : null}
       </main>
       {msg ? <div className="toast">{msg}</div> : null}
-      <BottomNav role="admin" />
-    </div>
+      </AppShell>
   )
 }
 
@@ -526,7 +522,7 @@ export function AdminTransactions() {
   }, [])
 
   return (
-    <div className="app-shell">
+    <AppShell role="admin">
       <AppHeader title="Transactions" subtitle="All revenue" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4">
         {loading ? (
@@ -547,8 +543,7 @@ export function AdminTransactions() {
           </section>
         )}
       </main>
-      <BottomNav role="admin" />
-    </div>
+      </AppShell>
   )
 }
 
@@ -564,7 +559,7 @@ export function AdminUsers() {
   }, [])
 
   return (
-    <div className="app-shell">
+    <AppShell role="admin">
       <AppHeader title="Users" subtitle="Staff & accounts" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4">
         {loading ? (
@@ -583,7 +578,6 @@ export function AdminUsers() {
           </section>
         )}
       </main>
-      <BottomNav role="admin" />
-    </div>
+      </AppShell>
   )
 }
