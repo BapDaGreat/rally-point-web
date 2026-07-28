@@ -12,9 +12,12 @@ import type {
   MembershipType,
   MemberStatus,
   Notification,
+  OpenPlaySession,
   PaymentMethod,
   Profile,
   Role,
+  ScheduleBlock,
+  SkillLevel,
   Transaction,
   WalkIn,
 } from '../types'
@@ -489,28 +492,216 @@ export const api = {
   },
 
   async payMembership(memberId: string, amount: number, userId: string) {
-    if (isDemoMode) return demoStore.payMembership(memberId, amount, userId)
-    const { data: m, error } = await supabase!.from('members').select('*').eq('id', memberId).single()
-    if (error) throw error
-    const exp = new Date(m.expiry_date)
-    if (exp < new Date()) exp.setTime(Date.now())
-    exp.setDate(exp.getDate() + 30)
-    await supabase!
-      .from('members')
-      .update({ expiry_date: exp.toISOString().slice(0, 10), status: 'active' })
-      .eq('id', memberId)
-    await supabase!.from('transactions').insert({
-      member_id: memberId,
-      amount,
-      type: 'membership',
-      description: 'Online membership payment',
-      created_by: userId,
-    })
-    await supabase!.from('notifications').insert({
-      user_id: userId,
-      title: 'Payment successful',
-      body: `Membership extended. Thank you!`,
-      read: false,
-    })
-  },
-}
+      if (isDemoMode) return demoStore.payMembership(memberId, amount, userId)
+      const { data: m, error } = await supabase!.from('members').select('*').eq('id', memberId).single()
+      if (error) throw error
+      const exp = new Date(m.expiry_date)
+      if (exp < new Date()) exp.setTime(Date.now())
+      exp.setDate(exp.getDate() + 30)
+      await supabase!
+        .from('members')
+        .update({ expiry_date: exp.toISOString().slice(0, 10), status: 'active' })
+        .eq('id', memberId)
+      await supabase!.from('transactions').insert({
+        member_id: memberId,
+        amount,
+        type: 'membership',
+        description: 'Online membership payment',
+        created_by: userId,
+      })
+      await supabase!.from('notifications').insert({
+        user_id: userId,
+        title: 'Payment successful',
+        body: `Membership extended. Thank you!`,
+        read: false,
+      })
+    },
+
+    async listOpenPlays(includePast = false): Promise<OpenPlaySession[]> {
+      if (isDemoMode) return demoStore.listOpenPlays(includePast)
+      const { data, error } = await supabase!
+        .from('open_plays')
+        .select('*, court:courts(*)')
+        .order('start_at', { ascending: true })
+      if (error) throw error
+      const ids = (data ?? []).map((x) => x.id)
+      const { data: signups } = await supabase!
+        .from('open_play_signups')
+        .select('*, member:members(*)')
+        .in('open_play_id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000'])
+      return (data ?? []).map((op) => {
+        const ss = (signups ?? []).filter((s) => s.open_play_id === op.id && s.status !== 'cancelled')
+        const seats = ss.filter((s) => s.status === 'joined').length
+        return {
+          ...op,
+          court: op.court as Court,
+          signups: ss.map((s) => ({ ...s, member: s.member as Member })),
+          seats_taken: seats,
+          status: op.status === 'open' && seats >= op.capacity ? 'full' : op.status,
+        } as OpenPlaySession
+      })
+    },
+
+    async createOpenPlay(input: {
+      title: string
+      court_id?: string
+      start_at: string
+      end_at: string
+      capacity: number
+      fee: number
+      skill_level: SkillLevel
+      notes?: string
+      created_by?: string
+    }) {
+      if (isDemoMode) return demoStore.createOpenPlay(input)
+      const { data, error } = await supabase!
+        .from('open_plays')
+        .insert({
+          title: input.title,
+          court_id: input.court_id ?? null,
+          start_at: input.start_at,
+          end_at: input.end_at,
+          capacity: input.capacity,
+          fee: input.fee,
+          skill_level: input.skill_level,
+          notes: input.notes ?? null,
+          created_by: input.created_by ?? null,
+          status: 'open',
+        })
+        .select('*, court:courts(*)')
+        .single()
+      if (error) throw error
+      return { ...data, court: data.court as Court, seats_taken: 0, signups: [] } as OpenPlaySession
+    },
+
+    async joinOpenPlay(openPlayId: string, memberId: string, userId: string) {
+      if (isDemoMode) return demoStore.joinOpenPlay(openPlayId, memberId, userId)
+      const list = await this.listOpenPlays(true)
+      const op = list.find((x) => x.id === openPlayId)
+      if (!op) throw new Error('Session not found')
+      const seats = op.seats_taken ?? 0
+      const status = seats >= op.capacity ? 'waitlist' : 'joined'
+      const { data, error } = await supabase!
+        .from('open_play_signups')
+        .insert({ open_play_id: openPlayId, member_id: memberId, status })
+        .select()
+        .single()
+      if (error) throw error
+      if (status === 'joined' && op.fee > 0) {
+        await supabase!.from('transactions').insert({
+          member_id: memberId,
+          amount: op.fee,
+          type: 'other',
+          description: `Open play: ${op.title}`,
+          created_by: userId,
+        })
+      }
+      await supabase!.from('notifications').insert({
+        user_id: userId,
+        title: status === 'joined' ? 'Open play joined' : 'Waitlisted',
+        body: op.title,
+        read: false,
+      })
+      return { signup: data, session: (await this.listOpenPlays(true)).find((x) => x.id === openPlayId)! }
+    },
+
+    async leaveOpenPlay(openPlayId: string, memberId: string) {
+      if (isDemoMode) return demoStore.leaveOpenPlay(openPlayId, memberId)
+      await supabase!
+        .from('open_play_signups')
+        .update({ status: 'cancelled' })
+        .eq('open_play_id', openPlayId)
+        .eq('member_id', memberId)
+    },
+
+    async daySchedule(dateYmd: string): Promise<ScheduleBlock[]> {
+      if (isDemoMode) return demoStore.daySchedule(dateYmd)
+      // Best-effort live: sessions + bookings
+      const sessions = await this.playingSessions()
+      const bookings = await this.listBookings()
+      const open = await this.listOpenPlays(true)
+      const dayStart = localRangeISO(dateYmd, 0, 1).start_at
+      const dayEnd = localRangeISO(dateYmd, 23, 1).end_at
+      const blocks: ScheduleBlock[] = []
+      for (const s of sessions) {
+        if (!(new Date(s.start_at) < new Date(dayEnd) && new Date(s.end_at) > new Date(dayStart))) continue
+        blocks.push({
+          id: s.id,
+          kind: 'session',
+          court_id: s.court_id,
+          court_name: s.court?.name ?? 'Court',
+          title: s.member?.full_name ?? s.guest_name ?? 'Rental',
+          subtitle: s.status,
+          start_at: s.start_at,
+          end_at: s.end_at,
+          status: s.status,
+          amount: s.amount,
+        })
+      }
+      for (const b of bookings) {
+        if (b.status !== 'confirmed') continue
+        if (!(new Date(b.start_at) < new Date(dayEnd) && new Date(b.end_at) > new Date(dayStart))) continue
+        blocks.push({
+          id: b.id,
+          kind: 'booking',
+          court_id: b.court_id,
+          court_name: b.court?.name ?? 'Court',
+          title: b.member?.full_name ?? 'Booking',
+          subtitle: 'online',
+          start_at: b.start_at,
+          end_at: b.end_at,
+          status: b.status,
+          amount: b.amount,
+        })
+      }
+      for (const op of open) {
+        if (!(new Date(op.start_at) < new Date(dayEnd) && new Date(op.end_at) > new Date(dayStart))) continue
+        blocks.push({
+          id: op.id,
+          kind: 'open_play',
+          court_id: op.court_id,
+          court_name: op.court?.name ?? 'Open floor',
+          title: op.title,
+          subtitle: `${op.seats_taken ?? 0}/${op.capacity}`,
+          start_at: op.start_at,
+          end_at: op.end_at,
+          status: op.status,
+          amount: op.fee,
+        })
+      }
+      return blocks.sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at))
+    },
+
+    async processDueReminders() {
+      if (isDemoMode) return demoStore.processDueReminders()
+      return 0
+    },
+
+    async ensureMemberQr(memberId: string): Promise<Member> {
+      if (isDemoMode) return demoStore.ensureMemberQr(memberId)
+      const m = await this.getMember(memberId)
+      if (!m) throw new Error('Member not found')
+      if (m.qr_token) return m
+      const token = `QR_${m.member_code.replace(/[^A-Z0-9]/gi, '')}_${Math.random().toString(36).slice(2, 6).toUpperCase()}`
+      const { error } = await supabase!.from('members').update({ qr_token: token }).eq('id', memberId)
+      if (error) throw error
+      return { ...m, qr_token: token }
+    },
+
+    async checkInByQr(payload: string, staffId?: string) {
+      if (isDemoMode) return demoStore.checkInByQr(payload, staffId)
+      const parts = payload.trim().split('|')
+      let member: Member | null = null
+      if (parts[0] === 'RP1' && parts.length >= 2) {
+        const list = await this.listMembers()
+        member = list.find((m) => m.member_code === parts[1]) ?? null
+      } else {
+        const list = await this.listMembers()
+        const code = payload.trim().toUpperCase()
+        member = list.find((m) => m.member_code.toUpperCase() === code) ?? null
+      }
+      if (!member) throw new Error('QR not recognized')
+      const checkin = await this.checkIn(member.id, staffId, 'QR check-in')
+      return { checkin, member }
+    },
+  }

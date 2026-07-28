@@ -5,10 +5,10 @@ import {
   Home,
   LayoutDashboard,
   LogOut,
-  Receipt,
+  QrCode,
+  Tv,
   UserRound,
   Users,
-  Wallet,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { Role } from '../types'
@@ -17,25 +17,25 @@ import { useAuth } from '../context/AuthContext'
 const memberTabs = [
   { to: '/member', end: true, label: 'Home', icon: Home },
   { to: '/member/book', label: 'Book', icon: CalendarDays },
-  { to: '/member/pay', label: 'Pay', icon: Wallet },
-  { to: '/member/transactions', label: 'Txns', icon: Receipt },
-  { to: '/member/profile', label: 'Profile', icon: UserRound },
+  { to: '/member/open', label: 'Open', icon: Users },
+  { to: '/member/pass', label: 'Pass', icon: QrCode },
+  { to: '/member/profile', label: 'You', icon: UserRound },
 ]
 
 const staffTabs = [
   { to: '/staff', end: true, label: 'Home', icon: LayoutDashboard },
-  { to: '/staff/members', label: 'Members', icon: Users },
-  { to: '/staff/checkin', label: 'Check-in', icon: UserRound },
-  { to: '/staff/bookings', label: 'Bookings', icon: CalendarDays },
+  { to: '/staff/checkin', label: 'Check-in', icon: QrCode },
+  { to: '/staff/board', label: 'Board', icon: Tv },
+  { to: '/staff/open', label: 'Open', icon: Users },
   { to: '/staff/courts', label: 'Courts', icon: Home },
 ]
 
 const adminTabs = [
   { to: '/admin', end: true, label: 'Home', icon: LayoutDashboard },
-  { to: '/admin/members', label: 'Members', icon: Users },
   { to: '/admin/ops', label: 'Ops', icon: Home },
-  { to: '/admin/bookings', label: 'Bookings', icon: CalendarDays },
-  { to: '/admin/transactions', label: 'Txns', icon: Receipt },
+  { to: '/admin/board', label: 'Board', icon: Tv },
+  { to: '/admin/open', label: 'Open', icon: Users },
+  { to: '/admin/bookings', label: 'Book', icon: CalendarDays },
 ]
 
 function tabsFor(role: Role) {

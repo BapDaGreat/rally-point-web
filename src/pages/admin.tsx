@@ -61,6 +61,12 @@ export function AdminHome() {
                           <Link to="/admin/ops" className="btn-primary text-sm">
                             Floor ops
                           </Link>
+                          <Link to="/admin/board" className="btn-secondary text-sm">
+                            Schedule board
+                          </Link>
+                          <Link to="/admin/open" className="btn-secondary text-sm">
+                            Open play
+                          </Link>
                           <Link to="/admin/bookings" className="btn-secondary text-sm">
                             Bookings
                           </Link>

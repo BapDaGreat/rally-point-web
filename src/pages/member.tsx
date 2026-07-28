@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Bell, ChevronRight, CreditCard, CalendarDays } from 'lucide-react'
+import { Bell, ChevronRight, CreditCard, CalendarDays, QrCode, Users } from 'lucide-react'
 import { AppHeader, AppShell, LoadingBlock, SignOutButton } from '../components/Shell'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
@@ -66,6 +66,16 @@ export function MemberHome() {
                             <p className="font-bold mt-2">Book court</p>
                             <p className="text-xs text-slate-500 mt-0.5">Slots · GCash / Maya</p>
                           </Link>
+                          <Link to="/member/open" className="card p-4 active:scale-[0.99] transition">
+                            <Users className="text-brand-700" size={22} />
+                            <p className="font-bold mt-2">Open play</p>
+                            <p className="text-xs text-slate-500 mt-0.5">Join drop-ins</p>
+                          </Link>
+                          <Link to="/member/pass" className="card p-4 active:scale-[0.99] transition">
+                            <QrCode className="text-brand-700" size={22} />
+                            <p className="font-bold mt-2">QR pass</p>
+                            <p className="text-xs text-slate-500 mt-0.5">Desk check-in</p>
+                          </Link>
                           <Link to="/member/pay" className="card p-4 active:scale-[0.99] transition">
                             <CreditCard className="text-brand-700" size={22} />
                             <p className="font-bold mt-2">Pay online</p>
@@ -76,8 +86,8 @@ export function MemberHome() {
                         <Link to="/member/notifications" className="card p-4 flex items-center gap-3 active:scale-[0.99] transition">
                           <Bell className="text-brand-700 shrink-0" size={22} />
                           <div className="flex-1 min-w-0">
-                            <p className="font-bold">Alerts</p>
-                            <p className="text-xs text-slate-500">Club updates & booking confirms</p>
+                            <p className="font-bold">Alerts & reminders</p>
+                            <p className="text-xs text-slate-500">Booking confirms · 1h heads-up</p>
                           </div>
                           {unread ? (
                             <span className="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5">

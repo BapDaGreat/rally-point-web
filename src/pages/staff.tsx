@@ -165,8 +165,11 @@ export function StaffCheckIn() {
   const [members, setMembers] = useState<Member[]>([])
   const [memberId, setMemberId] = useState('')
   const [note, setNote] = useState('')
+  const [qr, setQr] = useState('')
+  const [tab, setTab] = useState<'list' | 'qr'>('qr')
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [last, setLast] = useState<string | null>(null)
 
   useEffect(() => {
     void api.listMembers().then((m) => {
@@ -180,8 +183,27 @@ export function StaffCheckIn() {
     setBusy(true)
     try {
       await api.checkIn(memberId, user?.id, note || undefined)
+      const name = members.find((m) => m.id === memberId)?.full_name
       setMsg('Checked in successfully')
+      setLast(name ?? 'Member')
       setNote('')
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : 'Failed')
+    } finally {
+      setBusy(false)
+      setTimeout(() => setMsg(null), 2500)
+    }
+  }
+
+  async function submitQr(e: FormEvent) {
+    e.preventDefault()
+    if (!qr.trim()) return
+    setBusy(true)
+    try {
+      const r = await api.checkInByQr(qr.trim(), user?.id)
+      setMsg(`Checked in ${r.member.full_name}`)
+      setLast(r.member.full_name)
+      setQr('')
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Failed')
     } finally {
@@ -192,30 +214,75 @@ export function StaffCheckIn() {
 
   return (
     <AppShell role="staff">
-      <AppHeader title="Check in" subtitle="Member arrival" right={<SignOutButton />} />
-      <main className="safe-bottom px-4 pt-4">
-        <form className="card p-4 space-y-3" onSubmit={submit}>
-          <div>
-            <label className="label">Member</label>
-            <select className="input" value={memberId} onChange={(e) => setMemberId(e.target.value)}>
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.full_name} ({m.member_code})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">Note (optional)</label>
-            <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Guest +1, etc." />
-          </div>
-          <button className="btn-primary" disabled={busy || !memberId}>
-            {busy ? 'Saving…' : 'Confirm check-in'}
+      <AppHeader title="Check in" subtitle="QR or member list" right={<SignOutButton />} />
+      <main className="safe-bottom px-4 pt-4 space-y-3">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            className={`flex-1 min-h-12 rounded-xl font-bold border ${tab === 'qr' ? 'bg-brand-700 text-white border-brand-700' : 'bg-white border-slate-200'}`}
+            onClick={() => setTab('qr')}
+          >
+            QR / code
           </button>
-        </form>
+          <button
+            type="button"
+            className={`flex-1 min-h-12 rounded-xl font-bold border ${tab === 'list' ? 'bg-brand-700 text-white border-brand-700' : 'bg-white border-slate-200'}`}
+            onClick={() => setTab('list')}
+          >
+            Member list
+          </button>
+        </div>
+
+        {tab === 'qr' ? (
+          <form className="card p-4 space-y-3" onSubmit={submitQr}>
+            <div>
+              <label className="label">Scan or paste QR payload / member code</label>
+              <input
+                className="input font-mono text-sm"
+                value={qr}
+                onChange={(e) => setQr(e.target.value)}
+                placeholder="RP1|RP-1001|… or RP-1001"
+                autoFocus
+              />
+            </div>
+            <p className="text-xs text-slate-500">
+              Point a hardware scanner here, or type the member code from their pass.
+            </p>
+            <button className="btn-primary" disabled={busy || !qr.trim()}>
+              {busy ? 'Checking…' : 'Check in via QR'}
+            </button>
+          </form>
+        ) : (
+          <form className="card p-4 space-y-3" onSubmit={submit}>
+            <div>
+              <label className="label">Member</label>
+              <select className="input" value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.full_name} ({m.member_code})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Note (optional)</label>
+              <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Guest +1, etc." />
+            </div>
+            <button className="btn-primary" disabled={busy || !memberId}>
+              {busy ? 'Saving…' : 'Confirm check-in'}
+            </button>
+          </form>
+        )}
+
+        {last ? (
+          <section className="card p-4 border-brand-200 bg-brand-50">
+            <p className="text-xs font-bold uppercase text-brand-800">Last check-in</p>
+            <p className="font-extrabold text-lg text-brand-950">{last}</p>
+          </section>
+        ) : null}
       </main>
       {msg ? <div className="toast">{msg}</div> : null}
-      </AppShell>
+    </AppShell>
   )
 }
 

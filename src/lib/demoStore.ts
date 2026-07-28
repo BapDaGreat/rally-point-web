@@ -9,16 +9,21 @@ import type {
   Member,
   MembershipType,
   Notification,
+  OpenPlaySession,
+  OpenPlaySignup,
   PaymentMethod,
   Profile,
+  Reminder,
   Role,
+  ScheduleBlock,
+  SkillLevel,
   Transaction,
   WalkIn,
 } from '../types'
 import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, hourLabel, localRangeISO } from '../types'
 import { makePaymentRef } from './payments'
 
-const KEY = 'rally_point_demo_v2'
+const KEY = 'rally_point_demo_v3'
 
 function uid(prefix = 'id') {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`
@@ -40,6 +45,9 @@ export interface DemoDB {
   courts: Court[]
   sessions: CourtSession[]
   bookings: Booking[]
+  openPlays: OpenPlaySession[]
+  openPlaySignups: OpenPlaySignup[]
+  reminders: Reminder[]
   checkins: CheckIn[]
   transactions: Transaction[]
   notifications: Notification[]
@@ -119,6 +127,7 @@ function seed(): DemoDB {
       status: 'active',
       join_date: daysFromNow(-120),
       expiry_date: daysFromNow(45),
+      qr_token: 'QR_MIA_DEMO',
       created_at: todayISO(),
     },
     {
@@ -295,12 +304,56 @@ function seed(): DemoDB {
     },
   ]
 
+
+  const later = new Date()
+  later.setHours(later.getHours() + 3, 0, 0, 0)
+  const laterEnd = new Date(later.getTime() + 2 * 3600000)
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  tomorrow.setHours(18, 0, 0, 0)
+  const tomorrowEnd = new Date(tomorrow.getTime() + 2 * 3600000)
+  const openPlays: OpenPlaySession[] = [
+    {
+      id: 'op_1',
+      title: 'Evening Open Play',
+      court_id: 'court_2',
+      start_at: later.toISOString(),
+      end_at: laterEnd.toISOString(),
+      capacity: 8,
+      fee: 250,
+      skill_level: 'all',
+      status: 'open',
+      notes: 'Bring your own paddle',
+      created_by: staffId,
+      created_at: todayISO(),
+    },
+    {
+      id: 'op_2',
+      title: 'Beginner Mixer',
+      court_id: 'court_4',
+      start_at: tomorrow.toISOString(),
+      end_at: tomorrowEnd.toISOString(),
+      capacity: 12,
+      fee: 200,
+      skill_level: 'beginner',
+      status: 'open',
+      notes: null,
+      created_by: adminId,
+      created_at: todayISO(),
+    },
+  ]
+  const openPlaySignups: OpenPlaySignup[] = []
+  const reminders: Reminder[] = []
+
   return {
     profiles,
     members,
     courts,
     sessions,
     bookings: [],
+    openPlays,
+    openPlaySignups,
+    reminders,
     checkins,
     transactions,
     notifications,
@@ -320,6 +373,12 @@ function load(): DemoDB {
     if (raw) {
       const db = JSON.parse(raw) as DemoDB
       if (!Array.isArray(db.bookings)) db.bookings = []
+      if (!Array.isArray(db.openPlays)) db.openPlays = []
+      if (!Array.isArray(db.openPlaySignups)) db.openPlaySignups = []
+      if (!Array.isArray(db.reminders)) db.reminders = []
+      for (const m of db.members) {
+        if (!m.qr_token) m.qr_token = `QR_${m.member_code.replace(/[^A-Z0-9]/gi, '')}`
+      }
       return db
     }
   } catch {
@@ -338,6 +397,7 @@ export const demoStore = {
   reset() {
     localStorage.removeItem(KEY)
     localStorage.removeItem('rally_point_demo_v1')
+    localStorage.removeItem('rally_point_demo_v2')
     return load()
   },
   get() {
@@ -535,9 +595,21 @@ export const demoStore = {
       id: uid('n'),
       user_id: opts.user_id,
       title: 'Booking confirmed',
-      body: `${court?.name ?? 'Court'} reserved. Show this confirmation at the desk.`,
+      body: `${court?.name ?? 'Court'} · ${new Date(b.start_at).toLocaleString()} · Ref ${ref}. Show at desk.`,
       read: false,
       created_at: todayISO(),
+    })
+    // 1h before start reminder
+    const fire = new Date(new Date(b.start_at).getTime() - 60 * 60000)
+    db.reminders.push({
+      id: uid('rm'),
+      user_id: opts.user_id,
+      kind: 'booking_reminder',
+      title: 'Court in 1 hour',
+      body: `${court?.name ?? 'Court'} starts soon. Don't be late!`,
+      fire_at: fire.toISOString(),
+      sent_at: null,
+      booking_id: b.id,
     })
     save(db)
     return hydrateBooking(db, b)
@@ -575,6 +647,246 @@ export const demoStore = {
       .slice()
       .sort((a, b) => +new Date(b.start_at) - +new Date(a.start_at))
       .map((b) => hydrateBooking(db, b))
+  },
+
+  ensureMemberQr(memberId: string) {
+    const db = load()
+    const m = db.members.find((x) => x.id === memberId)
+    if (!m) throw new Error('Member not found')
+    if (!m.qr_token) {
+      m.qr_token = `QR_${m.member_code.replace(/[^A-Z0-9]/gi, '')}_${Math.random().toString(36).slice(2, 6).toUpperCase()}`
+      save(db)
+    }
+    return m
+  },
+  checkInByQr(payload: string, staffId?: string) {
+    const db = load()
+    const parts = payload.trim().split('|')
+    let member: Member | undefined
+    if (parts[0] === 'RP1' && parts.length >= 3) {
+      member = db.members.find((m) => m.member_code === parts[1] && m.qr_token === parts[2])
+      if (!member) member = db.members.find((m) => m.member_code === parts[1])
+    } else {
+      const code = payload.trim().toUpperCase()
+      member = db.members.find((m) => m.member_code.toUpperCase() === code || m.qr_token === payload.trim())
+    }
+    if (!member) throw new Error('QR not recognized')
+    if (member.status !== 'active') throw new Error('Membership not active')
+    const row: CheckIn = {
+      id: uid('ci'),
+      member_id: member.id,
+      checked_in_at: todayISO(),
+      staff_id: staffId ?? null,
+      note: 'QR check-in',
+    }
+    db.checkins.unshift(row)
+    save(db)
+    return { checkin: row, member }
+  },
+  hydrateOpenPlay(db: DemoDB, op: OpenPlaySession): OpenPlaySession {
+    const signups = db.openPlaySignups
+      .filter((s) => s.open_play_id === op.id && s.status !== 'cancelled')
+      .map((s) => ({ ...s, member: db.members.find((m) => m.id === s.member_id) }))
+    const seats = signups.filter((s) => s.status === 'joined').length
+    return {
+      ...op,
+      court: op.court_id ? db.courts.find((c) => c.id === op.court_id) : undefined,
+      signups,
+      seats_taken: seats,
+      status: op.status === 'open' && seats >= op.capacity ? 'full' : op.status,
+    }
+  },
+  listOpenPlays(includePast = false) {
+    const db = load()
+    const now = Date.now() - 30 * 60000
+    return db.openPlays
+      .filter((op) => includePast || (op.status !== 'cancelled' && new Date(op.end_at).getTime() >= now))
+      .sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at))
+      .map((op) => this.hydrateOpenPlay(db, op))
+  },
+  createOpenPlay(input: {
+    title: string
+    court_id?: string
+    start_at: string
+    end_at: string
+    capacity: number
+    fee: number
+    skill_level: SkillLevel
+    notes?: string
+    created_by?: string
+  }) {
+    const db = load()
+    const op: OpenPlaySession = {
+      id: uid('op'),
+      title: input.title,
+      court_id: input.court_id ?? null,
+      start_at: input.start_at,
+      end_at: input.end_at,
+      capacity: input.capacity,
+      fee: input.fee,
+      skill_level: input.skill_level,
+      status: 'open',
+      notes: input.notes ?? null,
+      created_by: input.created_by ?? null,
+      created_at: todayISO(),
+    }
+    db.openPlays.unshift(op)
+    save(db)
+    return this.hydrateOpenPlay(db, op)
+  },
+  joinOpenPlay(openPlayId: string, memberId: string, userId: string) {
+    const db = load()
+    const op = db.openPlays.find((x) => x.id === openPlayId)
+    if (!op) throw new Error('Session not found')
+    if (op.status === 'cancelled' || op.status === 'completed') throw new Error('Session closed')
+    const existing = db.openPlaySignups.find(
+      (s) => s.open_play_id === openPlayId && s.member_id === memberId && s.status !== 'cancelled',
+    )
+    if (existing) throw new Error('Already signed up')
+    const joined = db.openPlaySignups.filter((s) => s.open_play_id === openPlayId && s.status === 'joined').length
+    const status = joined >= op.capacity ? 'waitlist' : 'joined'
+    const row: OpenPlaySignup = {
+      id: uid('ops'),
+      open_play_id: openPlayId,
+      member_id: memberId,
+      status,
+      created_at: todayISO(),
+    }
+    db.openPlaySignups.push(row)
+    if (status === 'joined' && op.fee > 0) {
+      db.transactions.unshift({
+        id: uid('tx'),
+        member_id: memberId,
+        amount: op.fee,
+        type: 'other',
+        description: `Open play: ${op.title}`,
+        created_at: todayISO(),
+        created_by: userId,
+      })
+    }
+    db.notifications.unshift({
+      id: uid('n'),
+      user_id: userId,
+      title: status === 'joined' ? 'Open play joined' : 'Waitlisted',
+      body:
+        status === 'joined'
+          ? `${op.title} · ${new Date(op.start_at).toLocaleString()}. You're in!`
+          : `${op.title} is full — you're on the waitlist.`,
+      read: false,
+      created_at: todayISO(),
+    })
+    if (status === 'joined') {
+      const fire = new Date(new Date(op.start_at).getTime() - 60 * 60000)
+      db.reminders.push({
+        id: uid('rm'),
+        user_id: userId,
+        kind: 'open_play_reminder',
+        title: 'Open play in 1 hour',
+        body: op.title,
+        fire_at: fire.toISOString(),
+        sent_at: null,
+        open_play_id: op.id,
+      })
+    }
+    save(db)
+    return { signup: row, session: this.hydrateOpenPlay(db, op) }
+  },
+  leaveOpenPlay(openPlayId: string, memberId: string) {
+    const db = load()
+    const s = db.openPlaySignups.find(
+      (x) => x.open_play_id === openPlayId && x.member_id === memberId && x.status !== 'cancelled',
+    )
+    if (!s) return
+    s.status = 'cancelled'
+    // promote waitlist
+    const wait = db.openPlaySignups
+      .filter((x) => x.open_play_id === openPlayId && x.status === 'waitlist')
+      .sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))[0]
+    if (wait) wait.status = 'joined'
+    save(db)
+  },
+  daySchedule(dateYmd: string): ScheduleBlock[] {
+    const db = load()
+    const dayStart = localRangeISO(dateYmd, 0, 1).start_at
+    const dayEnd = localRangeISO(dateYmd, 23, 1).end_at
+    const blocks: ScheduleBlock[] = []
+    for (const s of db.sessions) {
+      if (s.status === 'cancelled' || s.status === 'completed') continue
+      if (!(new Date(s.start_at) < new Date(dayEnd) && new Date(s.end_at) > new Date(dayStart))) continue
+      const court = db.courts.find((c) => c.id === s.court_id)
+      const mem = s.member_id ? db.members.find((m) => m.id === s.member_id) : null
+      blocks.push({
+        id: s.id,
+        kind: 'session',
+        court_id: s.court_id,
+        court_name: court?.name ?? 'Court',
+        title: mem?.full_name ?? s.guest_name ?? 'Rental',
+        subtitle: s.status,
+        start_at: s.start_at,
+        end_at: s.end_at,
+        status: s.status,
+        amount: s.amount,
+      })
+    }
+    for (const b of db.bookings) {
+      if (b.status !== 'confirmed') continue
+      if (b.session_id) continue // already as session
+      if (!(new Date(b.start_at) < new Date(dayEnd) && new Date(b.end_at) > new Date(dayStart))) continue
+      const court = db.courts.find((c) => c.id === b.court_id)
+      const mem = db.members.find((m) => m.id === b.member_id)
+      blocks.push({
+        id: b.id,
+        kind: 'booking',
+        court_id: b.court_id,
+        court_name: court?.name ?? 'Court',
+        title: mem?.full_name ?? 'Booking',
+        subtitle: 'online booking',
+        start_at: b.start_at,
+        end_at: b.end_at,
+        status: b.status,
+        amount: b.amount,
+      })
+    }
+    for (const op of db.openPlays) {
+      if (op.status === 'cancelled') continue
+      if (!(new Date(op.start_at) < new Date(dayEnd) && new Date(op.end_at) > new Date(dayStart))) continue
+      const court = op.court_id ? db.courts.find((c) => c.id === op.court_id) : null
+      const seats = db.openPlaySignups.filter((s) => s.open_play_id === op.id && s.status === 'joined').length
+      blocks.push({
+        id: op.id,
+        kind: 'open_play',
+        court_id: op.court_id,
+        court_name: court?.name ?? 'Open floor',
+        title: op.title,
+        subtitle: `${seats}/${op.capacity} · ${op.skill_level}`,
+        start_at: op.start_at,
+        end_at: op.end_at,
+        status: op.status,
+        amount: op.fee,
+      })
+    }
+    return blocks.sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at))
+  },
+  processDueReminders() {
+    const db = load()
+    const now = Date.now()
+    let n = 0
+    for (const r of db.reminders) {
+      if (r.sent_at) continue
+      if (new Date(r.fire_at).getTime() > now) continue
+      r.sent_at = todayISO()
+      db.notifications.unshift({
+        id: uid('n'),
+        user_id: r.user_id,
+        title: r.title,
+        body: r.body,
+        read: false,
+        created_at: todayISO(),
+      })
+      n++
+    }
+    if (n) save(db)
+    return n
   },
   createRental(opts: {
     court_id: string

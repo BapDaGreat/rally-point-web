@@ -8,6 +8,10 @@ export type CourtStatus = 'available' | 'occupied' | 'maintenance'
 export type PaymentMethod = 'gcash' | 'maya' | 'card' | 'demo_wallet'
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'cancelled'
 export type BookingStatus = 'pending_payment' | 'confirmed' | 'cancelled' | 'completed' | 'no_show'
+export type OpenPlayStatus = 'open' | 'full' | 'cancelled' | 'completed'
+export type OpenPlaySignupStatus = 'joined' | 'waitlist' | 'cancelled'
+export type ReminderKind = 'booking_confirm' | 'booking_reminder' | 'open_play_reminder'
+export type SkillLevel = 'all' | 'beginner' | 'intermediate' | 'advanced'
 
 export interface Profile {
   id: string
@@ -31,6 +35,7 @@ export interface Member {
   join_date: string
   expiry_date: string
   notes?: string | null
+  qr_token?: string | null
   created_at: string
 }
 
@@ -139,6 +144,74 @@ export interface DashboardStats {
   active_now: number
   revenue_today: number
   courts_occupied: number
+}
+
+
+export interface OpenPlaySession {
+  id: string
+  title: string
+  court_id?: string | null
+  start_at: string
+  end_at: string
+  capacity: number
+  fee: number
+  skill_level: SkillLevel
+  status: OpenPlayStatus
+  notes?: string | null
+  created_by?: string | null
+  created_at: string
+  court?: Court
+  signups?: OpenPlaySignup[]
+  seats_taken?: number
+}
+
+export interface OpenPlaySignup {
+  id: string
+  open_play_id: string
+  member_id: string
+  status: OpenPlaySignupStatus
+  created_at: string
+  member?: Member
+}
+
+export interface ScheduleBlock {
+  id: string
+  kind: 'session' | 'booking' | 'open_play'
+  court_id?: string | null
+  court_name: string
+  title: string
+  subtitle?: string
+  start_at: string
+  end_at: string
+  status: string
+  amount?: number
+}
+
+export interface Reminder {
+  id: string
+  user_id: string
+  kind: ReminderKind
+  title: string
+  body: string
+  fire_at: string
+  sent_at?: string | null
+  booking_id?: string | null
+  open_play_id?: string | null
+}
+
+export function qrPayload(memberCode: string, token: string) {
+  return `RP1|${memberCode}|${token}`
+}
+
+export function parseQrPayload(raw: string): { member_code: string; token: string } | null {
+  const t = raw.trim()
+  const parts = t.split('|')
+  if (parts.length === 3 && parts[0] === 'RP1') {
+    return { member_code: parts[1], token: parts[2] }
+  }
+  // bare member code fallback
+  if (/^RP-\d+/i.test(t)) return { member_code: t.toUpperCase(), token: '' }
+  return null
 }
 
 /** Club open hours (local) */
