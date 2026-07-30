@@ -148,11 +148,7 @@ export function MemberBook() {
 
   return (
     <AppShell role="member">
-      <AppHeader
-        title="Book a court"
-        subtitle="Pick a slot · pay · play"
-        right={<SignOutButton />}
-      />
+      <AppHeader title="Book a court" subtitle="1. Date · 2. Court · 3. Time · 4. Pay" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-4">
         {!member && !loading ? (
           <section className="card p-4">

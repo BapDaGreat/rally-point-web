@@ -42,7 +42,7 @@ export function MemberPass() {
 
   return (
     <AppShell role="member">
-      <AppHeader title="Check-in pass" subtitle="Show this at the desk" right={<SignOutButton />} />
+      <AppHeader title="My QR code" subtitle="Show this screen at the front desk" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-4">
         {loading ? (
           <LoadingBlock />
@@ -52,9 +52,9 @@ export function MemberPass() {
           </section>
         ) : (
           <section className="card p-6 flex flex-col items-center text-center space-y-3">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Member QR</p>
-            <p className="font-extrabold text-xl">{member.full_name}</p>
-            <p className="font-mono text-sm text-brand-800">{member.member_code}</p>
+            <p className="text-sm font-bold text-slate-500">Your check-in code</p>
+            <p className="font-extrabold text-2xl">{member.full_name}</p>
+            <p className="font-mono text-base text-brand-800 font-bold">{member.member_code}</p>
             {payload ? (
               <img
                 src={qrImageUrl(payload)}
@@ -65,7 +65,7 @@ export function MemberPass() {
               />
             ) : null}
             <p className="text-[11px] text-slate-400 font-mono break-all max-w-xs">{payload}</p>
-            <p className="text-xs text-slate-500">Staff can scan this or type your member code.</p>
+            <p className="text-base text-slate-600">Staff can scan this code, or type your ID number.</p>
           </section>
         )}
         {error ? <p className="text-sm text-red-600">{error}</p> : null}

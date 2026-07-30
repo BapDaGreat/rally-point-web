@@ -14,28 +14,29 @@ import type { ReactNode } from 'react'
 import type { Role } from '../types'
 import { useAuth } from '../context/AuthContext'
 
+/** Plain-language nav — short words players of any age recognize */
 const memberTabs = [
   { to: '/member', end: true, label: 'Home', icon: Home },
   { to: '/member/book', label: 'Book', icon: CalendarDays },
-  { to: '/member/open', label: 'Open', icon: Users },
-  { to: '/member/pass', label: 'Pass', icon: QrCode },
-  { to: '/member/profile', label: 'You', icon: UserRound },
+  { to: '/member/open', label: 'Play', icon: Users },
+  { to: '/member/pass', label: 'My QR', icon: QrCode },
+  { to: '/member/profile', label: 'Account', icon: UserRound },
 ]
 
 const staffTabs = [
   { to: '/staff', end: true, label: 'Home', icon: LayoutDashboard },
-  { to: '/staff/checkin', label: 'Check-in', icon: QrCode },
-  { to: '/staff/board', label: 'Board', icon: Tv },
-  { to: '/staff/open', label: 'Open', icon: Users },
+  { to: '/staff/checkin', label: 'Check in', icon: QrCode },
+  { to: '/staff/board', label: 'Schedule', icon: Tv },
+  { to: '/staff/open', label: 'Open play', icon: Users },
   { to: '/staff/courts', label: 'Courts', icon: Home },
 ]
 
 const adminTabs = [
   { to: '/admin', end: true, label: 'Home', icon: LayoutDashboard },
-  { to: '/admin/ops', label: 'Ops', icon: Home },
-  { to: '/admin/board', label: 'Board', icon: Tv },
-  { to: '/admin/open', label: 'Open', icon: Users },
-  { to: '/admin/bookings', label: 'Book', icon: CalendarDays },
+  { to: '/admin/ops', label: 'Floor', icon: Home },
+  { to: '/admin/board', label: 'Schedule', icon: Tv },
+  { to: '/admin/open', label: 'Open play', icon: Users },
+  { to: '/admin/bookings', label: 'Bookings', icon: CalendarDays },
 ]
 
 function tabsFor(role: Role) {
@@ -47,27 +48,28 @@ function tabsFor(role: Role) {
 export function SideNav({ role }: { role: Role }) {
   const { user, signOut } = useAuth()
   const tabs = tabsFor(role)
+  const roleLabel = role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Member'
 
   return (
     <aside className="side-nav">
       <div className="px-2 mb-6">
         <div className="flex items-center gap-2.5 mb-1">
-          <div className="w-9 h-9 rounded-xl bg-teal-500/20 text-teal-200 flex items-center justify-center border border-teal-400/20">
-            <Activity size={18} />
+          <div className="w-10 h-10 rounded-xl bg-teal-500/20 text-teal-200 flex items-center justify-center border border-teal-400/20">
+            <Activity size={20} />
           </div>
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-teal-300/80">Rally Point</p>
-            <p className="text-sm font-extrabold leading-tight capitalize">{role}</p>
+            <p className="text-xs font-bold text-teal-200/90">Rally Point</p>
+            <p className="text-base font-extrabold leading-tight">{roleLabel}</p>
           </div>
         </div>
         {user ? (
-          <p className="text-xs text-slate-400 mt-2 truncate px-0.5" title={user.email}>
+          <p className="text-sm text-slate-300 mt-2 truncate px-0.5" title={user.email}>
             {user.full_name}
           </p>
         ) : null}
       </div>
 
-      <nav className="flex flex-col gap-1 flex-1">
+      <nav className="flex flex-col gap-1.5 flex-1" aria-label="Main menu">
         {tabs.map(({ to, end, label, icon: Icon }) => (
           <NavLink
             key={to}
@@ -75,7 +77,7 @@ export function SideNav({ role }: { role: Role }) {
             end={end}
             className={({ isActive }) => `side-nav-link${isActive ? ' active' : ''}`}
           >
-            <Icon size={18} strokeWidth={2.25} />
+            <Icon size={22} strokeWidth={2.25} aria-hidden />
             {label}
           </NavLink>
         ))}
@@ -86,8 +88,8 @@ export function SideNav({ role }: { role: Role }) {
         onClick={() => void signOut()}
         className="side-nav-link mt-4 w-full border-0 bg-transparent cursor-pointer text-left"
       >
-        <LogOut size={18} />
-        Sign out
+        <LogOut size={22} aria-hidden />
+        Log out
       </button>
     </aside>
   )
@@ -97,21 +99,21 @@ export function BottomNav({ role }: { role: Role }) {
   const tabs = tabsFor(role)
   const cols = tabs.length <= 4 ? 'grid-cols-4' : 'grid-cols-5'
   return (
-    <nav className="bottom-nav">
-      <div className={`grid ${cols} px-1 pt-1 pb-1`}>
+    <nav className="bottom-nav" aria-label="Main menu">
+      <div className={`grid ${cols} px-1 pt-1.5 pb-1.5`}>
         {tabs.map(({ to, end, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
             className={({ isActive }) =>
-              `flex flex-col items-center gap-0.5 py-2 rounded-xl text-[10px] font-bold ${
-                isActive ? 'text-brand-700' : 'text-slate-400'
+              `flex flex-col items-center justify-center gap-1 py-2 min-h-[56px] rounded-xl text-[12px] font-extrabold leading-tight ${
+                isActive ? 'text-brand-800 bg-brand-50' : 'text-slate-500'
               }`
             }
           >
-            <Icon size={20} strokeWidth={2.25} />
-            {label}
+            <Icon size={24} strokeWidth={2.25} aria-hidden />
+            <span className="px-0.5 text-center">{label}</span>
           </NavLink>
         ))}
       </div>
@@ -119,7 +121,6 @@ export function BottomNav({ role }: { role: Role }) {
   )
 }
 
-/** Responsive chrome: sidebar on desktop, bottom nav on phone */
 export function AppShell({ role, children }: { role: Role; children: ReactNode }) {
   return (
     <div className="app-shell">
@@ -142,17 +143,16 @@ export function AppHeader({
   right?: ReactNode
 }) {
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-100 px-4 md:px-6 pt-4 pb-3">
+    <header className="sticky top-0 z-30 bg-white/98 backdrop-blur border-b border-slate-200 px-4 md:px-6 pt-4 pb-3.5">
       <div className="flex items-start justify-between gap-3 max-w-5xl">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-brand-700 md:hidden">
-            Rally Point
-          </p>
-          <h1 className="text-xl md:text-2xl font-extrabold text-slate-900 leading-tight">{title}</h1>
-          {subtitle ? <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p> : null}
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-brand-800 md:hidden mb-0.5">Rally Point</p>
+          <h1 className="text-[1.35rem] md:text-2xl font-extrabold text-slate-900 leading-snug tracking-tight">
+            {title}
+          </h1>
+          {subtitle ? <p className="text-[0.95rem] text-slate-600 mt-1 leading-snug">{subtitle}</p> : null}
         </div>
-        <div className="md:hidden">{right}</div>
-        <div className="hidden md:block">{right}</div>
+        <div className="shrink-0">{right}</div>
       </div>
     </header>
   )
@@ -164,10 +164,11 @@ export function SignOutButton() {
     <button
       type="button"
       onClick={() => void signOut()}
-      className="w-10 h-10 rounded-full border border-slate-200 flex items-center justify-center text-slate-600 md:hidden"
-      aria-label="Sign out"
+      className="min-h-12 min-w-12 px-3 rounded-2xl border-2 border-slate-200 flex items-center justify-center gap-1.5 text-slate-700 font-bold text-sm md:hidden"
+      aria-label="Log out"
     >
-      <LogOut size={18} />
+      <LogOut size={18} aria-hidden />
+      <span className="sr-only">Log out</span>
     </button>
   )
 }
@@ -175,23 +176,28 @@ export function SignOutButton() {
 export function EmptyState({ title, body }: { title: string; body?: string }) {
   return (
     <div className="card p-6 text-center">
-      <p className="font-bold text-slate-800">{title}</p>
-      {body ? <p className="text-sm text-slate-500 mt-1">{body}</p> : null}
+      <p className="font-extrabold text-lg text-slate-800">{title}</p>
+      {body ? <p className="text-base text-slate-600 mt-2 leading-relaxed">{body}</p> : null}
     </div>
   )
 }
 
 export function LoadingBlock() {
   return (
-    <div className="space-y-3 p-4">
-      <div className="skeleton h-20" />
-      <div className="skeleton h-14" />
-      <div className="skeleton h-14" />
+    <div className="space-y-3 p-4" aria-busy="true" aria-label="Loading">
+      <div className="skeleton h-24" />
+      <div className="skeleton h-16" />
+      <div className="skeleton h-16" />
+      <p className="text-center text-sm font-semibold text-slate-500 pt-1">Loading…</p>
     </div>
   )
 }
 
 export function Toast({ message }: { message: string | null }) {
   if (!message) return null
-  return <div className="toast">{message}</div>
+  return (
+    <div className="toast" role="status">
+      {message}
+    </div>
+  )
 }

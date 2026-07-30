@@ -209,9 +209,36 @@ export function parseQrPayload(raw: string): { member_code: string; token: strin
   if (parts.length === 3 && parts[0] === 'RP1') {
     return { member_code: parts[1], token: parts[2] }
   }
-  // bare member code fallback
   if (/^RP-\d+/i.test(t)) return { member_code: t.toUpperCase(), token: '' }
   return null
+}
+
+/** Plain English for mixed-age UI */
+export function friendlyStatus(status: string): string {
+  const map: Record<string, string> = {
+    active: 'Active',
+    expired: 'Expired — renew',
+    pending: 'Pending',
+    suspended: 'On hold',
+    confirmed: 'Confirmed',
+    pending_payment: 'Waiting for payment',
+    cancelled: 'Cancelled',
+    completed: 'Done',
+    no_show: 'No-show',
+    scheduled: 'Reserved',
+    playing: 'Playing now',
+    open: 'Open',
+    full: 'Full',
+    joined: "You're in",
+    waitlist: 'On waitlist',
+    available: 'Free',
+    occupied: 'In use',
+    maintenance: 'Closed for maintenance',
+    basic: 'Basic',
+    standard: 'Standard',
+    premium: 'Premium',
+  }
+  return map[status] ?? status.replace(/_/g, ' ')
 }
 
 /** Club open hours (local) */

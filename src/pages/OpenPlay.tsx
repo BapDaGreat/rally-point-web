@@ -62,7 +62,7 @@ export function MemberOpenPlay() {
 
   return (
     <AppShell role="member">
-      <AppHeader title="Open play" subtitle="Join drop-in sessions" right={<SignOutButton />} />
+      <AppHeader title="Open play" subtitle="Join a drop-in game — no private court needed" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-3">
         {loading ? (
           <LoadingBlock />
@@ -107,7 +107,7 @@ export function MemberOpenPlay() {
                     disabled={!member || busyId === op.id || op.status === 'cancelled'}
                     onClick={() => void join(op.id)}
                   >
-                    {busyId === op.id ? '…' : seats >= op.capacity ? 'Join waitlist' : 'Join session'}
+                    {busyId === op.id ? 'Please wait…' : seats >= op.capacity ? 'Join waitlist' : 'Join this game'}
                   </button>
                 )}
               </section>

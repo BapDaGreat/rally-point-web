@@ -62,35 +62,35 @@ export default function LoginPage() {
       <div className="relative z-10 mx-auto grid min-h-[100dvh] w-full max-w-6xl grid-cols-1 lg:grid-cols-2 lg:items-center lg:gap-12 px-5 py-10 sm:px-8 lg:px-10">
         {/* Brand panel — login concept */}
         <div className="flex flex-col justify-center text-center lg:text-left pt-6 lg:pt-0 pb-8 lg:pb-0">
-          <div className="mb-5 inline-flex self-center lg:self-start items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white/90 backdrop-blur-md">
-            <span aria-hidden>✨</span>
-            {demo ? 'Demo mode · local data' : 'Connected to Supabase'}
+          <div className="mb-5 inline-flex self-center lg:self-start items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-sm font-semibold text-white/95 backdrop-blur-md">
+            <span aria-hidden>🏓</span>
+            {demo ? 'Try it now · demo' : 'Pickleball club app'}
           </div>
 
-          <h1 className="text-4xl sm:text-5xl xl:text-6xl font-extrabold leading-[1.05] tracking-tight">
+          <h1 className="text-4xl sm:text-5xl xl:text-6xl font-extrabold leading-[1.08] tracking-tight">
             <span className="block text-white">Rally Point</span>
             <span className="mt-1 block bg-gradient-to-r from-teal-200 via-cyan-200 to-violet-300 bg-clip-text text-transparent">
-              Courts. Members. Ops.
+              Book. Play. Pay.
             </span>
           </h1>
 
-          <p className="mt-5 max-w-md mx-auto lg:mx-0 text-[15px] sm:text-base leading-relaxed text-white/75">
-            Court rental & membership for phone-first clubs — check-in, rentals, walk-ins, and revenue
-            in one place. Works on desk and floor.
+          <p className="mt-5 max-w-md mx-auto lg:mx-0 text-base sm:text-lg leading-relaxed text-white/85">
+            Simple court booking and membership for every age. Book a court, join open play, or show
+            your QR at the desk.
           </p>
 
           <div className="mt-8 hidden lg:flex flex-wrap gap-3">
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-teal-200/80">Members</p>
-              <p className="text-sm font-semibold text-white/90">Plans · check-in · pay</p>
+              <p className="text-sm font-bold text-teal-200">1 · Book</p>
+              <p className="text-base font-semibold text-white/95">Choose court & time</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-teal-200/80">Staff</p>
-              <p className="text-sm font-semibold text-white/90">Courts · walk-ins</p>
+              <p className="text-sm font-bold text-teal-200">2 · Pay</p>
+              <p className="text-base font-semibold text-white/95">GCash, Maya, or card</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-teal-200/80">Admin</p>
-              <p className="text-sm font-semibold text-white/90">Revenue · users</p>
+              <p className="text-sm font-bold text-teal-200">3 · Play</p>
+              <p className="text-base font-semibold text-white/95">Show QR at the desk</p>
             </div>
           </div>
         </div>
@@ -99,9 +99,9 @@ export default function LoginPage() {
         <div className="flex items-center justify-center lg:justify-end pb-8 lg:pb-0">
           <div className="w-full max-w-md rounded-3xl border border-white/15 bg-white p-5 sm:p-7 text-slate-900 shadow-2xl shadow-black/40">
             <div className="mb-5">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Club access</p>
-              <h2 className="mt-1 text-xl font-extrabold text-slate-900">Sign in</h2>
-              <p className="mt-1 text-sm text-slate-500">Use your club account to continue.</p>
+              <p className="text-sm font-bold text-slate-500">Welcome</p>
+              <h2 className="mt-1 text-2xl font-extrabold text-slate-900">Log in</h2>
+              <p className="mt-1.5 text-base text-slate-600">Enter the email and password from your club.</p>
             </div>
 
             <form onSubmit={onSubmit} className="space-y-3.5">
@@ -141,8 +141,8 @@ export default function LoginPage() {
                 </p>
               ) : null}
               <button className="btn-primary gap-2" type="submit" disabled={busy}>
-                {busy ? 'Signing in…' : 'Sign in'}
-                {!busy ? <ArrowRight size={18} /> : null}
+                {busy ? 'Please wait…' : 'Log in'}
+                {!busy ? <ArrowRight size={18} aria-hidden /> : null}
               </button>
             </form>
 

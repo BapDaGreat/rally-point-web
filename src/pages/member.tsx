@@ -5,7 +5,7 @@ import { AppHeader, AppShell, LoadingBlock, SignOutButton } from '../components/
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import type { Member, Notification, Transaction } from '../types'
-import { fmtDate, peso } from '../types'
+import { fmtDate, peso, friendlyStatus } from '../types'
 
 export function MemberHome() {
   const { user } = useAuth()
@@ -31,12 +31,13 @@ export function MemberHome() {
   }, [user])
 
   const unread = notifs.filter((n) => !n.read).length
+  const firstName = user?.full_name.split(' ')[0] ?? 'there'
 
   return (
     <AppShell role="member">
       <AppHeader
-        title={`Hi, ${user?.full_name.split(' ')[0] ?? 'there'}`}
-        subtitle="Member home"
+        title={`Hi, ${firstName}`}
+        subtitle="What do you want to do?"
         right={<SignOutButton />}
       />
       <main className="safe-bottom px-4 pt-4 space-y-4">
@@ -45,76 +46,95 @@ export function MemberHome() {
         ) : (
           <>
             <section className="stat-card">
-              <p className="text-teal-100 text-xs font-bold uppercase tracking-wide">Membership</p>
-              <p className="text-2xl font-extrabold mt-1 capitalize">{member?.membership_type ?? '—'} plan</p>
-              <div className="mt-3 flex items-center justify-between text-sm">
-                <span className="text-teal-50/90">{member?.member_code}</span>
+              <p className="text-teal-100 text-sm font-bold">Your membership</p>
+              <p className="text-2xl font-extrabold mt-1">
+                {friendlyStatus(member?.membership_type ?? '—')} plan
+              </p>
+              <div className="mt-3 flex items-center justify-between gap-2 text-base">
+                <span className="text-teal-50 font-semibold">ID {member?.member_code ?? '—'}</span>
                 <span
-                  className={`pill ${member?.status === 'active' ? 'bg-white/20 text-white' : 'bg-amber-300 text-amber-950'}`}
+                  className={`pill ${member?.status === 'active' ? 'bg-white/25 text-white' : 'bg-amber-300 text-amber-950'}`}
                 >
-                  {member?.status ?? 'n/a'}
+                  {friendlyStatus(member?.status ?? 'n/a')}
                 </span>
               </div>
-              <p className="mt-3 text-sm text-teal-50/90 flex items-center gap-2">
-                <CalendarDays size={16} /> Expires {member ? fmtDate(member.expiry_date) : '—'}
+              <p className="mt-3 text-base text-teal-50 flex items-center gap-2">
+                <CalendarDays size={18} aria-hidden /> Valid until{' '}
+                {member ? fmtDate(member.expiry_date) : '—'}
               </p>
             </section>
 
-            <div className="grid grid-cols-2 gap-3">
-                          <Link to="/member/book" className="card p-4 active:scale-[0.99] transition">
-                            <CalendarDays className="text-brand-700" size={22} />
-                            <p className="font-bold mt-2">Book court</p>
-                            <p className="text-xs text-slate-500 mt-0.5">Slots · GCash / Maya</p>
-                          </Link>
-                          <Link to="/member/open" className="card p-4 active:scale-[0.99] transition">
-                            <Users className="text-brand-700" size={22} />
-                            <p className="font-bold mt-2">Open play</p>
-                            <p className="text-xs text-slate-500 mt-0.5">Join drop-ins</p>
-                          </Link>
-                          <Link to="/member/pass" className="card p-4 active:scale-[0.99] transition">
-                            <QrCode className="text-brand-700" size={22} />
-                            <p className="font-bold mt-2">QR pass</p>
-                            <p className="text-xs text-slate-500 mt-0.5">Desk check-in</p>
-                          </Link>
-                          <Link to="/member/pay" className="card p-4 active:scale-[0.99] transition">
-                            <CreditCard className="text-brand-700" size={22} />
-                            <p className="font-bold mt-2">Pay online</p>
-                            <p className="text-xs text-slate-500 mt-0.5">Renew membership</p>
-                          </Link>
-                        </div>
+            <div>
+              <h2 className="text-base font-extrabold text-slate-800 mb-2 px-0.5">Quick actions</h2>
+              <div className="grid grid-cols-2 gap-3">
+                <Link to="/member/book" className="action-tile">
+                  <span className="action-tile-icon" aria-hidden>
+                    <CalendarDays size={24} />
+                  </span>
+                  <span className="action-tile-title">Book a court</span>
+                  <span className="action-tile-sub">Pick time & pay</span>
+                </Link>
+                <Link to="/member/open" className="action-tile">
+                  <span className="action-tile-icon" aria-hidden>
+                    <Users size={24} />
+                  </span>
+                  <span className="action-tile-title">Join open play</span>
+                  <span className="action-tile-sub">Drop-in games</span>
+                </Link>
+                <Link to="/member/pass" className="action-tile">
+                  <span className="action-tile-icon" aria-hidden>
+                    <QrCode size={24} />
+                  </span>
+                  <span className="action-tile-title">Show my QR</span>
+                  <span className="action-tile-sub">For check-in</span>
+                </Link>
+                <Link to="/member/pay" className="action-tile">
+                  <span className="action-tile-icon" aria-hidden>
+                    <CreditCard size={24} />
+                  </span>
+                  <span className="action-tile-title">Pay dues</span>
+                  <span className="action-tile-sub">Renew plan</span>
+                </Link>
+              </div>
+            </div>
 
-                        <Link to="/member/notifications" className="card p-4 flex items-center gap-3 active:scale-[0.99] transition">
-                          <Bell className="text-brand-700 shrink-0" size={22} />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold">Alerts & reminders</p>
-                            <p className="text-xs text-slate-500">Booking confirms · 1h heads-up</p>
-                          </div>
-                          {unread ? (
-                            <span className="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5">
-                              {unread}
-                            </span>
-                          ) : (
-                            <ChevronRight className="text-slate-300" size={18} />
-                          )}
-                        </Link>
+            <Link
+              to="/member/notifications"
+              className="card p-4 flex items-center gap-3 active:scale-[0.99] transition min-h-[72px]"
+            >
+              <span className="action-tile-icon shrink-0" aria-hidden>
+                <Bell size={22} />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="font-extrabold text-base">Messages</p>
+                <p className="text-sm text-slate-600">Bookings & reminders</p>
+              </div>
+              {unread ? (
+                <span className="text-sm font-extrabold bg-red-600 text-white rounded-full min-w-8 h-8 px-2 flex items-center justify-center">
+                  {unread}
+                </span>
+              ) : (
+                <ChevronRight className="text-slate-400" size={22} aria-hidden />
+              )}
+            </Link>
 
             <section className="card p-4">
-              <div className="flex items-center justify-between mb-1">
-                <h2 className="font-extrabold">Recent activity</h2>
-                <Link to="/member/transactions" className="text-xs font-bold text-brand-700">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="font-extrabold text-base">Recent payments</h2>
+                <Link to="/member/transactions" className="text-sm font-extrabold text-brand-800 min-h-11 inline-flex items-center">
                   See all
                 </Link>
               </div>
               {txs.length === 0 ? (
-                <p className="text-sm text-slate-500 py-3">No transactions yet.</p>
+                <p className="text-base text-slate-600 py-3">No payments yet.</p>
               ) : (
                 txs.map((t) => (
                   <div key={t.id} className="list-row">
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm truncate">{t.description}</p>
-                      <p className="text-xs text-slate-400">{fmtDate(t.created_at)}</p>
+                      <p className="font-bold text-base truncate">{t.description}</p>
+                      <p className="text-sm text-slate-500">{fmtDate(t.created_at)}</p>
                     </div>
-                    <p className="font-bold text-sm whitespace-nowrap">{peso(t.amount)}</p>
+                    <p className="font-extrabold text-base whitespace-nowrap">{peso(t.amount)}</p>
                   </div>
                 ))
               )}
@@ -122,7 +142,7 @@ export function MemberHome() {
           </>
         )}
       </main>
-      </AppShell>
+    </AppShell>
   )
 }
 
