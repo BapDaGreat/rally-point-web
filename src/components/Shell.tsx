@@ -54,7 +54,7 @@ export function SideNav({ role }: { role: Role }) {
     <aside className="side-nav">
       <div className="px-2 mb-6">
         <div className="flex items-center gap-2.5 mb-1">
-          <RallyPointLogo variant="mark" className="w-11 h-11 rounded-xl shadow-md" />
+          <RallyPointLogo variant="mark" className="w-11 h-11 object-contain" />
           <div>
             <p className="text-xs font-bold text-teal-200/90">Rally Point</p>
             <p className="text-base font-extrabold leading-tight">{roleLabel}</p>
@@ -145,7 +145,7 @@ export function AppHeader({
       <div className="flex items-start justify-between gap-3 max-w-5xl">
         <div className="min-w-0">
           <div className="flex items-center gap-2 md:hidden mb-1">
-            <RallyPointLogo variant="mark" className="w-8 h-8 rounded-lg" />
+            <RallyPointLogo variant="mark" className="w-8 h-8 object-contain" />
             <p className="text-xs font-bold text-brand-800">Rally Point</p>
           </div>
           <h1 className="text-[1.35rem] md:text-2xl font-extrabold text-slate-900 leading-snug tracking-tight">

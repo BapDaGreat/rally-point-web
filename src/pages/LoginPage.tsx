@@ -71,8 +71,8 @@ export default function LoginPage() {
           <div className="mb-4 flex justify-center lg:justify-start">
             <RallyPointLogo
               variant="color"
-              className="h-24 sm:h-28 w-auto drop-shadow-2xl"
-              title="Rally Point"
+              className="h-28 sm:h-36 w-auto max-w-[min(100%,320px)] object-contain drop-shadow-2xl"
+              title="Rally Point Gensan"
             />
           </div>
 

@@ -1,6 +1,6 @@
-/** Rally Point brand mark from Figma UI/UX (rpg_logo) — paddle + wordmark */
+/** Exact Figma rpg_logo assets from UI/UX file */
 type LogoProps = {
-  variant?: 'color' | 'white' | 'mark'
+  variant?: 'color' | 'mark'
   className?: string
   title?: string
 }
@@ -8,12 +8,7 @@ type LogoProps = {
 const BASE = import.meta.env.BASE_URL || '/'
 
 export function RallyPointLogo({ variant = 'color', className = '', title = 'Rally Point' }: LogoProps) {
-  const src =
-    variant === 'white'
-      ? `${BASE}logo-white.svg`
-      : variant === 'mark'
-        ? `${BASE}favicon.svg`
-        : `${BASE}logo.svg`
+  const src = variant === 'mark' ? `${BASE}logo-mark.png` : `${BASE}logo.png`
 
   return (
     <img
@@ -21,6 +16,7 @@ export function RallyPointLogo({ variant = 'color', className = '', title = 'Ral
       alt={title}
       className={className}
       draggable={false}
+      decoding="async"
     />
   )
 }
