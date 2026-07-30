@@ -3,7 +3,6 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { ArrowRight, Shield, UserPlus, UserRound } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import type { Role } from '../types'
-import { ShaderCanvas } from '../components/ui/animated-shader-hero'
 import { RallyPointLogo } from '../components/RallyPointLogo'
 
 const demos: { role: Role; email: string; password: string; label: string }[] = [
@@ -11,6 +10,9 @@ const demos: { role: Role; email: string; password: string; label: string }[] = 
   { role: 'staff', email: 'staff@rallypoint.local', password: 'staff123', label: 'Staff' },
   { role: 'member', email: 'member@rallypoint.local', password: 'member123', label: 'Member' },
 ]
+
+const HERO_VIDEO = `${import.meta.env.BASE_URL}media/pickleball-hero.mp4`
+const HERO_POSTER = `${import.meta.env.BASE_URL}media/pickleball-poster.jpg`
 
 function homeFor(role: Role) {
   if (role === 'admin') return '/admin'
@@ -69,57 +71,69 @@ export default function LoginPage() {
 
   return (
     <div className="app-shell app-shell-bleed relative min-h-[100dvh] text-white overflow-hidden">
-      <ShaderCanvas className="!fixed inset-0" />
-      <div
-        className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(20,184,166,0.22),transparent_50%)]"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none fixed inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/50"
-        aria-hidden
-      />
+      {/* Cinematic pickleball video hero */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden>
+        <video
+          className="absolute inset-0 h-full w-full object-cover scale-105"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          poster={HERO_POSTER}
+        >
+          <source src={HERO_VIDEO} type="video/mp4" />
+        </video>
+        {/* Dark cinematic grade — readable text, sports-site feel */}
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-950/75 via-slate-900/55 to-teal-950/65" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_40%,transparent_0%,rgba(2,6,23,0.55)_70%)]" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/35" />
+      </div>
 
       <div className="relative z-10 mx-auto grid min-h-[100dvh] w-full max-w-6xl grid-cols-1 lg:grid-cols-2 lg:items-center lg:gap-12 px-5 py-10 sm:px-8 lg:px-10">
+        {/* Brand panel */}
         <div className="flex flex-col justify-center text-center lg:text-left pt-6 lg:pt-0 pb-8 lg:pb-0">
-          <div className="mb-5 inline-flex self-center lg:self-start items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-sm font-semibold text-white/95 backdrop-blur-md">
+          <div className="mb-5 inline-flex self-center lg:self-start items-center gap-2 rounded-full border border-white/20 bg-black/30 px-3.5 py-1.5 text-sm font-semibold text-white/95 backdrop-blur-md shadow-lg">
             <span aria-hidden>🏓</span>
             {demo ? 'Try it now · demo' : 'Pickleball club app'}
           </div>
 
-          <div className="mb-4 flex justify-center lg:justify-start">
+          <div className="mb-5 flex justify-center lg:justify-start">
             <RallyPointLogo
               variant="color"
-              className="h-28 sm:h-36 w-auto max-w-[min(100%,320px)] object-contain drop-shadow-2xl"
+              className="h-28 sm:h-36 w-auto max-w-[min(100%,320px)] object-contain drop-shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
               title="Rally Point Gensan"
             />
           </div>
 
           <h1 className="sr-only">Rally Point</h1>
-          <p className="text-3xl sm:text-4xl xl:text-5xl font-extrabold leading-[1.08] tracking-tight text-center lg:text-left">
-            <span className="block bg-gradient-to-r from-teal-200 via-cyan-200 to-violet-300 bg-clip-text text-transparent">
-              Book. Play. Pay.
+          <p className="text-4xl sm:text-5xl xl:text-6xl font-extrabold leading-[1.05] tracking-tight text-center lg:text-left drop-shadow-lg">
+            <span className="block text-white">PICKLEBALL</span>
+            <span className="mt-1 block bg-gradient-to-r from-teal-200 via-cyan-200 to-white bg-clip-text text-transparent">
+              PASSION
             </span>
           </p>
 
-          <p className="mt-5 max-w-md mx-auto lg:mx-0 text-base sm:text-lg leading-relaxed text-white/85">
-            Players can join online. Staff and admin accounts are set up by the club — not this form.
+          <p className="mt-5 max-w-md mx-auto lg:mx-0 text-base sm:text-lg leading-relaxed text-white/90 drop-shadow">
+            Book a court. Join open play. Show your QR at the desk. Players join online — staff &amp;
+            admin are set up by the club.
           </p>
 
           <div className="mt-8 hidden lg:flex flex-wrap gap-3">
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
+            <div className="rounded-2xl border border-white/15 bg-black/35 px-4 py-3 backdrop-blur-md shadow-lg">
               <p className="text-sm font-bold text-teal-200">Members</p>
-              <p className="text-base font-semibold text-white/95">Book · pay · QR · open play</p>
+              <p className="text-base font-semibold text-white">Book · pay · QR · open play</p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
+            <div className="rounded-2xl border border-white/15 bg-black/35 px-4 py-3 backdrop-blur-md shadow-lg">
               <p className="text-sm font-bold text-teal-200">Staff / Admin</p>
-              <p className="text-base font-semibold text-white/95">Desk, courts, club ops</p>
+              <p className="text-base font-semibold text-white">Desk, courts, club ops</p>
             </div>
           </div>
         </div>
 
+        {/* Access card — glass over video */}
         <div className="flex items-center justify-center lg:justify-end pb-8 lg:pb-0">
-          <div className="w-full max-w-md rounded-3xl border border-white/15 bg-white p-5 sm:p-7 text-slate-900 shadow-2xl shadow-black/40">
-            {/* Mode tabs */}
+          <div className="w-full max-w-md rounded-3xl border border-white/25 bg-white/95 backdrop-blur-xl p-5 sm:p-7 text-slate-900 shadow-2xl shadow-black/50">
             <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1">
               <button
                 type="button"
