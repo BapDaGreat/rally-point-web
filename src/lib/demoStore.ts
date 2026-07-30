@@ -407,16 +407,63 @@ export const demoStore = {
     save(db)
   },
   login(email: string, password: string): Profile {
-    const db = load()
-    const e = email.trim().toLowerCase()
-    if (db.passwords[e] !== password) throw new Error('Invalid email or password')
-    const profile = db.profiles.find((p) => p.email.toLowerCase() === e)
-    if (!profile) throw new Error('Account not found')
-    db.sessionUserId = profile.id
-    save(db)
-    return profile
-  },
-  logout() {
+      const db = load()
+      const e = email.trim().toLowerCase()
+      if (db.passwords[e] !== password) throw new Error('Invalid email or password')
+      const profile = db.profiles.find((p) => p.email.toLowerCase() === e)
+      if (!profile) throw new Error('Account not found')
+      db.sessionUserId = profile.id
+      save(db)
+      return profile
+    },
+    /** Public join — always member. Admin/staff are seeded only. */
+    registerMember(input: { email: string; password: string; full_name: string; phone?: string }): Profile {
+      const db = load()
+      const e = input.email.trim().toLowerCase()
+      if (db.passwords[e] || db.profiles.some((p) => p.email.toLowerCase() === e)) {
+        throw new Error('That email is already registered. Log in instead.')
+      }
+      if (input.password.length < 6) throw new Error('Password must be at least 6 characters')
+      const id = uid('usr')
+      const profile: Profile = {
+        id,
+        email: e,
+        full_name: input.full_name.trim(),
+        role: 'member',
+        phone: input.phone?.trim() || null,
+        created_at: todayISO(),
+      }
+      db.profiles.push(profile)
+      db.passwords[e] = input.password
+      const codeNum = 1000 + db.members.length + 1
+      db.members.push({
+        id: uid('mem'),
+        user_id: id,
+        member_code: `RP-${codeNum}`,
+        full_name: profile.full_name,
+        email: e,
+        phone: profile.phone,
+        membership_type: 'standard',
+        status: 'active',
+        join_date: new Date().toISOString().slice(0, 10),
+        expiry_date: daysFromNow(30),
+        notes: null,
+        qr_token: `q_${Math.random().toString(36).slice(2, 10)}`,
+        created_at: todayISO(),
+      })
+      db.sessionUserId = id
+      db.notifications.unshift({
+        id: uid('n'),
+        user_id: id,
+        title: 'Welcome to Rally Point',
+        body: 'You’re in! Book a court, join open play, or show your QR at the desk.',
+        read: false,
+        created_at: todayISO(),
+      })
+      save(db)
+      return profile
+    },
+    logout() {
     const db = load()
     db.sessionUserId = null
     save(db)

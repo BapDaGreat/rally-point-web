@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { ArrowRight, Shield, UserRound } from 'lucide-react'
+import { ArrowRight, Shield, UserPlus, UserRound } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import type { Role } from '../types'
 import { ShaderCanvas } from '../components/ui/animated-shader-hero'
@@ -18,11 +18,16 @@ function homeFor(role: Role) {
   return '/member'
 }
 
+type Mode = 'login' | 'join'
+
 export default function LoginPage() {
-  const { user, loading, signIn, demo } = useAuth()
+  const { user, loading, signIn, signUpMember, demo } = useAuth()
   const nav = useNavigate()
+  const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
+  const [phone, setPhone] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -33,18 +38,33 @@ export default function LoginPage() {
     setBusy(true)
     setError(null)
     try {
-      const profile = await signIn(email, password)
-      nav(homeFor(profile.role), { replace: true })
+      if (mode === 'join') {
+        const profile = await signUpMember({
+          email,
+          password,
+          full_name: fullName,
+          phone: phone || undefined,
+        })
+        nav(homeFor(profile.role), { replace: true })
+      } else {
+        const profile = await signIn(email, password)
+        nav(homeFor(profile.role), { replace: true })
+      }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Sign-in failed'
+      const msg = err instanceof Error ? err.message : 'Something went wrong'
       setError(
         /invalid login credentials/i.test(msg)
-          ? 'Invalid email or password. Use your Supabase admin account (not the old demo logins).'
+          ? 'Wrong email or password. New here? Tap “Join as member”.'
           : msg,
       )
     } finally {
       setBusy(false)
     }
+  }
+
+  function switchMode(next: Mode) {
+    setMode(next)
+    setError(null)
   }
 
   return (
@@ -59,9 +79,7 @@ export default function LoginPage() {
         aria-hidden
       />
 
-      {/* Desktop: split brand | form. Mobile: stacked hero concept. */}
       <div className="relative z-10 mx-auto grid min-h-[100dvh] w-full max-w-6xl grid-cols-1 lg:grid-cols-2 lg:items-center lg:gap-12 px-5 py-10 sm:px-8 lg:px-10">
-        {/* Brand panel — login concept */}
         <div className="flex flex-col justify-center text-center lg:text-left pt-6 lg:pt-0 pb-8 lg:pb-0">
           <div className="mb-5 inline-flex self-center lg:self-start items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-sm font-semibold text-white/95 backdrop-blur-md">
             <span aria-hidden>🏓</span>
@@ -84,36 +102,94 @@ export default function LoginPage() {
           </p>
 
           <p className="mt-5 max-w-md mx-auto lg:mx-0 text-base sm:text-lg leading-relaxed text-white/85">
-            Simple court booking and membership for every age. Book a court, join open play, or show
-            your QR at the desk.
+            Players can join online. Staff and admin accounts are set up by the club — not this form.
           </p>
 
           <div className="mt-8 hidden lg:flex flex-wrap gap-3">
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-              <p className="text-sm font-bold text-teal-200">1 · Book</p>
-              <p className="text-base font-semibold text-white/95">Choose court & time</p>
+              <p className="text-sm font-bold text-teal-200">Members</p>
+              <p className="text-base font-semibold text-white/95">Book · pay · QR · open play</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-              <p className="text-sm font-bold text-teal-200">2 · Pay</p>
-              <p className="text-base font-semibold text-white/95">GCash, Maya, or card</p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-              <p className="text-sm font-bold text-teal-200">3 · Play</p>
-              <p className="text-base font-semibold text-white/95">Show QR at the desk</p>
+              <p className="text-sm font-bold text-teal-200">Staff / Admin</p>
+              <p className="text-base font-semibold text-white/95">Desk, courts, club ops</p>
             </div>
           </div>
         </div>
 
-        {/* Access card */}
         <div className="flex items-center justify-center lg:justify-end pb-8 lg:pb-0">
           <div className="w-full max-w-md rounded-3xl border border-white/15 bg-white p-5 sm:p-7 text-slate-900 shadow-2xl shadow-black/40">
-            <div className="mb-5">
-              <p className="text-sm font-bold text-slate-500">Welcome</p>
-              <h2 className="mt-1 text-2xl font-extrabold text-slate-900">Log in</h2>
-              <p className="mt-1.5 text-base text-slate-600">Enter the email and password from your club.</p>
+            {/* Mode tabs */}
+            <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1">
+              <button
+                type="button"
+                className={`rounded-xl py-2.5 text-sm font-extrabold transition ${
+                  mode === 'login' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+                }`}
+                onClick={() => switchMode('login')}
+              >
+                Log in
+              </button>
+              <button
+                type="button"
+                className={`rounded-xl py-2.5 text-sm font-extrabold transition inline-flex items-center justify-center gap-1.5 ${
+                  mode === 'join' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+                }`}
+                onClick={() => switchMode('join')}
+              >
+                <UserPlus size={16} aria-hidden />
+                Join as member
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <p className="text-sm font-bold text-slate-500">
+                {mode === 'join' ? 'New player' : 'Welcome back'}
+              </p>
+              <h2 className="mt-1 text-2xl font-extrabold text-slate-900">
+                {mode === 'join' ? 'Create member account' : 'Log in'}
+              </h2>
+              <p className="mt-1.5 text-base text-slate-600">
+                {mode === 'join'
+                  ? 'For players only. You’ll get book, pay, open play, and your QR pass.'
+                  : 'Members, staff, and admin all use this log-in.'}
+              </p>
             </div>
 
             <form onSubmit={onSubmit} className="space-y-3.5">
+              {mode === 'join' ? (
+                <>
+                  <div>
+                    <label className="label" htmlFor="full_name">
+                      Full name
+                    </label>
+                    <input
+                      id="full_name"
+                      className="input"
+                      autoComplete="name"
+                      placeholder="Juan Dela Cruz"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="phone">
+                      Mobile (optional)
+                    </label>
+                    <input
+                      id="phone"
+                      className="input"
+                      type="tel"
+                      autoComplete="tel"
+                      placeholder="09xx xxx xxxx"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                    />
+                  </div>
+                </>
+              ) : null}
+
               <div>
                 <label className="label" htmlFor="email">
                   Email
@@ -123,7 +199,7 @@ export default function LoginPage() {
                   className="input"
                   type="email"
                   autoComplete="username"
-                  placeholder="you@club.com"
+                  placeholder="you@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -137,23 +213,50 @@ export default function LoginPage() {
                   id="password"
                   className="input"
                   type="password"
-                  autoComplete="current-password"
-                  placeholder="••••••••"
+                  autoComplete={mode === 'join' ? 'new-password' : 'current-password'}
+                  placeholder={mode === 'join' ? 'At least 6 characters' : '••••••••'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  minLength={mode === 'join' ? 6 : undefined}
                 />
               </div>
+
               {error ? (
                 <p className="text-sm font-semibold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
                   {error}
                 </p>
               ) : null}
+
               <button className="btn-primary gap-2" type="submit" disabled={busy}>
-                {busy ? 'Please wait…' : 'Log in'}
+                {busy ? 'Please wait…' : mode === 'join' ? 'Join Rally Point' : 'Log in'}
                 {!busy ? <ArrowRight size={18} aria-hidden /> : null}
               </button>
             </form>
+
+            {mode === 'login' ? (
+              <p className="mt-4 text-center text-base text-slate-600">
+                New player?{' '}
+                <button
+                  type="button"
+                  className="font-extrabold text-brand-800 underline-offset-2 hover:underline"
+                  onClick={() => switchMode('join')}
+                >
+                  Join as member
+                </button>
+              </p>
+            ) : (
+              <p className="mt-4 text-center text-base text-slate-600">
+                Already have an account?{' '}
+                <button
+                  type="button"
+                  className="font-extrabold text-brand-800 underline-offset-2 hover:underline"
+                  onClick={() => switchMode('login')}
+                >
+                  Log in
+                </button>
+              </p>
+            )}
 
             {demo ? (
               <div className="mt-6 pt-5 border-t border-slate-100">
@@ -167,6 +270,7 @@ export default function LoginPage() {
                       type="button"
                       className="card p-3 text-left active:scale-[0.98] transition hover:border-teal-300"
                       onClick={() => {
+                        switchMode('login')
                         setEmail(d.email)
                         setPassword(d.password)
                       }}
@@ -181,8 +285,8 @@ export default function LoginPage() {
                 </div>
               </div>
             ) : (
-              <p className="mt-5 text-center text-[11px] text-slate-400">
-                PHP pricing · mobile & desktop
+              <p className="mt-5 text-center text-sm text-slate-500">
+                Staff / admin accounts are created by the club — not by joining here.
               </p>
             )}
           </div>

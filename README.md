@@ -36,14 +36,29 @@ npm run dev
    - `supabase/migrations/001_rally_point.sql`
    - `supabase/migrations/002_bookings.sql`
    - `supabase/migrations/003_open_play_qr.sql`
-2. Auth users with `user_metadata.role` = `admin` | `staff` | `member`
-3. Link members: `members.user_id` = auth user id (needed for book / open / pass)
-4. `.env`:
+   - `supabase/migrations/004_member_signup.sql`
+2. **Members** join themselves on the login page (“Join as member”).
+3. **Staff / admin** — create manually in Supabase Auth, then:
+   ```sql
+   update public.profiles set role = 'admin' where email = 'you@club.com';
+   -- or role = 'staff'
+   ```
+   Do **not** use the public join form for staff/admin.
+4. Auth → optional: turn **off** “Confirm email” for instant join, or leave on and members confirm first.
+5. `.env`:
 ```env
 VITE_SUPABASE_URL=https://YOUR.supabase.co
 VITE_SUPABASE_ANON_KEY=your_publishable_key
 ```
 Never put `service_role` in the frontend.
+
+## Who sees what
+| Role | Access |
+|------|--------|
+| **Member** | Own home, book court, open play, QR pass, pay, messages, profile. **No** desk ops, all-members list, revenue, user admin. |
+| **Staff** | Check-in, schedule board, open-play manage, courts, bookings desk. |
+| **Admin** | Everything staff has + members CRUD, floor ops, transactions, user list, KPIs. |
+
 
 ## Deploy (GitHub Pages)
 ```bash
