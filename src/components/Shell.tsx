@@ -1,6 +1,5 @@
 import { NavLink } from 'react-router-dom'
 import {
-  Activity,
   CalendarDays,
   Home,
   LayoutDashboard,
@@ -13,6 +12,7 @@ import {
 import type { ReactNode } from 'react'
 import type { Role } from '../types'
 import { useAuth } from '../context/AuthContext'
+import { RallyPointLogo } from './RallyPointLogo'
 
 /** Plain-language nav — short words players of any age recognize */
 const memberTabs = [
@@ -54,9 +54,7 @@ export function SideNav({ role }: { role: Role }) {
     <aside className="side-nav">
       <div className="px-2 mb-6">
         <div className="flex items-center gap-2.5 mb-1">
-          <div className="w-10 h-10 rounded-xl bg-teal-500/20 text-teal-200 flex items-center justify-center border border-teal-400/20">
-            <Activity size={20} />
-          </div>
+          <RallyPointLogo variant="mark" className="w-11 h-11 rounded-xl shadow-md" />
           <div>
             <p className="text-xs font-bold text-teal-200/90">Rally Point</p>
             <p className="text-base font-extrabold leading-tight">{roleLabel}</p>
@@ -146,7 +144,10 @@ export function AppHeader({
     <header className="sticky top-0 z-30 bg-white/98 backdrop-blur border-b border-slate-200 px-4 md:px-6 pt-4 pb-3.5">
       <div className="flex items-start justify-between gap-3 max-w-5xl">
         <div className="min-w-0">
-          <p className="text-xs font-bold text-brand-800 md:hidden mb-0.5">Rally Point</p>
+          <div className="flex items-center gap-2 md:hidden mb-1">
+            <RallyPointLogo variant="mark" className="w-8 h-8 rounded-lg" />
+            <p className="text-xs font-bold text-brand-800">Rally Point</p>
+          </div>
           <h1 className="text-[1.35rem] md:text-2xl font-extrabold text-slate-900 leading-snug tracking-tight">
             {title}
           </h1>

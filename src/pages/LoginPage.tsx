@@ -4,6 +4,7 @@ import { ArrowRight, Shield, UserRound } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import type { Role } from '../types'
 import { ShaderCanvas } from '../components/ui/animated-shader-hero'
+import { RallyPointLogo } from '../components/RallyPointLogo'
 
 const demos: { role: Role; email: string; password: string; label: string }[] = [
   { role: 'admin', email: 'admin@rallypoint.local', password: 'admin123', label: 'Admin' },
@@ -67,12 +68,20 @@ export default function LoginPage() {
             {demo ? 'Try it now · demo' : 'Pickleball club app'}
           </div>
 
-          <h1 className="text-4xl sm:text-5xl xl:text-6xl font-extrabold leading-[1.08] tracking-tight">
-            <span className="block text-white">Rally Point</span>
-            <span className="mt-1 block bg-gradient-to-r from-teal-200 via-cyan-200 to-violet-300 bg-clip-text text-transparent">
+          <div className="mb-4 flex justify-center lg:justify-start">
+            <RallyPointLogo
+              variant="color"
+              className="h-24 sm:h-28 w-auto drop-shadow-2xl"
+              title="Rally Point"
+            />
+          </div>
+
+          <h1 className="sr-only">Rally Point</h1>
+          <p className="text-3xl sm:text-4xl xl:text-5xl font-extrabold leading-[1.08] tracking-tight text-center lg:text-left">
+            <span className="block bg-gradient-to-r from-teal-200 via-cyan-200 to-violet-300 bg-clip-text text-transparent">
               Book. Play. Pay.
             </span>
-          </h1>
+          </p>
 
           <p className="mt-5 max-w-md mx-auto lg:mx-0 text-base sm:text-lg leading-relaxed text-white/85">
             Simple court booking and membership for every age. Book a court, join open play, or show
