@@ -248,7 +248,11 @@ export function StaffCheckIn() {
             <p className="text-xs text-slate-500">
               Point a hardware scanner here, or type the member code from their pass.
             </p>
-            <button className="btn-primary" disabled={busy || !qr.trim()}>
+            <button
+              className="btn-primary"
+              disabled={busy || !qr.trim()}
+              aria-busy={busy}
+            >
               {busy ? 'Checking…' : 'Check in via QR'}
             </button>
           </form>
@@ -268,7 +272,11 @@ export function StaffCheckIn() {
               <label className="label">Note (optional)</label>
               <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Guest +1, etc." />
             </div>
-            <button className="btn-primary" disabled={busy || !memberId}>
+            <button
+              className="btn-primary"
+              disabled={busy || !memberId}
+              aria-busy={busy}
+            >
               {busy ? 'Saving…' : 'Confirm check-in'}
             </button>
           </form>

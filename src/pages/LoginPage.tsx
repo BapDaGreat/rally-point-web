@@ -242,7 +242,12 @@ export default function LoginPage() {
                 </p>
               ) : null}
 
-              <button className="btn-primary gap-2" type="submit" disabled={busy}>
+              <button
+                className="btn-primary gap-2"
+                type="submit"
+                disabled={busy}
+                aria-busy={busy}
+              >
                 {busy ? 'Please wait…' : mode === 'join' ? 'Join Rally Point' : 'Log in'}
                 {!busy ? <ArrowRight size={18} aria-hidden /> : null}
               </button>

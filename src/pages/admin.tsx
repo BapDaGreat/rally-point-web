@@ -78,7 +78,10 @@ export function AdminHome() {
             <section className="card p-4">
               <div className="flex items-center justify-between mb-1">
                 <h2 className="font-extrabold">Latest transactions</h2>
-                <Link to="/admin/transactions" className="text-xs font-bold text-brand-700">
+                <Link
+                  to="/admin/transactions"
+                  className="control-feedback px-2 text-xs font-bold text-brand-700 inline-flex items-center"
+                >
                   All
                 </Link>
               </div>
@@ -285,7 +288,7 @@ export function AdminMemberForm() {
               <textarea className="input min-h-24" value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
             {error ? <p className="text-sm font-semibold text-red-600">{error}</p> : null}
-            <button className="btn-primary" disabled={busy}>
+            <button className="btn-primary" disabled={busy} aria-busy={busy}>
               {busy ? 'Saving…' : isNew ? 'Create member' : 'Save changes'}
             </button>
             {!isNew ? (

@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Member, Profile } from '../types'
 import { api } from '../lib/api'
-import { MemberHome } from './member'
+import { MemberHome, MemberPay } from './member'
 
 const memberUser = {
   id: 'u-member',
@@ -48,8 +48,49 @@ vi.mock('../lib/api', () => ({
     memberForUser: vi.fn(),
     notifications: vi.fn(),
     transactions: vi.fn(),
+    payMembership: vi.fn(),
   },
 }))
+
+describe('MemberPay loading semantics', () => {
+  beforeEach(() => {
+    vi.mocked(api.memberForUser).mockResolvedValue(membership)
+  })
+
+  it('announces a pending renewal and prevents duplicate submissions', async () => {
+    let resolvePayment!: () => void
+    const pendingPayment = new Promise<void>((resolve) => {
+      resolvePayment = resolve
+    })
+    vi.mocked(api.payMembership).mockReturnValueOnce(pendingPayment)
+    const user = userEvent.setup()
+
+    render(
+      <MemoryRouter initialEntries={['/member/pay']}>
+        <MemberPay />
+      </MemoryRouter>,
+    )
+
+    const button = await screen.findByRole('button', { name: /pay php 2,500/i })
+    await user.click(button)
+
+    expect(api.payMembership).toHaveBeenCalledTimes(1)
+    expect(api.payMembership).toHaveBeenCalledWith(
+      membership.id,
+      2500,
+      memberUser.id,
+    )
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('aria-busy', 'true')
+    expect(button).toHaveAccessibleName(/processing/i)
+
+    await user.click(button)
+    expect(api.payMembership).toHaveBeenCalledTimes(1)
+
+    resolvePayment()
+    expect(await screen.findByRole('button', { name: /pay php 2,500/i })).toBeEnabled()
+  })
+})
 
 describe('MemberHome renewal action', () => {
   beforeEach(() => {
@@ -77,9 +118,11 @@ describe('MemberHome renewal action', () => {
     expect(renew).toHaveTextContent('Renew')
     expect(renew).toHaveAttribute('href', '/member/pay')
     expect(renew).toHaveClass('min-h-12')
-    expect(renew.className).toContain('focus-visible:outline')
+    expect(renew).toHaveClass('control-feedback')
 
-    await user.click(renew)
+    renew.focus()
+    expect(renew).toHaveFocus()
+    await user.keyboard('{Enter}')
     expect(await screen.findByText('Renewal checkout')).toBeInTheDocument()
   })
 

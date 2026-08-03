@@ -45,6 +45,13 @@
   --color-ok: #16a34a;
 }
 
+:root {
+  --app-content-max: 1100px;
+  --app-desktop-gutter: 1.5rem;
+  --interaction-duration: 180ms;
+  --interaction-easing: cubic-bezier(0.2, 0, 0, 1);
+}
+
 * {
   -webkit-tap-highlight-color: transparent;
   box-sizing: border-box;
@@ -79,7 +86,7 @@ textarea {
   font: inherit;
 }
 
-/* Mobile: phone content width. Desktop: real app frame. */
+/* Mobile: phone content width. Desktop: full-width canvas with a readable rail. */
 .app-shell {
   width: 100%;
   max-width: 430px;
@@ -101,6 +108,11 @@ textarea {
   border-radius: 0;
 }
 
+.app-content-rail {
+  width: 100%;
+  padding-inline: 1rem;
+}
+
 @media (min-width: 768px) {
   body {
     background:
@@ -118,30 +130,32 @@ textarea {
   }
 
   .app-shell:not(.app-shell-bleed) {
-    max-width: min(1120px, calc(100vw - 48px));
-    min-height: calc(100dvh - 48px);
-    margin: 24px auto;
-    border-radius: 24px;
+    width: 100%;
+    max-width: none;
+    min-height: 100dvh;
+    margin: 0;
+    border-radius: 0;
     overflow: clip;
     display: flex;
-    box-shadow:
-      0 25px 50px -12px rgb(0 0 0 / 0.55),
-      0 0 0 1px rgb(255 255 255 / 0.06);
+    box-shadow: none;
   }
 
   .app-shell-desktop {
     flex: 1;
     min-width: 0;
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
     position: relative;
     background: var(--color-canvas);
   }
-}
 
-@media (min-width: 1024px) {
-  .app-shell:not(.app-shell-bleed) {
-    max-width: min(1280px, calc(100vw - 64px));
+  .app-content-rail,
+  .app-shell-desktop > .safe-bottom {
+    width: 100%;
+    max-width: var(--app-content-max);
+    margin-inline: auto;
+    padding-inline: var(--app-desktop-gutter);
   }
 }
 
@@ -184,10 +198,10 @@ textarea {
     display: flex;
     flex-direction: column;
     position: sticky;
-    top: 24px;
+    top: 0;
     align-self: flex-start;
-    height: calc(100dvh - 48px);
-    max-height: calc(100dvh - 48px);
+    height: 100dvh;
+    max-height: 100dvh;
     overflow-y: auto;
     width: 240px;
     flex-shrink: 0;
@@ -208,13 +222,6 @@ textarea {
     font-weight: 700;
     color: rgb(226 232 240 / 0.88);
     text-decoration: none;
-    transition:
-      background 0.12s ease,
-      color 0.12s ease;
-  }
-  .side-nav-link:hover {
-    background: rgb(255 255 255 / 0.08);
-    color: white;
   }
   .side-nav-link.active {
     background: rgb(20 184 166 / 0.28);
@@ -251,19 +258,6 @@ textarea {
   font-size: 1.05rem;
   border: none;
   cursor: pointer;
-  transition:
-    background 0.15s ease,
-    transform 0.1s ease;
-}
-.btn-primary:hover {
-  background: var(--color-brand-800);
-}
-.btn-primary:active {
-  transform: scale(0.98);
-}
-.btn-primary:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
 }
 
 .btn-secondary {
@@ -364,16 +358,6 @@ textarea {
   background: white;
   text-decoration: none;
   color: inherit;
-  transition:
-    border-color 0.12s ease,
-    box-shadow 0.12s ease;
-}
-.action-tile:active {
-  transform: scale(0.99);
-}
-.action-tile:hover {
-  border-color: rgb(45 212 191 / 0.55);
-  box-shadow: 0 4px 14px rgb(15 118 110 / 0.08);
 }
 .action-tile-icon {
   width: 44px;
@@ -402,13 +386,113 @@ textarea {
   grid-column: 1 / -1;
 }
 
+/* One behavior contract for buttons, navigation, tiles, and custom controls. */
+button,
+.control-feedback,
+.bottom-nav a,
+.side-nav-link,
+.action-tile,
+.btn-primary,
+.btn-secondary,
+.list-row:is(a, button) {
+  min-height: 48px;
+  touch-action: manipulation;
+  transition:
+    background-color var(--interaction-duration) var(--interaction-easing),
+    color var(--interaction-duration) var(--interaction-easing),
+    border-color var(--interaction-duration) var(--interaction-easing),
+    box-shadow var(--interaction-duration) var(--interaction-easing),
+    opacity var(--interaction-duration) var(--interaction-easing),
+    filter var(--interaction-duration) var(--interaction-easing),
+    transform var(--interaction-duration) var(--interaction-easing);
+}
+
+button {
+  cursor: pointer;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button:not(:disabled):not([aria-busy='true']):hover,
+  .control-feedback:not([aria-disabled='true']):not([aria-busy='true']):hover,
+  .bottom-nav a:hover,
+  .list-row:is(a, button):hover {
+    filter: brightness(0.96);
+    box-shadow: 0 3px 12px rgb(15 23 42 / 0.1);
+  }
+
+  .btn-primary:not(:disabled):hover {
+    background-color: var(--color-brand-800);
+  }
+
+  .btn-secondary:not(:disabled):hover {
+    background-color: var(--color-brand-50);
+    border-color: var(--color-brand-400);
+  }
+
+  .action-tile:hover {
+    border-color: rgb(45 212 191 / 0.55);
+    box-shadow: 0 4px 14px rgb(15 118 110 / 0.12);
+  }
+
+  .side-nav-link:hover {
+    background-color: rgb(255 255 255 / 0.08);
+    color: white;
+  }
+}
+
+button:active:not(:disabled):not([aria-busy='true']),
+.control-feedback:active:not([aria-disabled='true']):not([aria-busy='true']),
+.bottom-nav a:active,
+.side-nav-link:active,
+.action-tile:active,
+.btn-primary:active:not(:disabled),
+.btn-secondary:active:not(:disabled),
+.list-row:is(a, button):active {
+  filter: brightness(0.9);
+  opacity: 0.94;
+  transform: translateY(1px);
+}
+
 .bottom-nav a:focus-visible,
 .side-nav-link:focus-visible,
 .action-tile:focus-visible,
 .btn-primary:focus-visible,
-.btn-secondary:focus-visible {
-  outline: 3px solid var(--color-brand-400);
+.btn-secondary:focus-visible,
+.control-feedback:focus-visible,
+button:focus-visible,
+.list-row:is(a, button):focus-visible {
+  outline: 3px solid var(--color-brand-700);
   outline-offset: 3px;
+}
+
+.bottom-nav a:focus-visible {
+  outline-offset: -3px;
+}
+
+.side-nav-link:focus-visible {
+  outline-color: var(--color-brand-300);
+}
+
+.stat-card .control-feedback:focus-visible {
+  outline-color: white;
+}
+
+button:disabled,
+button[aria-disabled='true'],
+.control-feedback[aria-disabled='true'],
+.btn-primary[aria-disabled='true'],
+.btn-secondary[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: none;
+  transform: none;
+}
+
+button[aria-busy='true'],
+.control-feedback[aria-busy='true'],
+.btn-primary[aria-busy='true'],
+.btn-secondary[aria-busy='true'] {
+  cursor: progress;
 }
 
 .step-num {
@@ -478,5 +562,16 @@ textarea {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+
+  button:active,
+  .control-feedback:active,
+  .bottom-nav a:active,
+  .side-nav-link:active,
+  .action-tile:active,
+  .btn-primary:active,
+  .btn-secondary:active,
+  .list-row:is(a, button):active {
+    transform: none !important;
   }
 }

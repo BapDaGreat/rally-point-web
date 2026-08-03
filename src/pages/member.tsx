@@ -82,7 +82,7 @@ export function MemberHome() {
                 <Link
                   to="/member/pay"
                   aria-label="Renew membership"
-                  className="min-h-12 min-w-28 px-4 rounded-xl bg-white text-brand-800 text-subtitle font-medium inline-flex items-center justify-center gap-2 shadow-sm transition hover:bg-brand-50 active:scale-[0.98] focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-white"
+                  className="control-feedback min-h-12 min-w-28 px-4 rounded-xl bg-white text-brand-800 text-subtitle font-medium inline-flex items-center justify-center gap-2 shadow-sm"
                 >
                   <CreditCard size={18} aria-hidden />
                   Renew
@@ -121,7 +121,7 @@ export function MemberHome() {
 
             <Link
               to="/member/notifications"
-              className="card p-4 flex items-center gap-3 active:scale-[0.99] transition min-h-[72px]"
+              className="control-feedback card p-4 flex items-center gap-3 min-h-[72px]"
             >
               <span className="action-tile-icon shrink-0" aria-hidden>
                 <Bell size={22} />
@@ -150,7 +150,7 @@ export function MemberHome() {
                 <h2 className="text-subtitle font-semibold">Recent payments</h2>
                 <Link
                   to="/member/transactions"
-                  className="text-body font-semibold text-brand-800 min-h-12 inline-flex items-center"
+                  className="control-feedback text-body font-semibold text-brand-800 min-h-12 px-2 inline-flex items-center"
                 >
                   See all
                 </Link>
@@ -257,6 +257,7 @@ export function MemberPay() {
             className="btn-primary"
             type="button"
             disabled={busy || !member}
+            aria-busy={busy}
             onClick={() => void pay()}
           >
             {busy ? 'Processing…' : `Pay ${peso(amount)}`}
@@ -332,7 +333,7 @@ export function MemberNotifications() {
           <button
             key={n.id}
             type="button"
-            className={`card p-4 w-full text-left ${n.read ? 'opacity-70' : 'ring-1 ring-brand-200'}`}
+            className={`control-feedback card p-4 w-full text-left ${n.read ? 'opacity-70' : 'ring-1 ring-brand-200'}`}
             onClick={() => void api.markNotifRead(n.id).then(load)}
           >
             <div className="flex items-start justify-between gap-2">

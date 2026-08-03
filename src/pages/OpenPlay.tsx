@@ -95,6 +95,7 @@ export function MemberOpenPlay() {
                       type="button"
                       className="btn-secondary text-sm"
                       disabled={busyId === op.id}
+                      aria-busy={busyId === op.id}
                       onClick={() => void leave(op.id)}
                     >
                       Leave
@@ -105,6 +106,7 @@ export function MemberOpenPlay() {
                     type="button"
                     className="btn-primary w-full"
                     disabled={!member || busyId === op.id || op.status === 'cancelled'}
+                    aria-busy={busyId === op.id}
                     onClick={() => void join(op.id)}
                   >
                     {busyId === op.id ? 'Please wait…' : seats >= op.capacity ? 'Join waitlist' : 'Join this game'}

@@ -1,8 +1,18 @@
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Role } from '../types'
-import { BottomNav } from './Shell'
+import { AppHeader, AppShell, BottomNav } from './Shell'
+
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({
+    user: {
+      email: 'member@rallypoint.local',
+      full_name: 'Demo Member',
+    },
+    signOut: vi.fn(),
+  }),
+}))
 
 const roleLinks: Record<Role, Array<[label: string, href: string]>> = {
   member: [
@@ -51,7 +61,7 @@ describe('BottomNav', () => {
         expect(links[index]).toHaveAccessibleName(label)
         expect(links[index]).toHaveAttribute('href', href)
         expect(links[index]).toHaveClass('min-h-[56px]')
-        expect(links[index].className).toContain('focus-visible:outline')
+        expect(links[index]).toHaveClass('control-feedback')
       })
     },
   )
@@ -83,5 +93,28 @@ describe('BottomNav', () => {
         .getAllByRole('link')
         .filter((link) => link.hasAttribute('aria-current')),
     ).toHaveLength(1)
+  })
+})
+
+describe('AppShell', () => {
+  it('shares a centered content rail while preserving both navigation variants', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <AppShell role="member">
+          <AppHeader title="Member home" />
+          <main className="safe-bottom">Member content</main>
+        </AppShell>
+      </MemoryRouter>,
+    )
+
+    expect(container.querySelector('.app-shell')).toBeInTheDocument()
+    expect(container.querySelector('.app-shell-desktop')).toBeInTheDocument()
+    expect(
+      container.querySelector('header > .app-content-rail'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getAllByRole('navigation', { name: 'Main menu' }),
+    ).toHaveLength(2)
+    expect(screen.getByText('Member content')).toHaveClass('safe-bottom')
   })
 })

@@ -84,7 +84,13 @@ export function ScheduleBoard({
             value={dateYmd}
             onChange={(e) => setDateYmd(e.target.value)}
           />
-          <button type="button" className="btn-secondary text-sm" onClick={() => void reload()}>
+          <button
+            type="button"
+            className="btn-secondary text-sm"
+            disabled={loading}
+            aria-busy={loading}
+            onClick={() => void reload()}
+          >
             <RefreshCw size={14} /> Refresh
           </button>
           <Link to="/board/tv" target="_blank" className="btn-primary text-sm ml-auto">
