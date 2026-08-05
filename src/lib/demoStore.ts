@@ -25,6 +25,22 @@ import { makePaymentRef } from './payments'
 
 const KEY = 'rally_point_demo_v3'
 
+const seededDemoPasswords = new Map<string, string>([
+  ['admin@rallypoint.local', 'admin123'],
+  ['staff@rallypoint.local', 'staff123'],
+  ['member@rallypoint.local', 'member123'],
+])
+
+let demoPasswords = new Map(seededDemoPasswords)
+
+function resetDemoPasswords() {
+  demoPasswords = new Map(seededDemoPasswords)
+}
+
+function normalizeDemoEmail(email: string) {
+  return email.trim().toLowerCase()
+}
+
 function uid(prefix = 'id') {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`
 }
@@ -52,7 +68,6 @@ export interface DemoDB {
   transactions: Transaction[]
   notifications: Notification[]
   walkins: WalkIn[]
-  passwords: Record<string, string>
   sessionUserId: string | null
 }
 
@@ -358,11 +373,6 @@ function seed(): DemoDB {
     transactions,
     notifications,
     walkins: [],
-    passwords: {
-      'admin@rallypoint.local': 'admin123',
-      'staff@rallypoint.local': 'staff123',
-      'member@rallypoint.local': 'member123',
-    },
     sessionUserId: null,
   }
 }
@@ -371,15 +381,47 @@ function load(): DemoDB {
   try {
     const raw = localStorage.getItem(KEY)
     if (raw) {
-      const db = JSON.parse(raw) as DemoDB
-      if (!Array.isArray(db.bookings)) db.bookings = []
-      if (!Array.isArray(db.openPlays)) db.openPlays = []
-      if (!Array.isArray(db.openPlaySignups)) db.openPlaySignups = []
-      if (!Array.isArray(db.reminders)) db.reminders = []
-      for (const m of db.members) {
-        if (!m.qr_token) m.qr_token = `QR_${m.member_code.replace(/[^A-Z0-9]/gi, '')}`
+      const stored = JSON.parse(raw) as DemoDB & { passwords?: unknown }
+      const { passwords: legacyPasswords, ...withoutPasswords } = stored
+      const db: DemoDB = {
+        ...withoutPasswords,
+        bookings: Array.isArray(withoutPasswords.bookings) ? withoutPasswords.bookings : [],
+        openPlays: Array.isArray(withoutPasswords.openPlays) ? withoutPasswords.openPlays : [],
+        openPlaySignups: Array.isArray(withoutPasswords.openPlaySignups)
+          ? withoutPasswords.openPlaySignups
+          : [],
+        reminders: Array.isArray(withoutPasswords.reminders) ? withoutPasswords.reminders : [],
       }
-      return db
+      const members = db.members.map((member) =>
+        member.qr_token
+          ? member
+          : {
+              ...member,
+              qr_token: `QR_${member.member_code.replace(/[^A-Z0-9]/gi, '')}`,
+            },
+      )
+      const sessionProfile = db.sessionUserId
+        ? db.profiles.find((profile) => profile.id === db.sessionUserId)
+        : undefined
+      const sessionUserId =
+        sessionProfile && demoPasswords.has(normalizeDemoEmail(sessionProfile.email))
+          ? db.sessionUserId
+          : null
+      const sanitizedDb = { ...db, members, sessionUserId }
+
+      if (
+        legacyPasswords !== undefined ||
+        members.some((member, index) => member !== db.members[index]) ||
+        sessionUserId !== db.sessionUserId ||
+        !Array.isArray(withoutPasswords.bookings) ||
+        !Array.isArray(withoutPasswords.openPlays) ||
+        !Array.isArray(withoutPasswords.openPlaySignups) ||
+        !Array.isArray(withoutPasswords.reminders)
+      ) {
+        save(sanitizedDb)
+      }
+
+      return sanitizedDb
     }
   } catch {
     /* ignore */
@@ -390,11 +432,15 @@ function load(): DemoDB {
 }
 
 function save(db: DemoDB) {
-  localStorage.setItem(KEY, JSON.stringify(db))
+  const { passwords: _legacyPasswords, ...safeDb } = db as DemoDB & {
+    passwords?: unknown
+  }
+  localStorage.setItem(KEY, JSON.stringify(safeDb))
 }
 
 export const demoStore = {
   reset() {
+    resetDemoPasswords()
     localStorage.removeItem(KEY)
     localStorage.removeItem('rally_point_demo_v1')
     localStorage.removeItem('rally_point_demo_v2')
@@ -407,63 +453,63 @@ export const demoStore = {
     save(db)
   },
   login(email: string, password: string): Profile {
-      const db = load()
-      const e = email.trim().toLowerCase()
-      if (db.passwords[e] !== password) throw new Error('Invalid email or password')
-      const profile = db.profiles.find((p) => p.email.toLowerCase() === e)
-      if (!profile) throw new Error('Account not found')
-      db.sessionUserId = profile.id
-      save(db)
-      return profile
-    },
-    /** Public join — always member. Admin/staff are seeded only. */
-    registerMember(input: { email: string; password: string; full_name: string; phone?: string }): Profile {
-      const db = load()
-      const e = input.email.trim().toLowerCase()
-      if (db.passwords[e] || db.profiles.some((p) => p.email.toLowerCase() === e)) {
-        throw new Error('That email is already registered. Log in instead.')
-      }
-      if (input.password.length < 6) throw new Error('Password must be at least 6 characters')
-      const id = uid('usr')
-      const profile: Profile = {
-        id,
-        email: e,
-        full_name: input.full_name.trim(),
-        role: 'member',
-        phone: input.phone?.trim() || null,
-        created_at: todayISO(),
-      }
-      db.profiles.push(profile)
-      db.passwords[e] = input.password
-      const codeNum = 1000 + db.members.length + 1
-      db.members.push({
-        id: uid('mem'),
-        user_id: id,
-        member_code: `RP-${codeNum}`,
-        full_name: profile.full_name,
-        email: e,
-        phone: profile.phone,
-        membership_type: 'standard',
-        status: 'active',
-        join_date: new Date().toISOString().slice(0, 10),
-        expiry_date: daysFromNow(30),
-        notes: null,
-        qr_token: `q_${Math.random().toString(36).slice(2, 10)}`,
-        created_at: todayISO(),
-      })
-      db.sessionUserId = id
-      db.notifications.unshift({
-        id: uid('n'),
-        user_id: id,
-        title: 'Welcome to Rally Point',
-        body: 'You’re in! Book a court, join open play, or show your QR at the desk.',
-        read: false,
-        created_at: todayISO(),
-      })
-      save(db)
-      return profile
-    },
-    logout() {
+    const db = load()
+    const e = normalizeDemoEmail(email)
+    if (demoPasswords.get(e) !== password) throw new Error('Invalid email or password')
+    const profile = db.profiles.find((p) => p.email.toLowerCase() === e)
+    if (!profile) throw new Error('Invalid email or password')
+    db.sessionUserId = profile.id
+    save(db)
+    return profile
+  },
+  /** Public join — always member. Admin/staff are seeded only. */
+  registerMember(input: { email: string; password: string; full_name: string; phone?: string }): Profile {
+    const db = load()
+    const e = normalizeDemoEmail(input.email)
+    if (db.profiles.some((p) => p.email.toLowerCase() === e)) {
+      throw new Error('Unable to create an account. Please check your details or try again.')
+    }
+    if (input.password.length < 6) throw new Error('Password must be at least 6 characters')
+    const id = uid('usr')
+    const profile: Profile = {
+      id,
+      email: e,
+      full_name: input.full_name.trim(),
+      role: 'member',
+      phone: input.phone?.trim() || null,
+      created_at: todayISO(),
+    }
+    db.profiles.push(profile)
+    demoPasswords = new Map(demoPasswords).set(e, input.password)
+    const codeNum = 1000 + db.members.length + 1
+    db.members.push({
+      id: uid('mem'),
+      user_id: id,
+      member_code: `RP-${codeNum}`,
+      full_name: profile.full_name,
+      email: e,
+      phone: profile.phone,
+      membership_type: 'standard',
+      status: 'active',
+      join_date: new Date().toISOString().slice(0, 10),
+      expiry_date: daysFromNow(30),
+      notes: null,
+      qr_token: `q_${Math.random().toString(36).slice(2, 10)}`,
+      created_at: todayISO(),
+    })
+    db.sessionUserId = id
+    db.notifications.unshift({
+      id: uid('n'),
+      user_id: id,
+      title: 'Welcome to Rally Point',
+      body: 'You’re in! Book a court, join open play, or show your QR at the desk.',
+      read: false,
+      created_at: todayISO(),
+    })
+    save(db)
+    return profile
+  },
+  logout() {
     const db = load()
     db.sessionUserId = null
     save(db)

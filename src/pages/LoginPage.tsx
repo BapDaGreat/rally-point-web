@@ -1,14 +1,29 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { ArrowRight, Shield, UserPlus, UserRound } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, Shield, UserPlus, UserRound } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import type { Role } from '../types'
 import { RallyPointLogo } from '../components/RallyPointLogo'
 
 const demos: { role: Role; email: string; password: string; label: string }[] = [
-  { role: 'admin', email: 'admin@rallypoint.local', password: 'admin123', label: 'Admin' },
-  { role: 'staff', email: 'staff@rallypoint.local', password: 'staff123', label: 'Staff' },
-  { role: 'member', email: 'member@rallypoint.local', password: 'member123', label: 'Member' },
+  {
+    role: 'admin',
+    email: 'admin@rallypoint.local',
+    password: 'admin123',
+    label: 'Admin',
+  },
+  {
+    role: 'staff',
+    email: 'staff@rallypoint.local',
+    password: 'staff123',
+    label: 'Staff',
+  },
+  {
+    role: 'member',
+    email: 'member@rallypoint.local',
+    password: 'member123',
+    label: 'Member',
+  },
 ]
 
 const HERO_VIDEO = `${import.meta.env.BASE_URL}media/pickleball-hero.mp4`
@@ -22,12 +37,36 @@ function homeFor(role: Role) {
 
 type Mode = 'login' | 'join'
 
+function authenticationErrorMessage(mode: Mode, error: unknown) {
+  const message = error instanceof Error ? error.message : 'Unable to continue. Please try again.'
+
+  if (/^Too many attempts\. Please try again in about \d+ minutes?\.$/i.test(message)) {
+    return message
+  }
+
+  if (/too many attempts|rate limit|too many requests|\b429\b/i.test(message)) {
+    return 'Too many attempts. Please try again in about 5 minutes.'
+  }
+
+  if (
+    /^Password must be at least \d+ characters$/i.test(message) ||
+    /^Please enter your name$/i.test(message)
+  ) {
+    return message
+  }
+
+  return mode === 'login'
+    ? 'Unable to log in. Check your email and password, then try again.'
+    : 'Unable to create an account. Please check your details or try again.'
+}
+
 export default function LoginPage() {
   const { user, loading, signIn, signUpMember, demo } = useAuth()
   const nav = useNavigate()
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordVisible, setPasswordVisible] = useState(false)
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -53,12 +92,7 @@ export default function LoginPage() {
         nav(homeFor(profile.role), { replace: true })
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong'
-      setError(
-        /invalid login credentials/i.test(msg)
-          ? 'Wrong email or password. New here? Tap “Join as member”.'
-          : msg,
-      )
+      setError(authenticationErrorMessage(mode, err))
     } finally {
       setBusy(false)
     }
@@ -66,6 +100,8 @@ export default function LoginPage() {
 
   function switchMode(next: Mode) {
     setMode(next)
+    setPassword('')
+    setPasswordVisible(false)
     setError(null)
   }
 
@@ -115,8 +151,8 @@ export default function LoginPage() {
           </p>
 
           <p className="mt-5 max-w-md mx-auto lg:mx-0 text-base sm:text-lg leading-relaxed text-white/90 drop-shadow">
-            Book a court. Join open play. Show your QR at the desk. Players join online — staff &amp;
-            admin are set up by the club.
+            Book a court. Join open play. Show your QR at the desk. Players join online — staff
+            &amp; admin are set up by the club.
           </p>
 
           <div className="mt-8 hidden lg:flex flex-wrap gap-3">
@@ -137,19 +173,21 @@ export default function LoginPage() {
             <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1">
               <button
                 type="button"
-                className={`rounded-xl py-2.5 text-sm font-extrabold transition ${
+                className={`min-h-12 cursor-pointer rounded-xl py-2.5 text-sm font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 ${
                   mode === 'login' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
                 }`}
                 onClick={() => switchMode('login')}
+                aria-pressed={mode === 'login'}
               >
                 Log in
               </button>
               <button
                 type="button"
-                className={`rounded-xl py-2.5 text-sm font-extrabold transition inline-flex items-center justify-center gap-1.5 ${
+                className={`min-h-12 cursor-pointer rounded-xl py-2.5 text-sm font-extrabold transition inline-flex items-center justify-center gap-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 ${
                   mode === 'join' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
                 }`}
                 onClick={() => switchMode('join')}
+                aria-pressed={mode === 'join'}
               >
                 <UserPlus size={16} aria-hidden />
                 Join as member
@@ -223,31 +261,47 @@ export default function LoginPage() {
                 <label className="label" htmlFor="password">
                   Password
                 </label>
-                <input
-                  id="password"
-                  className="input"
-                  type="password"
-                  autoComplete={mode === 'join' ? 'new-password' : 'current-password'}
-                  placeholder={mode === 'join' ? 'At least 6 characters' : '••••••••'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={mode === 'join' ? 6 : undefined}
-                />
+                <div className="relative">
+                  <input
+                    id="password"
+                    className="input pr-14"
+                    type={passwordVisible ? 'text' : 'password'}
+                    autoComplete={mode === 'join' ? 'new-password' : 'current-password'}
+                    placeholder={mode === 'join' ? 'At least 6 characters' : '••••••••'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={mode === 'join' ? 6 : undefined}
+                    aria-describedby={error ? 'authentication-error' : undefined}
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-0 inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center rounded-xl text-slate-600 transition hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                    onClick={() => setPasswordVisible((visible) => !visible)}
+                    aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+                    aria-pressed={passwordVisible}
+                  >
+                    {passwordVisible ? (
+                      <EyeOff size={20} aria-hidden />
+                    ) : (
+                      <Eye size={20} aria-hidden />
+                    )}
+                  </button>
+                </div>
               </div>
 
               {error ? (
-                <p className="text-sm font-semibold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+                <p
+                  id="authentication-error"
+                  role="alert"
+                  aria-live="assertive"
+                  className="text-sm font-semibold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2"
+                >
                   {error}
                 </p>
               ) : null}
 
-              <button
-                className="btn-primary gap-2"
-                type="submit"
-                disabled={busy}
-                aria-busy={busy}
-              >
+              <button className="btn-primary gap-2" type="submit" disabled={busy} aria-busy={busy}>
                 {busy ? 'Please wait…' : mode === 'join' ? 'Join Rally Point' : 'Log in'}
                 {!busy ? <ArrowRight size={18} aria-hidden /> : null}
               </button>

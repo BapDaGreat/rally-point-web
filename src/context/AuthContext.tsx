@@ -9,7 +9,7 @@ import {
 } from 'react'
 import { isDemoMode, supabase } from '../lib/supabase'
 import { demoStore } from '../lib/demoStore'
-import type { Profile, Role } from '../types'
+import type { Profile } from '../types'
 
 interface AuthState {
   user: Profile | null
@@ -32,11 +32,21 @@ const AuthContext = createContext<AuthState | null>(null)
 async function fetchProfile(userId: string): Promise<Profile | null> {
   if (!supabase) return null
   const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
-  if (error) {
-    console.error(error)
-    return null
-  }
+  if (error) throw error
   return data as Profile | null
+}
+
+const profileSetupError =
+  'Your club profile is not ready. Please try again or contact staff.'
+
+async function clearUnauthorizedSession() {
+  if (!supabase) return
+  try {
+    const { error } = await supabase.auth.signOut()
+    if (error) console.error(error)
+  } catch (error) {
+    console.error(error)
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -61,19 +71,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
       return
     }
-    const profile = await fetchProfile(uid)
-    if (profile) setUser(profile)
-    else {
-      // bootstrap profile from auth metadata if trigger not ready
-      const meta = data.session!.user
-      setUser({
-        id: meta.id,
-        email: meta.email ?? '',
-        full_name: (meta.user_metadata?.full_name as string) || meta.email || 'User',
-        role: ((meta.user_metadata?.role as Role) || 'member') as Role,
-        phone: (meta.user_metadata?.phone as string) || null,
-        created_at: new Date().toISOString(),
-      })
+    try {
+      const profile = await fetchProfile(uid)
+      if (!profile) {
+        setUser(null)
+        await clearUnauthorizedSession()
+      } else {
+        setUser(profile)
+      }
+    } catch (error) {
+      console.error(error)
+      setUser(null)
+      await clearUnauthorizedSession()
     }
     setLoading(false)
   }, [])
@@ -99,19 +108,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error
     const uid = data.user?.id
     if (!uid) throw new Error('No user returned')
-    let profile = await fetchProfile(uid)
-    if (!profile) {
-      profile = {
-        id: uid,
-        email: data.user.email ?? email,
-        full_name: (data.user.user_metadata?.full_name as string) || email,
-        role: ((data.user.user_metadata?.role as Role) || 'member') as Role,
-        phone: (data.user.user_metadata?.phone as string) || null,
-        created_at: new Date().toISOString(),
-      }
+    try {
+      const profile = await fetchProfile(uid)
+      if (!profile) throw new Error(profileSetupError)
+      setUser(profile)
+      return profile
+    } catch {
+      setUser(null)
+      await clearUnauthorizedSession()
+      throw new Error(profileSetupError)
     }
-    setUser(profile)
-    return profile
   }, [])
 
   const signUpMember = useCallback(
@@ -141,7 +147,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           data: {
             full_name,
             phone: input.phone?.trim() || null,
-            role: 'member',
           },
         },
       })
@@ -155,48 +160,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         )
       }
 
-      // Ensure member row exists (trigger + client fallback)
-      const { data: existing } = await supabase
-        .from('members')
-        .select('id')
-        .eq('user_id', data.user.id)
-        .maybeSingle()
-      if (!existing) {
-        const code = `RP-${String(Math.floor(1000 + Math.random() * 9000))}`
-        const token = `q_${Math.random().toString(36).slice(2, 12)}`
-        const today = new Date().toISOString().slice(0, 10)
-        const exp = new Date()
-        exp.setDate(exp.getDate() + 30)
-        await supabase.from('members').insert({
-          user_id: data.user.id,
-          member_code: code,
-          full_name,
-          email,
-          phone: input.phone?.trim() || null,
-          membership_type: 'standard',
-          status: 'active',
-          join_date: today,
-          expiry_date: exp.toISOString().slice(0, 10),
-          qr_token: token,
-        })
+      try {
+        const profile = await fetchProfile(data.user.id)
+        if (!profile || profile.role !== 'member') throw new Error(profileSetupError)
+        setUser(profile)
+        return profile
+      } catch {
+        setUser(null)
+        await clearUnauthorizedSession()
+        throw new Error(profileSetupError)
       }
-
-      let profile = await fetchProfile(data.user.id)
-      if (!profile) {
-        profile = {
-          id: data.user.id,
-          email,
-          full_name,
-          role: 'member',
-          phone: input.phone?.trim() || null,
-          created_at: new Date().toISOString(),
-        }
-      } else if (profile.role !== 'member') {
-        // Client signup must never elevate
-        profile = { ...profile, role: 'member' }
-      }
-      setUser(profile)
-      return profile
     },
     [],
   )
