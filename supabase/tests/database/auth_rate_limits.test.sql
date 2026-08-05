@@ -4,7 +4,7 @@ set local role postgres;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions, pg_catalog;
 
-select extensions.plan(28);
+select extensions.plan(30);
 
 delete from private.auth_rate_limit_events;
 
@@ -251,6 +251,55 @@ select is(
   )#>>'{error,http_code}',
   '429',
   'sixth signup attempt is rejected'
+);
+
+delete from private.auth_rate_limit_events;
+
+insert into private.auth_rate_limit_events (action, subject_hash, attempted_at)
+select
+  'signup',
+  private.auth_rate_limit_hash('signup-email', 'window-player@example.com'),
+  clock_timestamp() - interval '5 minutes 1 second'
+from generate_series(1, 5);
+
+insert into private.auth_rate_limit_events (action, subject_hash, attempted_at)
+select
+  'signup',
+  private.auth_rate_limit_hash('signup-ip', '203.0.113.11'),
+  clock_timestamp() - interval '5 minutes 1 second'
+from generate_series(1, 5);
+
+select is(
+  private.auth_rate_limit_before_user_created(
+    jsonb_build_object(
+      'metadata', jsonb_build_object('ip_address', '203.0.113.11'),
+      'user', jsonb_build_object('email', 'window-player@example.com')
+    )
+  )::text,
+  '{}'::jsonb::text,
+  'a signup is available after the rolling five-minute window expires'
+);
+
+delete from private.auth_rate_limit_events;
+
+insert into private.auth_rate_limit_events (action, subject_hash, attempted_at)
+select
+  'login',
+  private.auth_rate_limit_hash('login-account', '44444444-4444-4444-4444-444444444444'),
+  clock_timestamp()
+from generate_series(1, 5);
+
+select is(
+  private.auth_rate_limit_check(
+    'login',
+    private.auth_rate_limit_hash(
+      'login-account',
+      '44444444-4444-4444-4444-444444444444'
+    ),
+    clock_timestamp()
+  )->>'allowed',
+  'false',
+  'server records still block login after a client refresh or authentication-mode switch'
 );
 
 delete from private.auth_rate_limit_events;

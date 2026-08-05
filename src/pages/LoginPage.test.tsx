@@ -90,6 +90,31 @@ describe("LoginPage authentication form safety", () => {
       "current-password",
     );
     expect(storageSetItem).not.toHaveBeenCalled();
+    storageSetItem.mockRestore();
+  });
+
+  it("never transfers a typed password into the URL, session storage, or cookies", async () => {
+    const user = userEvent.setup();
+    const testPassphrase = "sensitive-form-input";
+    window.history.replaceState({}, "", "/login?source=member#access");
+    sessionStorage.clear();
+    renderLogin();
+
+    await user.type(screen.getByLabelText("Email"), "player@example.com");
+    await user.type(screen.getByLabelText("Password"), testPassphrase);
+    await user.click(switchToJoin());
+
+    expect(screen.getByLabelText("Password")).toHaveValue("");
+    expect(window.location.href).not.toContain(testPassphrase);
+    const persistedSessionValues = Array.from(
+      { length: sessionStorage.length },
+      (_, index) => {
+        const key = sessionStorage.key(index);
+        return key ? sessionStorage.getItem(key) : null;
+      },
+    ).join("\n");
+    expect(persistedSessionValues).not.toContain(testPassphrase);
+    expect(document.cookie).not.toContain(testPassphrase);
   });
 
   it("toggles password visibility with an accessible keyboard control", async () => {
@@ -109,13 +134,18 @@ describe("LoginPage authentication form safety", () => {
     expect(
       screen.getByRole("button", { name: "Hide password" }),
     ).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("button", { name: "Hide password" }));
+    expect(password).toHaveAttribute("type", "password");
+
+    toggle.focus();
+    await user.keyboard(" ");
+    expect(password).toHaveAttribute("type", "text");
   });
 
-  it("announces the generic server rate-limit message without revealing account state", async () => {
+  it("maps the hosted Supabase rate-limit error to a clear generic message", async () => {
     const user = userEvent.setup();
-    authState.signIn.mockRejectedValue(
-      new Error("Too many attempts. Please try again in about 5 minutes."),
-    );
+    authState.signIn.mockRejectedValue(new Error("Request rate limit reached"));
     renderLogin();
 
     await user.type(screen.getByLabelText("Email"), "player@example.com");
@@ -129,6 +159,24 @@ describe("LoginPage authentication form safety", () => {
       "player@example.com",
       "wrong-password",
     );
+  });
+
+  it("does not reveal whether an email already exists during signup", async () => {
+    const user = userEvent.setup();
+    authState.signUpMember.mockRejectedValue(new Error("User already registered"));
+    renderLogin();
+
+    await user.click(switchToJoin());
+    await user.type(screen.getByLabelText("Full name"), "Existing Player");
+    await user.type(screen.getByLabelText("Email"), "existing@example.com");
+    await user.type(screen.getByLabelText("Password"), "valid-passphrase");
+    await user.click(screen.getByRole("button", { name: "Join Rally Point" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Unable to create an account. Please check your details or try again.",
+    );
+    expect(alert).not.toHaveTextContent(/already registered/i);
   });
 
   it("keeps demo-only accounts visibly separate from live authentication", () => {
