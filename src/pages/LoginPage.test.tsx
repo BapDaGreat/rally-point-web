@@ -11,6 +11,7 @@ const authState = vi.hoisted(() => ({
   user: null as Profile | null,
   signIn: vi.fn(),
   signUpMember: vi.fn(),
+  resetPassword: vi.fn(),
   signOut: vi.fn(),
   refresh: vi.fn(),
 }));
@@ -51,6 +52,7 @@ describe("LoginPage authentication form safety", () => {
     authState.user = null;
     authState.signIn.mockReset();
     authState.signUpMember.mockReset();
+    authState.resetPassword.mockReset();
     authState.signOut.mockReset();
     authState.refresh.mockReset();
   });
@@ -159,6 +161,45 @@ describe("LoginPage authentication form safety", () => {
       "player@example.com",
       "wrong-password",
     );
+  });
+
+  it("shows the reset password form and preserves email", async () => {
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.type(screen.getByLabelText("Email"), "player@example.com");
+    await user.type(screen.getByLabelText("Password"), "secret-pass");
+    await user.click(screen.getByRole("button", { name: "Forgot password?" }));
+
+    expect(screen.getByLabelText("Email")).toHaveValue("player@example.com");
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send reset link" })).toBeInTheDocument();
+  });
+
+  it("sends a password reset request and shows a success message", async () => {
+    const user = userEvent.setup();
+    authState.resetPassword.mockResolvedValue(undefined);
+    renderLogin();
+
+    await user.type(screen.getByLabelText("Email"), "player@example.com");
+    await user.click(screen.getByRole("button", { name: "Forgot password?" }));
+    await user.click(screen.getByRole("button", { name: "Send reset link" }));
+
+    expect(authState.resetPassword).toHaveBeenCalledWith("player@example.com");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Check your inbox for a password reset link.",
+    );
+  });
+
+  it("returns to login when back from reset mode", async () => {
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.click(screen.getByRole("button", { name: "Forgot password?" }));
+    await user.click(screen.getByRole("button", { name: "Back to log in" }));
+
+    expect(screen.getByRole("button", { name: "Log in" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Password")).toBeInTheDocument();
   });
 
   it("does not reveal whether an email already exists during signup", async () => {

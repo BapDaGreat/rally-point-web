@@ -23,6 +23,7 @@ interface AuthState {
     full_name: string
     phone?: string
   }) => Promise<Profile>
+  resetPassword: (email: string) => Promise<void>
   signOut: () => Promise<void>
   refresh: () => Promise<void>
 }
@@ -174,6 +175,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  const resetPassword = useCallback(async (email: string) => {
+    if (isDemoMode) {
+      return
+    }
+    if (!supabase) throw new Error('Supabase not configured')
+    const normalizedEmail = email.trim().toLowerCase()
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail)
+    if (error) throw error
+  }, [])
+
   const signOut = useCallback(async () => {
     if (isDemoMode) {
       demoStore.logout()
@@ -185,8 +196,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, loading, demo: isDemoMode, signIn, signUpMember, signOut, refresh }),
-    [user, loading, signIn, signUpMember, signOut, refresh],
+    () => ({
+      user,
+      loading,
+      demo: isDemoMode,
+      signIn,
+      signUpMember,
+      resetPassword,
+      signOut,
+      refresh,
+    }),
+    [user, loading, signIn, signUpMember, resetPassword, signOut, refresh],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
