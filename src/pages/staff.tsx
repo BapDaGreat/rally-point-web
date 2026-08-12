@@ -21,6 +21,16 @@ export function StaffHome() {
     })()
   }, [])
 
+  const playerNames = (session: CourtSession) => {
+    const fallbackPlayers = [
+      session.member ? { full_name: session.member.full_name } : null,
+      session.guest_name ? { full_name: session.guest_name } : null,
+    ].filter((player): player is { full_name: string } => Boolean(player))
+
+    const names = (session.players?.length ? session.players : fallbackPlayers).map((p) => p.full_name)
+    return names.length ? names.join(', ') : 'Guest'
+  }
+
   return (
     <AppShell role="staff">
       <AppHeader title="Staff desk" subtitle="Live floor" right={<SignOutButton />} />
@@ -60,7 +70,7 @@ export function StaffHome() {
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm">{s.court?.name ?? 'Court'}</p>
                       <p className="text-xs text-slate-500 truncate">
-                        {s.member?.full_name || s.guest_name || 'Guest'} · ends {fmtTime(s.end_at)}
+                        {playerNames(s)} · ends {fmtTime(s.end_at)}
                       </p>
                     </div>
                     <span className="pill pill-ok">Live</span>
@@ -305,6 +315,16 @@ export function StaffCourts() {
   const [hours, setHours] = useState(1)
   const [msg, setMsg] = useState<string | null>(null)
   const [tab, setTab] = useState<'rent' | 'playing' | 'extend' | 'walkin'>('playing')
+  const [addSessionId, setAddSessionId] = useState<string | null>(null)
+  const [addMemberId, setAddMemberId] = useState('')
+
+  const sessionPlayers = (session: CourtSession) => {
+    const fallbackPlayers = [
+      session.member ? { full_name: session.member.full_name } : null,
+      session.guest_name ? { full_name: session.guest_name } : null,
+    ].filter(Boolean) as Array<{ full_name: string }>
+    return (session.players?.length ? session.players : fallbackPlayers).map((player) => player.full_name)
+  }
 
   async function reload() {
     const [c, s, m] = await Promise.all([api.listCourts(), api.playingSessions(), api.listMembers()])
@@ -343,6 +363,22 @@ export function StaffCourts() {
     try {
       await api.extendSession(sessionId, 1, user?.id)
       setMsg('Extended +1 hour')
+      await reload()
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : 'Failed')
+    } finally {
+      setTimeout(() => setMsg(null), 2500)
+    }
+  }
+
+  async function saveAddedMember(e: FormEvent) {
+    e.preventDefault()
+    if (!addSessionId || !addMemberId) return
+    try {
+      await api.addMemberToSession(addSessionId, addMemberId, user?.id)
+      setMsg('Member added to court')
+      setAddSessionId(null)
+      setAddMemberId('')
       await reload()
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Failed')
@@ -407,7 +443,7 @@ export function StaffCourts() {
         {tab === 'playing' ? (
           <section className="card p-4">
             <h2 className="font-extrabold mb-2 flex items-center gap-2">
-              <Clock3 size={18} /> Currently playing
+              <Clock3 size={18} /> Live court sessions
             </h2>
             {sessions.length === 0 ? (
               <p className="text-sm text-slate-500">No live sessions.</p>
@@ -417,11 +453,54 @@ export function StaffCourts() {
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-sm">{s.court?.name}</p>
                     <p className="text-xs text-slate-500">
-                      {s.member?.full_name || s.guest_name || 'Guest'} · until {fmtTime(s.end_at)}
+                      {sessionPlayers(s).join(', ') || 'Guest'} · until {fmtTime(s.end_at)}
                     </p>
                     <p className="text-xs font-semibold text-brand-800 mt-1">{peso(s.amount)}</p>
                   </div>
                   <div className="flex flex-col gap-1">
+                    {addSessionId === s.id ? (
+                      <form className="mt-2 space-y-2" onSubmit={saveAddedMember}>
+                        <div>
+                          <label className="label" htmlFor={`add-member-${s.id}`}>Member</label>
+                          <select
+                            id={`add-member-${s.id}`}
+                            className="input"
+                            value={addMemberId}
+                            onChange={(e) => setAddMemberId(e.target.value)}
+                            aria-label="Member"
+                          >
+                            <option value="">Select a member</option>
+                            {members.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.full_name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="submit" className="btn-primary flex-1">
+                            Save member
+                          </button>
+                          <button type="button" className="btn-secondary flex-1" onClick={() => {
+                            setAddSessionId(null)
+                            setAddMemberId('')
+                          }}>
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-xs font-bold text-brand-700 px-2 py-1"
+                        onClick={() => {
+                          setAddSessionId(s.id)
+                          setAddMemberId(members[0]?.id ?? '')
+                        }}
+                      >
+                        Add member
+                      </button>
+                    )}
                     <button type="button" className="text-xs font-bold text-brand-700 px-2 py-1" onClick={() => void extend(s.id)}>
                       +1h
                     </button>

@@ -425,25 +425,34 @@ export function AdminOps() {
               <Clock3 size={18} /> Currently playing
             </h2>
             {sessions.length === 0 ? <p className="text-sm text-slate-500">No live sessions.</p> : null}
-            {sessions.map((s) => (
-              <div key={s.id} className="list-row items-start">
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm">{s.court?.name}</p>
-                  <p className="text-xs text-slate-500">
-                    {s.member?.full_name || s.guest_name || 'Guest'} · until {fmtTime(s.end_at)}
-                  </p>
-                  <p className="text-xs font-semibold text-brand-800 mt-1">{peso(s.amount)}</p>
+            {sessions.map((s) => {
+              const fallbackPlayers = [
+                s.member ? { full_name: s.member.full_name } : null,
+                s.guest_name ? { full_name: s.guest_name } : null,
+              ].filter((player): player is { full_name: string } => Boolean(player))
+              const names = (s.players?.length ? s.players : fallbackPlayers).map((p) => p.full_name)
+              const playerLabel = names.length ? names.join(', ') : 'Guest'
+
+              return (
+                <div key={s.id} className="list-row items-start">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm">{s.court?.name}</p>
+                    <p className="text-xs text-slate-500">
+                      {playerLabel} · until {fmtTime(s.end_at)}
+                    </p>
+                    <p className="text-xs font-semibold text-brand-800 mt-1">{peso(s.amount)}</p>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <button type="button" className="text-xs font-bold text-brand-700 px-2 py-1" onClick={() => void extend(s.id)}>
+                      +1h
+                    </button>
+                    <button type="button" className="text-xs font-bold text-slate-500 px-2 py-1" onClick={() => void end(s.id)}>
+                      End
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <button type="button" className="text-xs font-bold text-brand-700 px-2 py-1" onClick={() => void extend(s.id)}>
-                    +1h
-                  </button>
-                  <button type="button" className="text-xs font-bold text-slate-500 px-2 py-1" onClick={() => void end(s.id)}>
-                    End
-                  </button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </section>
         ) : null}
 
