@@ -46,6 +46,13 @@ export interface Court {
   hourly_rate: number
 }
 
+export interface CourtSessionPlayer {
+  id: string
+  full_name: string
+  member_id?: string | null
+  guest_name?: string | null
+}
+
 export interface CourtSession {
   id: string
   court_id: string
@@ -60,6 +67,7 @@ export interface CourtSession {
   booking_id?: string | null
   court?: Court
   member?: Member
+  players?: CourtSessionPlayer[]
 }
 
 export interface Booking {

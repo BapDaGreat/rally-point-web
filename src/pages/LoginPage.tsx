@@ -35,7 +35,7 @@ function homeFor(role: Role) {
   return '/member'
 }
 
-type Mode = 'login' | 'join'
+type Mode = 'login' | 'join' | 'reset'
 
 function authenticationErrorMessage(mode: Mode, error: unknown) {
   const message = error instanceof Error ? error.message : 'Unable to continue. Please try again.'
@@ -55,13 +55,17 @@ function authenticationErrorMessage(mode: Mode, error: unknown) {
     return message
   }
 
+  if (mode === 'reset') {
+    return 'Unable to send the reset email. Please check your email address and try again.'
+  }
+
   return mode === 'login'
     ? 'Unable to log in. Check your email and password, then try again.'
     : 'Unable to create an account. Please check your details or try again.'
 }
 
 export default function LoginPage() {
-  const { user, loading, signIn, signUpMember, demo } = useAuth()
+  const { user, loading, signIn, signUpMember, resetPassword, demo } = useAuth()
   const nav = useNavigate()
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
@@ -70,6 +74,7 @@ export default function LoginPage() {
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [resetSuccess, setResetSuccess] = useState(false)
   const [busy, setBusy] = useState(false)
 
   if (!loading && user) return <Navigate to={homeFor(user.role)} replace />
@@ -78,6 +83,7 @@ export default function LoginPage() {
     e.preventDefault()
     setBusy(true)
     setError(null)
+    setResetSuccess(false)
     try {
       if (mode === 'join') {
         const profile = await signUpMember({
@@ -87,6 +93,9 @@ export default function LoginPage() {
           phone: phone || undefined,
         })
         nav(homeFor(profile.role), { replace: true })
+      } else if (mode === 'reset') {
+        await resetPassword(email)
+        setResetSuccess(true)
       } else {
         const profile = await signIn(email, password)
         nav(homeFor(profile.role), { replace: true })
@@ -103,6 +112,7 @@ export default function LoginPage() {
     setPassword('')
     setPasswordVisible(false)
     setError(null)
+    setResetSuccess(false)
   }
 
   return (
@@ -196,14 +206,24 @@ export default function LoginPage() {
 
             <div className="mb-4">
               <p className="text-sm font-bold text-slate-500">
-                {mode === 'join' ? 'New player' : 'Welcome back'}
+                {mode === 'join'
+                  ? 'New player'
+                  : mode === 'reset'
+                  ? 'Forgot your password?'
+                  : 'Welcome back'}
               </p>
               <h2 className="mt-1 text-2xl font-extrabold text-slate-900">
-                {mode === 'join' ? 'Create member account' : 'Log in'}
+                {mode === 'join'
+                  ? 'Create member account'
+                  : mode === 'reset'
+                  ? 'Reset your password'
+                  : 'Log in'}
               </h2>
               <p className="mt-1.5 text-base text-slate-600">
                 {mode === 'join'
                   ? 'For players only. You’ll get book, pay, open play, and your QR pass.'
+                  : mode === 'reset'
+                  ? 'Enter your email and we’ll send a password reset link.'
                   : 'Members, staff, and admin all use this log-in.'}
               </p>
             </div>
@@ -250,45 +270,60 @@ export default function LoginPage() {
                   id="email"
                   className="input"
                   type="email"
-                  autoComplete="username"
+                  autoComplete={mode === 'reset' ? 'email' : 'username'}
                   placeholder="you@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
               </div>
-              <div>
-                <label className="label" htmlFor="password">
-                  Password
-                </label>
-                <div className="relative">
-                  <input
-                    id="password"
-                    className="input pr-14"
-                    type={passwordVisible ? 'text' : 'password'}
-                    autoComplete={mode === 'join' ? 'new-password' : 'current-password'}
-                    placeholder={mode === 'join' ? 'At least 6 characters' : '••••••••'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    minLength={mode === 'join' ? 6 : undefined}
-                    aria-describedby={error ? 'authentication-error' : undefined}
-                  />
+
+              {mode !== 'reset' ? (
+                <div>
+                  <label className="label" htmlFor="password">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="password"
+                      className="input pr-14"
+                      type={passwordVisible ? 'text' : 'password'}
+                      autoComplete={mode === 'join' ? 'new-password' : 'current-password'}
+                      placeholder={mode === 'join' ? 'At least 6 characters' : '••••••••'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={mode === 'join' ? 6 : undefined}
+                      aria-describedby={error ? 'authentication-error' : undefined}
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center rounded-xl text-slate-600 transition hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                      onClick={() => setPasswordVisible((visible) => !visible)}
+                      aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+                      aria-pressed={passwordVisible}
+                    >
+                      {passwordVisible ? (
+                        <EyeOff size={20} aria-hidden />
+                      ) : (
+                        <Eye size={20} aria-hidden />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {mode === 'login' ? (
+                <div className="flex justify-end">
                   <button
                     type="button"
-                    className="absolute inset-y-0 right-0 inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center rounded-xl text-slate-600 transition hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
-                    onClick={() => setPasswordVisible((visible) => !visible)}
-                    aria-label={passwordVisible ? 'Hide password' : 'Show password'}
-                    aria-pressed={passwordVisible}
+                    className="text-sm font-semibold text-slate-500 hover:text-slate-700"
+                    onClick={() => switchMode('reset')}
                   >
-                    {passwordVisible ? (
-                      <EyeOff size={20} aria-hidden />
-                    ) : (
-                      <Eye size={20} aria-hidden />
-                    )}
+                    Forgot password?
                   </button>
                 </div>
-              </div>
+              ) : null}
 
               {error ? (
                 <p
@@ -301,13 +336,39 @@ export default function LoginPage() {
                 </p>
               ) : null}
 
+              {resetSuccess ? (
+                <p
+                  role="status"
+                  className="text-sm font-semibold text-teal-700 bg-teal-50 border border-teal-100 rounded-xl px-3 py-2"
+                >
+                  Check your inbox for a password reset link.
+                </p>
+              ) : null}
+
               <button className="btn-primary gap-2" type="submit" disabled={busy} aria-busy={busy}>
-                {busy ? 'Please wait…' : mode === 'join' ? 'Join Rally Point' : 'Log in'}
+                {busy
+                  ? 'Please wait…'
+                  : mode === 'join'
+                  ? 'Join Rally Point'
+                  : mode === 'reset'
+                  ? 'Send reset link'
+                  : 'Log in'}
                 {!busy ? <ArrowRight size={18} aria-hidden /> : null}
               </button>
             </form>
 
-            {mode === 'login' ? (
+            {mode === 'reset' ? (
+              <p className="mt-4 text-center text-base text-slate-600">
+                Remembered your password?{' '}
+                <button
+                  type="button"
+                  className="font-extrabold text-brand-800 underline-offset-2 hover:underline"
+                  onClick={() => switchMode('login')}
+                >
+                  Back to log in
+                </button>
+              </p>
+            ) : mode === 'login' ? (
               <p className="mt-4 text-center text-base text-slate-600">
                 New player?{' '}
                 <button

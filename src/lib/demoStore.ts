@@ -203,6 +203,10 @@ function seed(): DemoDB {
       id: 'ses_1',
       court_id: 'court_1',
       member_id: 'mem_001',
+      players: [
+        { id: 'mem_001', full_name: 'Mia Member', member_id: 'mem_001' },
+        { id: 'guest_1', full_name: 'Ava Guest', guest_name: 'Ava Guest' },
+      ],
       start_at: new Date(now - 40 * 60000).toISOString(),
       end_at: new Date(now + 20 * 60000).toISOString(),
       status: 'playing',
@@ -213,6 +217,7 @@ function seed(): DemoDB {
       id: 'ses_2',
       court_id: 'court_3',
       member_id: 'mem_002',
+      players: [{ id: 'mem_002', full_name: 'Jonah Cruz', member_id: 'mem_002' }],
       start_at: new Date(now - 15 * 60000).toISOString(),
       end_at: new Date(now + 45 * 60000).toISOString(),
       status: 'playing',
@@ -577,11 +582,21 @@ export const demoStore = {
     const db = load()
     return db.sessions
       .filter((s) => s.status === 'playing' || s.status === 'scheduled')
-      .map((s) => ({
-        ...s,
-        court: db.courts.find((c) => c.id === s.court_id),
-        member: s.member_id ? db.members.find((m) => m.id === s.member_id) : undefined,
-      }))
+      .map((s) => {
+        const players = s.players?.length
+          ? s.players
+          : [
+              s.member_id ? { id: s.member_id, full_name: db.members.find((m) => m.id === s.member_id)?.full_name ?? 'Member', member_id: s.member_id } : null,
+              s.guest_name ? { id: `${s.id}-guest`, full_name: s.guest_name, guest_name: s.guest_name } : null,
+            ].filter(Boolean) as Array<{ id: string; full_name: string; member_id?: string | null; guest_name?: string | null }>
+
+        return {
+          ...s,
+          court: db.courts.find((c) => c.id === s.court_id),
+          member: s.member_id ? db.members.find((m) => m.id === s.member_id) : undefined,
+          players,
+        }
+      })
   },
   availability(dateYmd: string): CourtDayAvailability[] {
     const db = load()
@@ -995,6 +1010,11 @@ export const demoStore = {
     const start = new Date()
     const end = new Date(start.getTime() + opts.hours * 3600000)
     const amount = court.hourly_rate * opts.hours
+    const players = [
+      opts.member_id ? { id: opts.member_id, full_name: db.members.find((m) => m.id === opts.member_id)?.full_name ?? 'Member', member_id: opts.member_id } : null,
+      opts.guest_name ? { id: uid('guest'), full_name: opts.guest_name, guest_name: opts.guest_name } : null,
+    ].filter(Boolean) as Array<{ id: string; full_name: string; member_id?: string | null; guest_name?: string | null }>
+
     const session: CourtSession = {
       id: uid('ses'),
       court_id: opts.court_id,
@@ -1005,6 +1025,7 @@ export const demoStore = {
       status: 'playing',
       amount,
       created_by: opts.created_by ?? null,
+      players,
     }
     db.sessions.push(session)
     court.status = 'occupied'
@@ -1019,6 +1040,23 @@ export const demoStore = {
     })
     save(db)
     return session
+  },
+  addMemberToSession(sessionId: string, memberId: string, staffId?: string) {
+    const db = load()
+    const session = db.sessions.find((x) => x.id === sessionId)
+    if (!session) throw new Error('Session not found')
+    const member = db.members.find((m) => m.id === memberId)
+    if (!member) throw new Error('Member not found')
+
+    const players = session.players ?? []
+    if (!players.some((p) => p.member_id === member.id || p.id === member.id)) {
+      players.push({ id: member.id, full_name: member.full_name, member_id: member.id })
+      session.players = players
+    }
+    if (!session.member_id) session.member_id = member.id
+    session.created_by = staffId ?? session.created_by
+    save(db)
+    return { ...session, court: db.courts.find((c) => c.id === session.court_id), member }
   },
   extendSession(sessionId: string, hours: number, created_by?: string) {
     const db = load()
