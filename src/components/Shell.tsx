@@ -48,7 +48,8 @@ function tabsFor(role: Role) {
 export function SideNav({ role }: { role: Role }) {
   const { user, signOut } = useAuth()
   const tabs = tabsFor(role)
-  const roleLabel = role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Member'
+  const roleLabel =
+    role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Member'
 
   return (
     <aside className="side-nav">
@@ -56,12 +57,17 @@ export function SideNav({ role }: { role: Role }) {
         <div className="flex items-center gap-2.5 mb-1">
           <RallyPointLogo variant="mark" className="w-11 h-11 object-contain" />
           <div>
-            <p className="text-xs font-bold text-teal-200/90">Rally Point</p>
-            <p className="text-base font-extrabold leading-tight">{roleLabel}</p>
+            <p className="text-caption font-normal text-teal-200/90">
+              Rally Point
+            </p>
+            <p className="text-subtitle font-medium">{roleLabel}</p>
           </div>
         </div>
         {user ? (
-          <p className="text-sm text-slate-300 mt-2 truncate px-0.5" title={user.email}>
+          <p
+            className="text-body font-normal text-slate-300 mt-2 truncate px-0.5"
+            title={user.email}
+          >
             {user.full_name}
           </p>
         ) : null}
@@ -73,7 +79,9 @@ export function SideNav({ role }: { role: Role }) {
             key={to}
             to={to}
             end={end}
-            className={({ isActive }) => `side-nav-link${isActive ? ' active' : ''}`}
+            className={({ isActive }) =>
+              `side-nav-link${isActive ? ' active' : ''}`
+            }
           >
             <Icon size={22} strokeWidth={2.25} aria-hidden />
             {label}
@@ -84,7 +92,7 @@ export function SideNav({ role }: { role: Role }) {
       <button
         type="button"
         onClick={() => void signOut()}
-        className="side-nav-link mt-4 w-full border-0 bg-transparent cursor-pointer text-left"
+        className="side-nav-link control-feedback mt-4 w-full border-0 bg-transparent cursor-pointer text-left"
       >
         <LogOut size={22} aria-hidden />
         Log out
@@ -105,7 +113,7 @@ export function BottomNav({ role }: { role: Role }) {
             to={to}
             end={end}
             className={({ isActive }) =>
-              `flex flex-col items-center justify-center gap-1 py-2 min-h-[56px] rounded-xl text-[12px] font-extrabold leading-tight ${
+              `control-feedback flex flex-col items-center justify-center gap-1 py-2 min-h-[56px] rounded-xl text-caption font-normal ${
                 isActive ? 'text-brand-800 bg-brand-50' : 'text-slate-500'
               }`
             }
@@ -119,7 +127,13 @@ export function BottomNav({ role }: { role: Role }) {
   )
 }
 
-export function AppShell({ role, children }: { role: Role; children: ReactNode }) {
+export function AppShell({
+  role,
+  children,
+}: {
+  role: Role
+  children: ReactNode
+}) {
   return (
     <div className="app-shell">
       <SideNav role={role} />
@@ -141,17 +155,21 @@ export function AppHeader({
   right?: ReactNode
 }) {
   return (
-    <header className="sticky top-0 z-30 bg-white/98 backdrop-blur border-b border-slate-200 px-4 md:px-6 pt-4 pb-3.5">
-      <div className="flex items-start justify-between gap-3 max-w-5xl">
+    <header className="sticky top-0 z-30 bg-white/98 backdrop-blur border-b border-slate-200 pt-4 pb-3.5">
+      <div className="app-content-rail flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 md:hidden mb-1">
             <RallyPointLogo variant="mark" className="w-8 h-8 object-contain" />
-            <p className="text-xs font-bold text-brand-800">Rally Point</p>
+            <p className="text-caption font-bold text-brand-800">Rally Point</p>
           </div>
-          <h1 className="text-[1.35rem] md:text-2xl font-extrabold text-slate-900 leading-snug tracking-tight">
+          <h1 className="text-heading-2 font-semibold text-slate-900 tracking-normal">
             {title}
           </h1>
-          {subtitle ? <p className="text-[0.95rem] text-slate-600 mt-1 leading-snug">{subtitle}</p> : null}
+          {subtitle ? (
+            <p className="text-subtitle font-medium text-slate-600 mt-1">
+              {subtitle}
+            </p>
+          ) : null}
         </div>
         <div className="shrink-0">{right}</div>
       </div>
@@ -165,7 +183,7 @@ export function SignOutButton() {
     <button
       type="button"
       onClick={() => void signOut()}
-      className="min-h-12 min-w-12 px-3 rounded-2xl border-2 border-slate-200 flex items-center justify-center gap-1.5 text-slate-700 font-bold text-sm md:hidden"
+      className="control-feedback min-h-12 min-w-12 px-3 rounded-2xl border-2 border-slate-200 flex items-center justify-center gap-1.5 text-slate-700 text-body font-bold md:hidden"
       aria-label="Log out"
     >
       <LogOut size={18} aria-hidden />
@@ -177,8 +195,10 @@ export function SignOutButton() {
 export function EmptyState({ title, body }: { title: string; body?: string }) {
   return (
     <div className="card p-6 text-center">
-      <p className="font-extrabold text-lg text-slate-800">{title}</p>
-      {body ? <p className="text-base text-slate-600 mt-2 leading-relaxed">{body}</p> : null}
+      <p className="text-title font-bold text-slate-800">{title}</p>
+      {body ? (
+        <p className="text-body font-normal text-slate-600 mt-2">{body}</p>
+      ) : null}
     </div>
   )
 }
@@ -189,7 +209,9 @@ export function LoadingBlock() {
       <div className="skeleton h-24" />
       <div className="skeleton h-16" />
       <div className="skeleton h-16" />
-      <p className="text-center text-sm font-semibold text-slate-500 pt-1">Loading…</p>
+      <p className="text-center text-body font-semibold text-slate-500 pt-1">
+        Loading…
+      </p>
     </div>
   )
 }

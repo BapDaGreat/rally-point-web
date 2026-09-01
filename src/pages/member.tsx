@@ -1,7 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Bell, ChevronRight, CreditCard, CalendarDays, QrCode, Users } from 'lucide-react'
-import { AppHeader, AppShell, LoadingBlock, SignOutButton } from '../components/Shell'
+import {
+  Bell,
+  ChevronRight,
+  CreditCard,
+  CalendarDays,
+  QrCode,
+  Users,
+} from 'lucide-react'
+import {
+  AppHeader,
+  AppShell,
+  LoadingBlock,
+  SignOutButton,
+} from '../components/Shell'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import type { Member, Notification, Transaction } from '../types'
@@ -46,27 +58,43 @@ export function MemberHome() {
         ) : (
           <>
             <section className="stat-card">
-              <p className="text-teal-100 text-sm font-bold">Your membership</p>
-              <p className="text-2xl font-extrabold mt-1">
+              <p className="text-body font-normal text-teal-100">
+                Your membership
+              </p>
+              <p className="text-heading-2 font-semibold mt-1">
                 {friendlyStatus(member?.membership_type ?? '—')} plan
               </p>
-              <div className="mt-3 flex items-center justify-between gap-2 text-base">
-                <span className="text-teal-50 font-semibold">ID {member?.member_code ?? '—'}</span>
+              <div className="mt-3 flex items-center justify-between gap-2 text-body">
+                <span className="text-teal-50 font-normal">
+                  ID {member?.member_code ?? '—'}
+                </span>
                 <span
                   className={`pill ${member?.status === 'active' ? 'bg-white/25 text-white' : 'bg-amber-300 text-amber-950'}`}
                 >
                   {friendlyStatus(member?.status ?? 'n/a')}
                 </span>
               </div>
-              <p className="mt-3 text-base text-teal-50 flex items-center gap-2">
-                <CalendarDays size={18} aria-hidden /> Valid until{' '}
-                {member ? fmtDate(member.expiry_date) : '—'}
-              </p>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-body font-normal text-teal-50 flex items-center gap-2">
+                  <CalendarDays size={18} aria-hidden /> Valid until{' '}
+                  {member ? fmtDate(member.expiry_date) : '—'}
+                </p>
+                <Link
+                  to="/member/pay"
+                  aria-label="Renew membership"
+                  className="control-feedback min-h-12 min-w-28 px-4 rounded-xl bg-white text-brand-800 text-subtitle font-medium inline-flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <CreditCard size={18} aria-hidden />
+                  Renew
+                </Link>
+              </div>
             </section>
 
             <div>
-              <h2 className="text-base font-extrabold text-slate-800 mb-2 px-0.5">Quick actions</h2>
-              <div className="grid grid-cols-2 gap-3">
+              <h2 className="text-subtitle font-semibold text-slate-800 mb-2 px-0.5">
+                Quick actions
+              </h2>
+              <div className="member-actions grid grid-cols-2 md:grid-cols-3 gap-3">
                 <Link to="/member/book" className="action-tile">
                   <span className="action-tile-icon" aria-hidden>
                     <CalendarDays size={24} />
@@ -88,53 +116,63 @@ export function MemberHome() {
                   <span className="action-tile-title">Show my QR</span>
                   <span className="action-tile-sub">For check-in</span>
                 </Link>
-                <Link to="/member/pay" className="action-tile">
-                  <span className="action-tile-icon" aria-hidden>
-                    <CreditCard size={24} />
-                  </span>
-                  <span className="action-tile-title">Pay dues</span>
-                  <span className="action-tile-sub">Renew plan</span>
-                </Link>
               </div>
             </div>
 
             <Link
               to="/member/notifications"
-              className="card p-4 flex items-center gap-3 active:scale-[0.99] transition min-h-[72px]"
+              className="control-feedback card p-4 flex items-center gap-3 min-h-[72px]"
             >
               <span className="action-tile-icon shrink-0" aria-hidden>
                 <Bell size={22} />
               </span>
               <div className="flex-1 min-w-0">
-                <p className="font-extrabold text-base">Messages</p>
-                <p className="text-sm text-slate-600">Bookings & reminders</p>
+                <p className="text-subtitle font-semibold">Messages</p>
+                <p className="text-body font-normal text-slate-600">
+                  Bookings & reminders
+                </p>
               </div>
               {unread ? (
-                <span className="text-sm font-extrabold bg-red-600 text-white rounded-full min-w-8 h-8 px-2 flex items-center justify-center">
+                <span className="text-body font-bold bg-red-600 text-white rounded-full min-w-8 h-8 px-2 flex items-center justify-center">
                   {unread}
                 </span>
               ) : (
-                <ChevronRight className="text-slate-400" size={22} aria-hidden />
+                <ChevronRight
+                  className="text-slate-400"
+                  size={22}
+                  aria-hidden
+                />
               )}
             </Link>
 
             <section className="card p-4">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="font-extrabold text-base">Recent payments</h2>
-                <Link to="/member/transactions" className="text-sm font-extrabold text-brand-800 min-h-11 inline-flex items-center">
+                <h2 className="text-subtitle font-semibold">Recent payments</h2>
+                <Link
+                  to="/member/transactions"
+                  className="control-feedback text-body font-semibold text-brand-800 min-h-12 px-2 inline-flex items-center"
+                >
                   See all
                 </Link>
               </div>
               {txs.length === 0 ? (
-                <p className="text-base text-slate-600 py-3">No payments yet.</p>
+                <p className="text-body font-normal text-slate-600 py-3">
+                  No payments yet.
+                </p>
               ) : (
                 txs.map((t) => (
                   <div key={t.id} className="list-row">
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-base truncate">{t.description}</p>
-                      <p className="text-sm text-slate-500">{fmtDate(t.created_at)}</p>
+                      <p className="text-subtitle font-semibold truncate">
+                        {t.description}
+                      </p>
+                      <p className="text-body font-normal text-slate-500">
+                        {fmtDate(t.created_at)}
+                      </p>
                     </div>
-                    <p className="font-extrabold text-base whitespace-nowrap">{peso(t.amount)}</p>
+                    <p className="text-subtitle font-bold whitespace-nowrap">
+                      {peso(t.amount)}
+                    </p>
                   </div>
                 ))
               )}
@@ -175,12 +213,20 @@ export function MemberPay() {
 
   return (
     <AppShell role="member">
-      <AppHeader title="Online payment" subtitle="Membership renewal" right={<SignOutButton />} />
+      <AppHeader
+        title="Online payment"
+        subtitle="Membership renewal"
+        right={<SignOutButton />}
+      />
       <main className="safe-bottom px-4 pt-4 space-y-4">
         <section className="card p-4">
-          <p className="text-xs font-bold uppercase text-slate-400">Amount due</p>
-          <p className="text-3xl font-extrabold text-slate-900 mt-1">{peso(amount)}</p>
-          <p className="text-sm text-slate-500 mt-2 capitalize">
+          <p className="text-caption font-bold uppercase text-slate-400">
+            Amount due
+          </p>
+          <p className="text-heading-1 font-bold text-slate-900 mt-1">
+            {peso(amount)}
+          </p>
+          <p className="text-body font-normal text-slate-500 mt-2 capitalize">
             {member?.membership_type ?? '—'} plan · {member?.member_code}
           </p>
         </section>
@@ -204,15 +250,22 @@ export function MemberPay() {
             </div>
           </div>
           <p className="text-xs text-slate-400">
-            Demo checkout — no real card charge. Connect a payment provider later if needed.
+            Demo checkout — no real card charge. Connect a payment provider
+            later if needed.
           </p>
-          <button className="btn-primary" type="button" disabled={busy || !member} onClick={() => void pay()}>
+          <button
+            className="btn-primary"
+            type="button"
+            disabled={busy || !member}
+            aria-busy={busy}
+            onClick={() => void pay()}
+          >
             {busy ? 'Processing…' : `Pay ${peso(amount)}`}
           </button>
         </section>
       </main>
       {msg ? <div className="toast">{msg}</div> : null}
-      </AppShell>
+    </AppShell>
   )
 }
 
@@ -231,7 +284,11 @@ export function MemberTransactions() {
 
   return (
     <AppShell role="member">
-      <AppHeader title="Transactions" subtitle="Your payments" right={<SignOutButton />} />
+      <AppHeader
+        title="Transactions"
+        subtitle="Your payments"
+        right={<SignOutButton />}
+      />
       <main className="safe-bottom px-4 pt-4">
         {loading ? (
           <LoadingBlock />
@@ -240,18 +297,18 @@ export function MemberTransactions() {
             {rows.map((t) => (
               <div key={t.id} className="list-row">
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm">{t.description}</p>
+                  <p className="text-body font-semibold">{t.description}</p>
                   <p className="text-xs text-slate-400 capitalize">
                     {t.type.replace('_', ' ')} · {fmtDate(t.created_at)}
                   </p>
                 </div>
-                <p className="font-bold text-sm">{peso(t.amount)}</p>
+                <p className="text-body font-bold">{peso(t.amount)}</p>
               </div>
             ))}
           </section>
         )}
       </main>
-      </AppShell>
+    </AppShell>
   )
 }
 
@@ -276,19 +333,23 @@ export function MemberNotifications() {
           <button
             key={n.id}
             type="button"
-            className={`card p-4 w-full text-left ${n.read ? 'opacity-70' : 'ring-1 ring-brand-200'}`}
+            className={`control-feedback card p-4 w-full text-left ${n.read ? 'opacity-70' : 'ring-1 ring-brand-200'}`}
             onClick={() => void api.markNotifRead(n.id).then(load)}
           >
             <div className="flex items-start justify-between gap-2">
-              <p className="font-bold text-sm">{n.title}</p>
+              <p className="text-body font-bold">{n.title}</p>
               {!n.read ? <span className="pill pill-brand">New</span> : null}
             </div>
-            <p className="text-sm text-slate-600 mt-1">{n.body}</p>
-            <p className="text-xs text-slate-400 mt-2">{fmtDate(n.created_at)}</p>
+            <p className="text-body font-normal text-slate-600 mt-1">
+              {n.body}
+            </p>
+            <p className="text-xs text-slate-400 mt-2">
+              {fmtDate(n.created_at)}
+            </p>
           </button>
         ))}
       </main>
-      </AppShell>
+    </AppShell>
   )
 }
 
@@ -306,7 +367,7 @@ export function MemberProfile() {
       <AppHeader title="Profile" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-4">
         <section className="card p-4 flex items-center gap-3">
-          <div className="w-14 h-14 rounded-2xl bg-brand-100 text-brand-800 font-extrabold flex items-center justify-center text-lg">
+          <div className="w-14 h-14 rounded-2xl bg-brand-100 text-brand-800 text-title font-bold flex items-center justify-center">
             {(user?.full_name ?? '?')
               .split(' ')
               .map((p) => p[0])
@@ -314,23 +375,31 @@ export function MemberProfile() {
               .join('')}
           </div>
           <div className="min-w-0">
-            <p className="font-extrabold text-lg truncate">{user?.full_name}</p>
-            <p className="text-sm text-slate-500 truncate">{user?.email}</p>
+            <p className="text-title font-bold truncate">{user?.full_name}</p>
+            <p className="text-body font-normal text-slate-500 truncate">
+              {user?.email}
+            </p>
           </div>
         </section>
-        <section className="card p-4 space-y-3 text-sm">
+        <section className="card p-4 space-y-3 text-body">
           <Row label="Member ID" value={member?.member_code ?? '—'} />
           <Row label="Phone" value={user?.phone || member?.phone || '—'} />
           <Row label="Plan" value={member?.membership_type ?? '—'} />
           <Row label="Status" value={member?.status ?? '—'} />
-          <Row label="Joined" value={member ? fmtDate(member.join_date) : '—'} />
-          <Row label="Expires" value={member ? fmtDate(member.expiry_date) : '—'} />
+          <Row
+            label="Joined"
+            value={member ? fmtDate(member.join_date) : '—'}
+          />
+          <Row
+            label="Expires"
+            value={member ? fmtDate(member.expiry_date) : '—'}
+          />
         </section>
         <Link to="/member/pay" className="btn-secondary">
           Renew membership <ChevronRight size={16} />
         </Link>
       </main>
-      </AppShell>
+    </AppShell>
   )
 }
 
