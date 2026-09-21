@@ -236,7 +236,13 @@ export function MemberBook() {
 
             {error ? <p className="text-sm text-red-600 font-medium">{error}</p> : null}
 
-            <button type="button" className="btn-primary w-full" disabled={busy} onClick={() => void confirmPay()}>
+            <button
+              type="button"
+              className="btn-primary w-full"
+              disabled={busy}
+              aria-busy={busy}
+              onClick={() => void confirmPay()}
+            >
               {busy ? (
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="animate-spin" size={18} /> Processing…
@@ -360,6 +366,7 @@ export function MemberBook() {
                   type="button"
                   className="btn-primary w-full"
                   disabled={!member || startHour == null || busy}
+                  aria-busy={busy}
                   onClick={() => void goPay()}
                 >
                   {busy ? 'Holding slot…' : `Continue · ${peso(total)}`}

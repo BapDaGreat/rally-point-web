@@ -367,6 +367,40 @@ export const api = {
     return data as CourtSession
   },
 
+  async addMemberToSession(sessionId: string, memberId: string, staffId?: string): Promise<CourtSession> {
+    if (isDemoMode) return demoStore.addMemberToSession(sessionId, memberId, staffId) as CourtSession
+
+    const { data: session, error: sErr } = await supabase!
+      .from('court_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .single()
+    if (sErr) throw sErr
+
+    const { data: member, error: mErr } = await supabase!
+      .from('members')
+      .select('*')
+      .eq('id', memberId)
+      .single()
+    if (mErr) throw mErr
+
+    const nextMemberId = session.member_id ?? memberId
+    const { data, error } = await supabase!
+      .from('court_sessions')
+      .update({ member_id: nextMemberId, created_by: staffId ?? session.created_by })
+      .eq('id', sessionId)
+      .select('*')
+      .single()
+    if (error) throw error
+
+    return {
+      ...data,
+      court: undefined,
+      member: member as Member,
+      players: [{ id: member.id, full_name: member.full_name, member_id: member.id }],
+    } as CourtSession
+  },
+
   async extendSession(sessionId: string, hours: number, created_by?: string) {
     if (isDemoMode) return demoStore.extendSession(sessionId, hours, created_by)
     const { data: s, error } = await supabase!

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Clock3, Pencil, Plus, Search, UserPlus, Users } from 'lucide-react'
 import { AppHeader, AppShell, LoadingBlock, SignOutButton } from '../components/Shell'
+import { BackButton } from '../components/BackButton'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import type {
@@ -78,7 +79,10 @@ export function AdminHome() {
             <section className="card p-4">
               <div className="flex items-center justify-between mb-1">
                 <h2 className="font-extrabold">Latest transactions</h2>
-                <Link to="/admin/transactions" className="text-xs font-bold text-brand-700">
+                <Link
+                  to="/admin/transactions"
+                  className="control-feedback px-2 text-xs font-bold text-brand-700 inline-flex items-center"
+                >
                   All
                 </Link>
               </div>
@@ -125,20 +129,19 @@ export function AdminMembers() {
 
   return (
     <AppShell role="admin">
-      <AppHeader
-        title="Members"
-        subtitle={`${members.length} on file`}
-        right={
-          <button
-            type="button"
-            className="w-10 h-10 rounded-full bg-brand-700 text-white flex items-center justify-center"
-            onClick={() => nav('/admin/members/new')}
-            aria-label="New member"
-          >
-            <Plus size={20} />
-          </button>
-        }
-      />
+      <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 pt-3 pb-2 flex items-center justify-between">
+        <BackButton />
+        <h1 className="text-lg font-bold flex-1 text-center">{members.length} on file</h1>
+        <button
+          type="button"
+          className="w-10 h-10 rounded-full bg-brand-700 text-white flex items-center justify-center"
+          onClick={() => nav('/admin/members/new')}
+          aria-label="New member"
+        >
+          <Plus size={20} />
+        </button>
+      </div>
+      <AppHeader title="Members" />
       <main className="safe-bottom px-4 pt-4 space-y-3">
         <div className="relative">
                   <Search
@@ -241,7 +244,11 @@ export function AdminMemberForm() {
 
   return (
     <AppShell role="admin">
-      <AppHeader title={isNew ? 'New member' : 'Update member'} right={<SignOutButton />} />
+      <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 pt-3 pb-2 flex items-center gap-3">
+        <BackButton />
+        <h1 className="text-lg font-bold">{isNew ? 'New member' : 'Update member'}</h1>
+      </div>
+      <AppHeader title="" />
       <main className="safe-bottom px-4 pt-4">
         {loading ? (
           <LoadingBlock />
@@ -285,7 +292,7 @@ export function AdminMemberForm() {
               <textarea className="input min-h-24" value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
             {error ? <p className="text-sm font-semibold text-red-600">{error}</p> : null}
-            <button className="btn-primary" disabled={busy}>
+            <button className="btn-primary" disabled={busy} aria-busy={busy}>
               {busy ? 'Saving…' : isNew ? 'Create member' : 'Save changes'}
             </button>
             {!isNew ? (
@@ -422,25 +429,34 @@ export function AdminOps() {
               <Clock3 size={18} /> Currently playing
             </h2>
             {sessions.length === 0 ? <p className="text-sm text-slate-500">No live sessions.</p> : null}
-            {sessions.map((s) => (
-              <div key={s.id} className="list-row items-start">
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm">{s.court?.name}</p>
-                  <p className="text-xs text-slate-500">
-                    {s.member?.full_name || s.guest_name || 'Guest'} · until {fmtTime(s.end_at)}
-                  </p>
-                  <p className="text-xs font-semibold text-brand-800 mt-1">{peso(s.amount)}</p>
+            {sessions.map((s) => {
+              const fallbackPlayers = [
+                s.member ? { full_name: s.member.full_name } : null,
+                s.guest_name ? { full_name: s.guest_name } : null,
+              ].filter((player): player is { full_name: string } => Boolean(player))
+              const names = (s.players?.length ? s.players : fallbackPlayers).map((p) => p.full_name)
+              const playerLabel = names.length ? names.join(', ') : 'Guest'
+
+              return (
+                <div key={s.id} className="list-row items-start">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm">{s.court?.name}</p>
+                    <p className="text-xs text-slate-500">
+                      {playerLabel} · until {fmtTime(s.end_at)}
+                    </p>
+                    <p className="text-xs font-semibold text-brand-800 mt-1">{peso(s.amount)}</p>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <button type="button" className="text-xs font-bold text-brand-700 px-2 py-1" onClick={() => void extend(s.id)}>
+                      +1h
+                    </button>
+                    <button type="button" className="text-xs font-bold text-slate-500 px-2 py-1" onClick={() => void end(s.id)}>
+                      End
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <button type="button" className="text-xs font-bold text-brand-700 px-2 py-1" onClick={() => void extend(s.id)}>
-                    +1h
-                  </button>
-                  <button type="button" className="text-xs font-bold text-slate-500 px-2 py-1" onClick={() => void end(s.id)}>
-                    End
-                  </button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </section>
         ) : null}
 
@@ -583,7 +599,11 @@ export function AdminUsers() {
 
   return (
     <AppShell role="admin">
-      <AppHeader title="Users" subtitle="Staff & accounts" right={<SignOutButton />} />
+      <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 pt-3 pb-2 flex items-center gap-3">
+        <BackButton />
+        <h1 className="text-lg font-bold">Users</h1>
+      </div>
+      <AppHeader title="" subtitle="Staff & accounts" />
       <main className="safe-bottom px-4 pt-4">
         {loading ? (
           <LoadingBlock />
