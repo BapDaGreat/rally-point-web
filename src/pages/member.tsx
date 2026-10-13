@@ -5,8 +5,6 @@ import {
   ChevronRight,
   CreditCard,
   CalendarDays,
-  QrCode,
-  Users,
 } from 'lucide-react'
 import {
   AppHeader,
@@ -89,35 +87,6 @@ export function MemberHome() {
                 </Link>
               </div>
             </section>
-
-            <div>
-              <h2 className="text-subtitle font-semibold text-slate-800 mb-2 px-0.5">
-                Quick actions
-              </h2>
-              <div className="member-actions grid grid-cols-2 md:grid-cols-3 gap-3">
-                <Link to="/member/book" className="action-tile">
-                  <span className="action-tile-icon" aria-hidden>
-                    <CalendarDays size={24} />
-                  </span>
-                  <span className="action-tile-title">Book a court</span>
-                  <span className="action-tile-sub">Pick time & pay</span>
-                </Link>
-                <Link to="/member/open" className="action-tile">
-                  <span className="action-tile-icon" aria-hidden>
-                    <Users size={24} />
-                  </span>
-                  <span className="action-tile-title">Join open play</span>
-                  <span className="action-tile-sub">Drop-in games</span>
-                </Link>
-                <Link to="/member/pass" className="action-tile">
-                  <span className="action-tile-icon" aria-hidden>
-                    <QrCode size={24} />
-                  </span>
-                  <span className="action-tile-title">Show my QR</span>
-                  <span className="action-tile-sub">For check-in</span>
-                </Link>
-              </div>
-            </div>
 
             <Link
               to="/member/notifications"

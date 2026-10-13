@@ -129,19 +129,21 @@ export function AdminMembers() {
 
   return (
     <AppShell role="admin">
-      <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 pt-3 pb-2 flex items-center justify-between">
-        <BackButton />
-        <h1 className="text-lg font-bold flex-1 text-center">{members.length} on file</h1>
-        <button
-          type="button"
-          className="w-10 h-10 rounded-full bg-brand-700 text-white flex items-center justify-center"
-          onClick={() => nav('/admin/members/new')}
-          aria-label="New member"
-        >
-          <Plus size={20} />
-        </button>
-      </div>
-      <AppHeader title="Members" />
+      <AppHeader
+        title="Members"
+        subtitle={`${members.length} on file`}
+        left={<BackButton />}
+        right={
+          <button
+            type="button"
+            className="w-10 h-10 rounded-full bg-brand-700 text-white flex items-center justify-center shadow-xs"
+            onClick={() => nav('/admin/members/new')}
+            aria-label="New member"
+          >
+            <Plus size={20} />
+          </button>
+        }
+      />
       <main className="safe-bottom px-4 pt-4 space-y-3">
         <div className="relative">
                   <Search
@@ -244,11 +246,11 @@ export function AdminMemberForm() {
 
   return (
     <AppShell role="admin">
-      <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 pt-3 pb-2 flex items-center gap-3">
-        <BackButton />
-        <h1 className="text-lg font-bold">{isNew ? 'New member' : 'Update member'}</h1>
-      </div>
-      <AppHeader title="" />
+      <AppHeader
+        title={isNew ? 'New member' : 'Update member'}
+        subtitle="Member directory record"
+        left={<BackButton />}
+      />
       <main className="safe-bottom px-4 pt-4">
         {loading ? (
           <LoadingBlock />
@@ -599,11 +601,11 @@ export function AdminUsers() {
 
   return (
     <AppShell role="admin">
-      <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 pt-3 pb-2 flex items-center gap-3">
-        <BackButton />
-        <h1 className="text-lg font-bold">Users</h1>
-      </div>
-      <AppHeader title="" subtitle="Staff & accounts" />
+      <AppHeader
+        title="Users"
+        subtitle="Staff & accounts"
+        left={<BackButton />}
+      />
       <main className="safe-bottom px-4 pt-4">
         {loading ? (
           <LoadingBlock />

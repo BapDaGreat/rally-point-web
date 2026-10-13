@@ -23,6 +23,9 @@ import type {
   SupportInquiry,
   InquiryCategory,
   InquiryStatus,
+  Branch,
+  PlatformCommission,
+  SuperadminStats,
 } from '../types'
 import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, hourLabel, localRangeISO } from '../types'
 
@@ -789,5 +792,50 @@ export const api = {
       if (!member) throw new Error('QR not recognized')
       const checkin = await this.checkIn(member.id, staffId, 'QR check-in')
       return { checkin, member }
+    },
+
+    async branches(): Promise<Branch[]> {
+      if (isDemoMode) return demoStore.listBranches()
+      const { data, error } = await supabase!.from('branches').select('*').order('name')
+      if (error) throw error
+      return (data ?? []) as Branch[]
+    },
+
+    async createBranch(input: Omit<Branch, 'id' | 'created_at'>): Promise<Branch> {
+      if (isDemoMode) return demoStore.createBranch(input)
+      const { data, error } = await supabase!.from('branches').insert(input).select().single()
+      if (error) throw error
+      return data as Branch
+    },
+
+    async updateBranchStatus(id: string, status: 'active' | 'suspended'): Promise<Branch> {
+      if (isDemoMode) return demoStore.updateBranchStatus(id, status)
+      const { data, error } = await supabase!.from('branches').update({ status }).eq('id', id).select().single()
+      if (error) throw error
+      return data as Branch
+    },
+
+    async commissions(): Promise<PlatformCommission[]> {
+      if (isDemoMode) return demoStore.listCommissions()
+      const { data, error } = await supabase!.from('platform_commissions').select('*').order('created_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []) as PlatformCommission[]
+    },
+
+    async superadminStats(): Promise<SuperadminStats> {
+      if (isDemoMode) return demoStore.superadminStats()
+      const [commissions, branches] = await Promise.all([
+        this.commissions(),
+        this.branches(),
+      ])
+      const totalGross = commissions.reduce((acc, c) => acc + Number(c.gross_amount), 0)
+      const totalCommissions = commissions.reduce((acc, c) => acc + Number(c.commission_amount), 0)
+      const activeBranches = branches.filter((b) => b.status === 'active').length
+      return {
+        totalGrossVolume: totalGross,
+        totalCommissionsEarned: totalCommissions,
+        activeBranchesCount: activeBranches,
+        totalBookingsCount: commissions.length,
+      }
     },
   }

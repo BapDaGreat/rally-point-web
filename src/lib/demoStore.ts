@@ -1,6 +1,7 @@
 import type {
   Booking,
   BookingStatus,
+  Branch,
   CheckIn,
   Court,
   CourtDayAvailability,
@@ -12,11 +13,13 @@ import type {
   OpenPlaySession,
   OpenPlaySignup,
   PaymentMethod,
+  PlatformCommission,
   Profile,
   Reminder,
   Role,
   ScheduleBlock,
   SkillLevel,
+  SuperadminStats,
   Transaction,
   WalkIn,
   SupportInquiry,
@@ -26,9 +29,10 @@ import type {
 import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, hourLabel, localRangeISO } from '../types'
 import { makePaymentRef } from './payments'
 
-const KEY = 'rally_point_demo_v3'
+const KEY = 'rally_point_demo_v4'
 
 const seededDemoPasswords = new Map<string, string>([
+  ['superadmin@rallypoint.local', 'superadmin123'],
   ['admin@rallypoint.local', 'admin123'],
   ['staff@rallypoint.local', 'staff123'],
   ['member@rallypoint.local', 'member123'],
@@ -59,6 +63,8 @@ function daysFromNow(n: number) {
 }
 
 export interface DemoDB {
+  branches: Branch[]
+  commissions: PlatformCommission[]
   profiles: Profile[]
   members: Member[]
   courts: Court[]
@@ -103,17 +109,83 @@ function hydrateBooking(db: DemoDB, b: Booking): Booking {
 }
 
 function seed(): DemoDB {
+  const superadminId = 'user_superadmin'
   const adminId = 'user_admin'
   const staffId = 'user_staff'
   const memberUserId = 'user_member'
 
+  const branches: Branch[] = [
+    {
+      id: 'branch_gensan',
+      name: 'Rally Point Gensan',
+      slug: 'gensan',
+      city: 'General Santos City',
+      address: 'National Highway, Brgy. Lagao, General Santos City',
+      phone: '+63 917 555 0100',
+      email: 'gensan@rallypoint.local',
+      commission_rate: 5.0,
+      commission_type: 'percentage',
+      status: 'active',
+      created_at: todayISO(),
+    },
+    {
+      id: 'branch_davao',
+      name: 'Rally Point Davao',
+      slug: 'davao',
+      city: 'Davao City',
+      address: 'Lanang Premier Complex, Davao City',
+      phone: '+63 917 555 0200',
+      email: 'davao@rallypoint.local',
+      commission_rate: 5.0,
+      commission_type: 'percentage',
+      status: 'active',
+      created_at: todayISO(),
+    },
+  ]
+
+  const commissions: PlatformCommission[] = [
+    {
+      id: 'comm_001',
+      branch_id: 'branch_gensan',
+      branch_name: 'Rally Point Gensan',
+      description: 'Court A booking commission (5%)',
+      gross_amount: 500,
+      commission_rate: 5.0,
+      commission_amount: 25,
+      branch_net_amount: 475,
+      status: 'settled',
+      created_at: daysFromNow(-2),
+    },
+    {
+      id: 'comm_002',
+      branch_id: 'branch_davao',
+      branch_name: 'Rally Point Davao',
+      description: 'Court 1 booking commission (5%)',
+      gross_amount: 600,
+      commission_rate: 5.0,
+      commission_amount: 30,
+      branch_net_amount: 570,
+      status: 'settled',
+      created_at: daysFromNow(-1),
+    },
+  ]
+
   const profiles: Profile[] = [
+    {
+      id: superadminId,
+      email: 'superadmin@rallypoint.local',
+      full_name: 'Morgan Superadmin',
+      role: 'superadmin',
+      phone: '+63 917 000 0000',
+      created_at: todayISO(),
+    },
     {
       id: adminId,
       email: 'admin@rallypoint.local',
       full_name: 'Alex Admin',
       role: 'admin',
       phone: '+63 917 000 0001',
+      branch_id: 'branch_gensan',
       created_at: todayISO(),
     },
     {
@@ -122,6 +194,7 @@ function seed(): DemoDB {
       full_name: 'Sam Staff',
       role: 'staff',
       phone: '+63 917 000 0002',
+      branch_id: 'branch_gensan',
       created_at: todayISO(),
     },
     {
@@ -130,6 +203,7 @@ function seed(): DemoDB {
       full_name: 'Mia Member',
       role: 'member',
       phone: '+63 917 555 0101',
+      branch_id: 'branch_gensan',
       created_at: todayISO(),
     },
   ]
@@ -371,6 +445,8 @@ function seed(): DemoDB {
   const inquiries: SupportInquiry[] = []
 
   return {
+    branches,
+    commissions,
     profiles,
     members,
     courts,
@@ -394,8 +470,11 @@ function load(): DemoDB {
     if (raw) {
       const stored = JSON.parse(raw) as DemoDB & { passwords?: unknown }
       const { passwords: legacyPasswords, ...withoutPasswords } = stored
+      const defaults = seed()
       const db: DemoDB = {
         ...withoutPasswords,
+        branches: Array.isArray(withoutPasswords.branches) && withoutPasswords.branches.length > 0 ? withoutPasswords.branches : defaults.branches,
+        commissions: Array.isArray(withoutPasswords.commissions) ? withoutPasswords.commissions : defaults.commissions,
         bookings: Array.isArray(withoutPasswords.bookings) ? withoutPasswords.bookings : [],
         openPlays: Array.isArray(withoutPasswords.openPlays) ? withoutPasswords.openPlays : [],
         openPlaySignups: Array.isArray(withoutPasswords.openPlaySignups)
@@ -727,6 +806,27 @@ export const demoStore = {
       sent_at: null,
       booking_id: b.id,
     })
+
+    const branch = db.branches.find((br) => br.id === (court?.branch_id ?? 'branch_gensan')) ?? db.branches[0]
+    const rate = branch?.commission_rate ?? 5.0
+    const commissionAmt = Math.round((b.amount * (rate / 100)) * 100) / 100
+    const netAmt = Math.round((b.amount - commissionAmt) * 100) / 100
+
+    const comm: PlatformCommission = {
+      id: uid('comm'),
+      branch_id: branch?.id ?? 'branch_gensan',
+      branch_name: branch?.name ?? 'Rally Point Gensan',
+      booking_id: b.id,
+      description: `${court?.name ?? 'Court'} booking commission (${rate}%)`,
+      gross_amount: b.amount,
+      commission_rate: rate,
+      commission_amount: commissionAmt,
+      branch_net_amount: netAmt,
+      status: 'settled',
+      created_at: todayISO(),
+    }
+    db.commissions.unshift(comm)
+
     save(db)
     return hydrateBooking(db, b)
   },
@@ -1292,5 +1392,57 @@ export const demoStore = {
       created_at: todayISO(),
     })
     save(db)
+  },
+  listBranches(): Branch[] {
+    const db = load()
+    return db.branches
+  },
+  createBranch(input: Omit<Branch, 'id' | 'created_at'>): Branch {
+    const db = load()
+    const actor = db.profiles.find((p) => p.id === db.sessionUserId)
+    if (actor?.role !== 'superadmin') {
+      throw new Error('Only superadmins can manage branches')
+    }
+    if (db.branches.some((b) => b.slug.toLowerCase() === input.slug.toLowerCase())) {
+      throw new Error('Branch slug already exists')
+    }
+    const newBranch: Branch = {
+      ...input,
+      id: uid('branch'),
+      status: input.status ?? 'active',
+      created_at: todayISO(),
+    }
+    db.branches.push(newBranch)
+    save(db)
+    return newBranch
+  },
+  updateBranchStatus(id: string, status: 'active' | 'suspended'): Branch {
+    const db = load()
+    const actor = db.profiles.find((p) => p.id === db.sessionUserId)
+    if (actor?.role !== 'superadmin') {
+      throw new Error('Only superadmins can manage branches')
+    }
+    const idx = db.branches.findIndex((b) => b.id === id)
+    if (idx === -1) throw new Error('Branch not found')
+    db.branches[idx] = { ...db.branches[idx], status }
+    save(db)
+    return db.branches[idx]
+  },
+  listCommissions(): PlatformCommission[] {
+    const db = load()
+    return db.commissions
+  },
+  superadminStats(): SuperadminStats {
+    const db = load()
+    const totalGross = db.commissions.reduce((acc, c) => acc + c.gross_amount, 0)
+    const totalCommissions = db.commissions.reduce((acc, c) => acc + c.commission_amount, 0)
+    const totalBookings = db.bookings.filter((b) => b.status === 'confirmed').length
+    const activeBranches = db.branches.filter((b) => b.status === 'active').length
+    return {
+      totalGrossVolume: totalGross,
+      totalCommissionsEarned: totalCommissions,
+      activeBranchesCount: activeBranches,
+      totalBookingsCount: totalBookings,
+    }
   },
 }

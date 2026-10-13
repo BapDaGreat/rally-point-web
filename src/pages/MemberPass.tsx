@@ -5,9 +5,7 @@ import { api } from '../lib/api'
 import type { Member } from '../types'
 import { qrPayload } from '../types'
 
-function qrImageUrl(data: string, size = 220) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}`
-}
+import { QRCodeSVG } from 'qrcode.react'
 
 export function MemberPass() {
   const { user } = useAuth()
@@ -56,13 +54,14 @@ export function MemberPass() {
             <p className="font-extrabold text-2xl">{member.full_name}</p>
             <p className="font-mono text-base text-brand-800 font-bold">{member.member_code}</p>
             {payload ? (
-              <img
-                src={qrImageUrl(payload)}
-                alt="Check-in QR code"
-                width={220}
-                height={220}
-                className="rounded-2xl border border-slate-100 bg-white p-2"
-              />
+              <div className="rounded-2xl border border-slate-100 bg-white p-3 inline-flex items-center justify-center shadow-xs">
+                <QRCodeSVG
+                  value={payload}
+                  size={200}
+                  level="M"
+                  aria-label="Check-in QR code"
+                />
+              </div>
             ) : null}
             <p className="text-[11px] text-slate-400 font-mono break-all max-w-xs">{payload}</p>
             <p className="text-base text-slate-600">Staff can scan this code, or type your ID number.</p>

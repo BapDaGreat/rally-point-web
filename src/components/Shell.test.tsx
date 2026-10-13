@@ -39,6 +39,14 @@ const roleLinks: Record<Role, Array<[label: string, href: string]>> = {
     ['Bookings', '/admin/bookings'],
     ['Help', '/admin/help'],
   ],
+  superadmin: [
+    ['Overview', '/superadmin'],
+    ['Floor', '/admin/ops'],
+    ['Schedule', '/admin/board'],
+    ['Open play', '/admin/open'],
+    ['Bookings', '/admin/bookings'],
+    ['Help', '/admin/help'],
+  ],
 }
 
 function renderNav(role: Role, route: string) {

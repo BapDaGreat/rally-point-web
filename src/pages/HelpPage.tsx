@@ -26,6 +26,12 @@ const contacts: Record<Role, { title: string; body: string; email: string; phone
     email: 'superadmin@rallypointgensan.com',
     phone: '+63 917 555 0102',
   },
+  superadmin: {
+    title: 'Platform operations',
+    body: 'For cloud infrastructure, database hosting, or payment provider escalations, contact technical ops.',
+    email: 'ops@rallypoint.ph',
+    phone: '+63 917 555 0199',
+  },
 }
 
 const inquiryStatuses: { value: InquiryStatus; label: string }[] = [
@@ -48,6 +54,7 @@ export function HelpPage() {
   const [saving, setSaving] = useState(false)
   const [savingInquiryId, setSavingInquiryId] = useState<string | null>(null)
   const [readingNotificationId, setReadingNotificationId] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<'all' | InquiryStatus>('all')
   const [toast, setToast] = useState<string | null>(null)
 
   const loadInquiries = useCallback(async () => {
@@ -253,20 +260,46 @@ export function HelpPage() {
                 Refresh
               </button>
             </div>
+            <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="Inquiry status filter">
+              {[
+                { value: 'all' as const, label: `All (${inquiries.length})` },
+                { value: 'open' as const, label: `Open (${inquiries.filter((i) => i.status === 'open').length})` },
+                { value: 'in_progress' as const, label: `In Progress (${inquiries.filter((i) => i.status === 'in_progress').length})` },
+                { value: 'resolved' as const, label: `Resolved (${inquiries.filter((i) => i.status === 'resolved').length})` },
+              ].map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                    statusFilter === tab.value
+                      ? 'bg-brand-700 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                  onClick={() => setStatusFilter(tab.value)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
             {loadingInquiries ? <p className="text-body text-slate-500 mt-3">Loading inquiries…</p> : null}
             {loadingError ? <p role="alert" className="text-body text-red-700 mt-3">{loadingError}</p> : null}
             {!loadingInquiries && !loadingError && inquiries.length === 0 ? (
               <p className="text-body text-slate-600 mt-3">There are no inquiries yet.</p>
             ) : null}
+            {!loadingInquiries && !loadingError && inquiries.length > 0 && inquiries.filter((i) => statusFilter === 'all' || i.status === statusFilter).length === 0 ? (
+              <p className="text-body text-slate-600 mt-3">No inquiries in this category.</p>
+            ) : null}
             <div className="mt-3 space-y-3">
-              {inquiries.map((inquiry) => (
-                <AdminInquiryCard
-                  key={inquiry.id}
-                  inquiry={inquiry}
-                  saving={savingInquiryId === inquiry.id}
-                  onSave={(input) => void updateInquiry({ id: inquiry.id, ...input })}
-                />
-              ))}
+              {inquiries
+                .filter((inquiry) => statusFilter === 'all' || inquiry.status === statusFilter)
+                .map((inquiry) => (
+                  <AdminInquiryCard
+                    key={inquiry.id}
+                    inquiry={inquiry}
+                    saving={savingInquiryId === inquiry.id}
+                    onSave={(input) => void updateInquiry({ id: inquiry.id, ...input })}
+                  />
+                ))}
             </div>
           </section>
         ) : null}

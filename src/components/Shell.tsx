@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import {
+  Building2,
   CalendarDays,
   Home,
   HelpCircle,
@@ -43,7 +44,17 @@ const adminTabs = [
   { to: '/admin/help', label: 'Help', icon: HelpCircle },
 ]
 
+const superadminTabs = [
+  { to: '/superadmin', end: true, label: 'Overview', icon: Building2 },
+  { to: '/admin/ops', label: 'Floor', icon: Home },
+  { to: '/admin/board', label: 'Schedule', icon: Tv },
+  { to: '/admin/open', label: 'Open play', icon: Users },
+  { to: '/admin/bookings', label: 'Bookings', icon: CalendarDays },
+  { to: '/admin/help', label: 'Help', icon: HelpCircle },
+]
+
 function tabsFor(role: Role) {
+  if (role === 'superadmin') return superadminTabs
   if (role === 'admin') return adminTabs
   if (role === 'staff') return staffTabs
   return memberTabs
@@ -53,7 +64,7 @@ export function SideNav({ role }: { role: Role }) {
   const { user, signOut } = useAuth()
   const tabs = tabsFor(role)
   const roleLabel =
-    role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Member'
+    role === 'superadmin' ? 'Superadmin' : role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Member'
 
   return (
     <aside className="side-nav">
@@ -157,28 +168,35 @@ export function AppShell({
 export function AppHeader({
   title,
   subtitle,
+  left,
   right,
 }: {
   title: string
   subtitle?: string
+  left?: ReactNode
   right?: ReactNode
 }) {
   return (
     <header className="sticky top-0 z-30 bg-white/98 backdrop-blur border-b border-slate-200 pt-4 pb-3.5">
       <div className="app-content-rail flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 md:hidden mb-1">
-            <RallyPointLogo variant="mark" className="w-8 h-8 object-contain" />
-            <p className="text-caption font-bold text-brand-800">Rally Point</p>
+        <div className="flex items-start gap-3 min-w-0">
+          {left ? <div className="shrink-0 mt-0.5">{left}</div> : null}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 md:hidden mb-1">
+              <RallyPointLogo variant="mark" className="w-8 h-8 object-contain" />
+              <p className="text-caption font-bold text-brand-800">Rally Point</p>
+            </div>
+            {title ? (
+              <h1 className="text-heading-2 font-semibold text-slate-900 tracking-normal">
+                {title}
+              </h1>
+            ) : null}
+            {subtitle ? (
+              <p className="text-subtitle font-medium text-slate-600 mt-1">
+                {subtitle}
+              </p>
+            ) : null}
           </div>
-          <h1 className="text-heading-2 font-semibold text-slate-900 tracking-normal">
-            {title}
-          </h1>
-          {subtitle ? (
-            <p className="text-subtitle font-medium text-slate-600 mt-1">
-              {subtitle}
-            </p>
-          ) : null}
         </div>
         <div className="shrink-0">{right}</div>
       </div>

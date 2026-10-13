@@ -164,7 +164,7 @@ describe('MemberHome renewal action', () => {
     expect(await screen.findByText('Renewal checkout')).toBeInTheDocument()
   })
 
-  it('removes only the duplicate renewal tile and preserves unique member actions', async () => {
+  it('does not display redundant quick actions on member home', async () => {
     render(
       <MemoryRouter initialEntries={['/member']}>
         <MemberHome />
@@ -172,20 +172,10 @@ describe('MemberHome renewal action', () => {
     )
 
     await screen.findByText('Your membership')
-    expect(
-      screen.queryByRole('link', { name: /pay dues/i }),
-    ).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /book a court/i })).toHaveAttribute(
-      'href',
-      '/member/book',
-    )
-    expect(
-      screen.getByRole('link', { name: /join open play/i }),
-    ).toHaveAttribute('href', '/member/open')
-    expect(screen.getByRole('link', { name: /show my qr/i })).toHaveAttribute(
-      'href',
-      '/member/pass',
-    )
+    expect(screen.queryByText('Quick actions')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /book a court/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /join open play/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /show my qr/i })).not.toBeInTheDocument()
   })
 
   it('loads member data through the existing API boundary', async () => {

@@ -28,8 +28,10 @@ import { LoadingBlock } from './components/Shell'
 import { useEffect } from 'react'
 import { api } from './lib/api'
 import { HelpPage } from './pages/HelpPage'
+import { SuperadminPage } from './pages/Superadmin'
 
 function homeFor(role: Role) {
+  if (role === 'superadmin') return '/superadmin'
   if (role === 'admin') return '/admin'
   if (role === 'staff') return '/staff'
   return '/member'
@@ -86,7 +88,7 @@ export default function App() {
           <Route path="/staff/help" element={<HelpPage />} />
         </Route>
 
-        <Route element={<Protected roles={['admin']} />}>
+        <Route element={<Protected roles={['admin', 'superadmin']} />}>
           <Route path="/admin" element={<AdminHome />} />
           <Route path="/admin/members" element={<AdminMembers />} />
           <Route path="/admin/members/new" element={<AdminMemberForm />} />
@@ -98,6 +100,10 @@ export default function App() {
           <Route path="/admin/transactions" element={<AdminTransactions />} />
           <Route path="/admin/users" element={<AdminUsers />} />
           <Route path="/admin/help" element={<HelpPage />} />
+        </Route>
+
+        <Route element={<Protected roles={['superadmin']} />}>
+          <Route path="/superadmin" element={<SuperadminPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

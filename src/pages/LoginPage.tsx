@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import {
   ArrowRight,
   Camera,
+  Crown,
   Eye,
   EyeOff,
   Shield,
@@ -15,6 +16,12 @@ import { RallyPointLogo } from '../components/RallyPointLogo'
 import { helpFaqs } from '../lib/helpContent'
 
 const demos: { role: Role; email: string; password: string; label: string }[] = [
+  {
+    role: 'superadmin',
+    email: 'superadmin@rallypoint.local',
+    password: 'superadmin123',
+    label: 'Superadmin',
+  },
   {
     role: 'admin',
     email: 'admin@rallypoint.local',
@@ -39,6 +46,7 @@ const HERO_VIDEO = `${import.meta.env.BASE_URL}media/pickleball-hero.mp4`
 const HERO_POSTER = `${import.meta.env.BASE_URL}media/pickleball-poster.jpg`
 
 function homeFor(role: Role) {
+  if (role === 'superadmin') return '/superadmin'
   if (role === 'admin') return '/admin'
   if (role === 'staff') return '/staff'
   return '/member'
@@ -406,7 +414,7 @@ export default function LoginPage() {
                 <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
                   Quick demo logins
                 </p>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {demos.map((d) => (
                     <button
                       key={d.role}
@@ -419,7 +427,13 @@ export default function LoginPage() {
                       }}
                     >
                       <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center mb-2">
-                        {d.role === 'admin' ? <Shield size={16} /> : <UserRound size={16} />}
+                        {d.role === 'superadmin' ? (
+                          <Crown size={16} />
+                        ) : d.role === 'admin' ? (
+                          <Shield size={16} />
+                        ) : (
+                          <UserRound size={16} />
+                        )}
                       </div>
                       <p className="text-sm font-bold text-slate-800">{d.label}</p>
                       <p className="text-[10px] text-slate-400 mt-0.5 truncate">{d.password}</p>

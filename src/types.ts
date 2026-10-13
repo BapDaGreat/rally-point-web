@@ -1,4 +1,4 @@
-export type Role = 'member' | 'staff' | 'admin'
+export type Role = 'member' | 'staff' | 'admin' | 'superadmin'
 
 export type MembershipType = 'basic' | 'standard' | 'premium'
 export type MemberStatus = 'active' | 'expired' | 'pending' | 'suspended'
@@ -22,12 +22,50 @@ export interface Profile {
   role: Role
   phone?: string | null
   avatar_url?: string | null
+  branch_id?: string | null
   created_at: string
+}
+
+export interface Branch {
+  id: string
+  name: string
+  slug: string
+  city: string
+  address: string
+  phone?: string | null
+  email?: string | null
+  commission_rate: number
+  commission_type: 'percentage' | 'fixed'
+  status: 'active' | 'suspended'
+  created_at: string
+}
+
+export interface PlatformCommission {
+  id: string
+  branch_id: string
+  branch_name: string
+  booking_id?: string | null
+  transaction_id?: string | null
+  description: string
+  gross_amount: number
+  commission_rate: number
+  commission_amount: number
+  branch_net_amount: number
+  status: 'settled' | 'pending'
+  created_at: string
+}
+
+export interface SuperadminStats {
+  totalGrossVolume: number
+  totalCommissionsEarned: number
+  activeBranchesCount: number
+  totalBookingsCount: number
 }
 
 export interface Member {
   id: string
   user_id?: string | null
+  branch_id?: string | null
   member_code: string
   full_name: string
   email?: string | null
@@ -43,6 +81,7 @@ export interface Member {
 
 export interface Court {
   id: string
+  branch_id?: string | null
   name: string
   status: CourtStatus
   hourly_rate: number
@@ -57,6 +96,7 @@ export interface CourtSessionPlayer {
 
 export interface CourtSession {
   id: string
+  branch_id?: string | null
   court_id: string
   member_id?: string | null
   guest_name?: string | null
@@ -74,6 +114,7 @@ export interface CourtSession {
 
 export interface Booking {
   id: string
+  branch_id?: string | null
   court_id: string
   member_id: string
   start_at: string
@@ -121,6 +162,7 @@ export interface CheckIn {
 
 export interface Transaction {
   id: string
+  branch_id?: string | null
   member_id?: string | null
   amount: number
   type: TxType
@@ -141,6 +183,7 @@ export interface Notification {
 
 export interface SupportInquiry {
   id: string
+  branch_id?: string | null
   user_id: string
   category: InquiryCategory
   subject: string
