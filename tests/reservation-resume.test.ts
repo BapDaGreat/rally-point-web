@@ -2,12 +2,13 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { historicalMigrations, historicalSqlSuites } from './fixtures/reservation-resume-baseline'
 
 const candidate = 'docs/release-private/reservation-rpc-resume-20260926-r1/candidate/supabase/migrations'
 const sha = (text: string | Buffer) => createHash('sha256').update(text).digest('hex')
 const checks = () => import('../scripts/reservation-resume-checks.mjs')
 const hex = 'a'.repeat(64)
-const sqlSuites = readdirSync('supabase/tests/database').filter(n => n.endsWith('.test.sql')).sort()
+const sqlSuites = [...historicalSqlSuites]
 const authorizationCases = ['member-own', 'same-club-private', 'staff-assigned-venue', 'staff-unassigned-venue',
   'admin-own-club', 'cross-club', 'forged-ids', 'revoked-staff-grant', 'anonymous-denial',
   'safe-tv', 'limited-roster', 'legacy-direct-write-denial']
@@ -43,9 +44,9 @@ describe('guarded reservation RPC resume preparation', () => {
     expect(readdirSync('supabase/migrations').filter(n => n.includes('reservation_rpc_resume'))).toEqual([])
   })
 
-  it('prepares actual staging and clean replay orders, with resume last', async () => {
+  it('prepares the frozen September staging and clean replay orders, with resume last', async () => {
     const { makeResumeOrders } = await checks()
-    const names = readdirSync('supabase/migrations').filter(n => n.endsWith('.sql'))
+    const names = [...historicalMigrations]
     const draft = '20990101000000_reservation_rpc_resume.sql'
     const orders = makeResumeOrders(names, draft)
     expect(orders.map(o => o.order)).toEqual(['pause-enforcement-resume', 'enforcement-pause-resume'])
@@ -58,6 +59,14 @@ describe('guarded reservation RPC resume preparation', () => {
       '20260925174111_reservation_write_pause.sql',
       '20260921111105_tenant_enforcement.sql', draft,
     ])
+  })
+
+  it('rejects the current larger migration inventory instead of silently expanding the frozen scope', async () => {
+    const { makeResumeOrders } = await checks()
+    const current = readdirSync('supabase/migrations').filter(n => n.endsWith('.sql')).sort()
+    expect(current).toEqual(expect.arrayContaining([...historicalMigrations,
+      '20260927105500_support_inquiries.sql', '20260928170000_support_inquiry_replies.sql']))
+    expect(() => makeResumeOrders(current, '20990101000000_reservation_rpc_resume.sql')).toThrow('Unreviewed or missing migration')
   })
 
   it('preserves the applied pause and consumed staging package', () => {
@@ -134,7 +143,7 @@ describe('guarded reservation RPC resume preparation', () => {
     }
     expect(() => validateResumeProof(bytes, { ...expected, backendPid: 0 })).toThrow()
     expect(() => validateResumeProof(bytes, { ...expected, transactionId: '1; grant all' })).toThrow()
-    const names = readdirSync('supabase/migrations').filter(n => n.endsWith('.sql'))
+    const names = [...historicalMigrations]
     for (const bad of [names.slice(1), [...names, names[0]], [...names, 'unexpected.sql']]) {
       expect(() => makeResumeOrders(bad, '20990101000000_reservation_rpc_resume.sql')).toThrow()
     }
@@ -169,7 +178,7 @@ describe('guarded reservation RPC resume preparation', () => {
   it('allows only the nine exact RPC ACL additions and the resume ledger row in postflight', async () => {
     const { verifyResumeDelta, resumeCatalogIdentities, reservationTables, reservationRpcs } = await checks()
     const version = '20260926063659'
-    const versions = readdirSync('supabase/migrations').filter(n => n.endsWith('.sql')).sort().map(n => n.split('_')[0])
+    const versions = historicalMigrations.map(n => n.split('_')[0])
     const roles = ['public', 'anon', 'authenticated', 'service_role']
     const audit = [
       ...roles.flatMap(role_name => reservationTables.map((target: string) => ({ kind: 'table write', role_name, target, violation: false }))),

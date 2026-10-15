@@ -284,7 +284,7 @@ describe('member booking and pass pages', () => {
 
   it('renders a member QR pass and the no-membership state', async () => {
     const first = render(<MemoryRouter><MemberPass /></MemoryRouter>)
-    expect(await screen.findByAltText('Check-in QR code')).toBeInTheDocument()
+    expect(await screen.findByRole('img', { name: 'Check-in QR code' })).toBeInTheDocument()
     expect(screen.getByText('RP-1001')).toBeInTheDocument()
     first.unmount()
     apiMock.memberForUser.mockResolvedValueOnce(null)

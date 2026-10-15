@@ -4,7 +4,7 @@ import { load, save } from './persistence'
 
 function requireSuperadmin(db: ReturnType<typeof load>) {
   const actor = db.profiles.find((profile) => profile.id === db.sessionUserId)
-  if (actor?.role !== 'superadmin') throw new Error('Only superadmins can manage platform branches')
+  if (actor?.role !== 'superadmin') throw new Error('Only superadmins can manage branches')
 }
 
 export const superadminOperations = {

@@ -41,10 +41,10 @@ describe('demoStore account and catalog behavior', () => {
 
   it('loads the seeded catalog and supports login/logout', () => {
     const db = demoStore.get()
-    expect(db.profiles).toHaveLength(3)
+    expect(db.profiles).toHaveLength(4)
     expect(demoStore.members()).toHaveLength(40)
     expect(demoStore.courts()).toHaveLength(4)
-    expect(demoStore.users().map((user) => user.role)).toEqual(['admin', 'staff', 'member'])
+    expect(demoStore.users().map((user) => user.role)).toEqual(['superadmin', 'admin', 'staff', 'member'])
     expect(demoStore.currentUser()).toBeNull()
 
     expect(demoStore.login(' MEMBER@RALLYPOINT.LOCAL ', 'member123').role).toBe('member')

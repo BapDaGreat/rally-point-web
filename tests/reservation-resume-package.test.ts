@@ -1,11 +1,29 @@
 // @vitest-environment node
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { historicalMigrations, historicalSqlSuites } from './fixtures/reservation-resume-baseline'
+
+// Only this unit-test module substitutes historical directory listings. Real
+// packager code and negative tests still see/reject the larger working tree.
+const listing = vi.hoisted(() => ({ migrations: undefined as string[] | undefined, suites: undefined as string[] | undefined }))
+vi.mock('node:fs', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  const path = await import('node:path')
+  return { ...actual, readdirSync: (...args: Parameters<typeof actual.readdirSync>) => {
+    const directory = path.resolve(String(args[0]))
+    if (directory === path.resolve('supabase/migrations') && listing.migrations) return [...listing.migrations]
+    if (directory === path.resolve('supabase/tests/database') && listing.suites) return [...listing.suites]
+    return actual.readdirSync(...args)
+  } }
+})
+const useHistoricalInventory = () => { listing.migrations = [...historicalMigrations]; listing.suites = [...historicalSqlSuites] }
 
 const parents: string[] = []
 const load = () => import('../scripts/reservation-resume-package.mjs')
 afterEach(() => {
+  listing.migrations = undefined
+  listing.suites = undefined
   for (const path of parents.splice(0)) {
     if (!path.startsWith(join(resolve('.'), 'docs/release-private/resume-package-test-'))) throw new Error('Unsafe cleanup')
     rmSync(path, { recursive: true, force: true })
@@ -13,7 +31,8 @@ afterEach(() => {
 })
 
 describe.sequential('local-only resume verification package', () => {
-  it('freezes all 16 SQL files, every existing suite, seed and guard checks without a DB transport', async () => {
+  it('freezes the 16 historical SQL files, eight historical suites, seed and guard checks without a DB transport', async () => {
+    useHistoricalInventory()
     const { prepareResumePackage, verifyResumePackage } = await load()
     const parent = mkdtempSync(join(resolve('.'), 'docs/release-private/resume-package-test-'))
     parents.push(parent)
@@ -37,6 +56,7 @@ describe.sequential('local-only resume verification package', () => {
   }, 20000)
 
   it('rejects changed package files and unsafe output locations', async () => {
+    useHistoricalInventory()
     const { prepareResumePackage, verifyResumePackage } = await load()
     expect(() => prepareResumePackage(resolve('dist'))).toThrow()
     const parent = mkdtempSync(join(resolve('.'), 'docs/release-private/resume-package-test-'))
@@ -64,5 +84,24 @@ describe.sequential('local-only resume verification package', () => {
     expect(plan.requiredPostflight).toContain('only-nine-authenticated-execute-grants-and-ledger-entry')
     expect(plan.requiredPostflight).toContain('both-sequences-and-unrelated-data-unchanged')
     expect(plan.stagingResumeAuthorized).toBe(false)
+  })
+
+  it('rejects the real expanded migration inventory before creating any package', async () => {
+    const { prepareResumePackage } = await load()
+    const parent = mkdtempSync(join(resolve('.'), 'docs/release-private/resume-package-test-'))
+    parents.push(parent)
+    const directory = join(parent, 'rejected-current-inventory')
+    expect(() => prepareResumePackage(directory)).toThrow('Unreviewed or missing migration')
+    expect(existsSync(directory)).toBe(false)
+  })
+
+  it('also rejects a larger SQL suite inventory when migration input is historical', async () => {
+    const { prepareResumePackage } = await load()
+    listing.migrations = [...historicalMigrations]
+    const parent = mkdtempSync(join(resolve('.'), 'docs/release-private/resume-package-test-'))
+    parents.push(parent)
+    const directory = join(parent, 'rejected-current-suites')
+    expect(() => prepareResumePackage(directory)).toThrow('SQL suite inventory changed; review required')
+    expect(existsSync(directory)).toBe(false)
   })
 })

@@ -56,6 +56,7 @@ export function MemberPass() {
             {payload ? (
               <div className="rounded-2xl border border-slate-100 bg-white p-3 inline-flex items-center justify-center shadow-xs">
                 <QRCodeSVG
+                  role="img"
                   value={payload}
                   size={200}
                   level="M"

@@ -85,7 +85,7 @@ describe('live financial labels', () => {
     render(<MemoryRouter><MemberHome /></MemoryRouter>)
     expect(await screen.findByText('Recent charges')).toBeInTheDocument()
     expect(screen.getByText('Php 500.00 recorded')).toBeInTheDocument()
-    expect(screen.getByText('Check available times')).toBeInTheDocument()
+    expect(screen.queryByText('Quick actions')).not.toBeInTheDocument()
     expect(screen.queryByText('Recent payments')).not.toBeInTheDocument()
     expect(screen.queryByText('Pick time & pay')).not.toBeInTheDocument()
   })
