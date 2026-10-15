@@ -17,6 +17,7 @@ describe('demoStore inquiry workflow', () => {
     })
 
     expect(demoStore.inquiriesForUser(staff.id)).toHaveLength(1)
+    expect(inquiry.club_id).toBe('club_rally_point')
     expect(() => demoStore.allInquiries()).toThrow('Only admins can view all inquiries')
     expect(() =>
       demoStore.createInquiry({
@@ -40,6 +41,7 @@ describe('demoStore inquiry workflow', () => {
       responded_by: admin.id,
     })
     expect(demoStore.notifications(staff.id)).toHaveLength(1)
+    expect(demoStore.notifications(staff.id)[0].club_id).toBe(inquiry.club_id)
 
     demoStore.respondToInquiry({
       id: inquiry.id,
@@ -64,5 +66,32 @@ describe('demoStore inquiry workflow', () => {
       title: 'Inquiry update',
       read: false,
     })
+  })
+
+  it('rejects member submissions and hides inquiries assigned to another club', () => {
+    const member = demoStore.login('member@rallypoint.local', 'member123')
+    expect(() => demoStore.createInquiry({
+      user_id: member.id,
+      category: 'other',
+      subject: 'Not permitted',
+      message: 'Members use the contact details.',
+    })).toThrow('Only staff and admins can submit inquiries for their own account')
+
+    const db = demoStore.get()
+    db.inquiries.push({
+      id: 'outside-club',
+      club_id: 'other-club',
+      user_id: 'user_staff',
+      category: 'other',
+      subject: 'Private elsewhere',
+      message: 'Not in this club.',
+      status: 'open',
+      created_at: new Date().toISOString(),
+    })
+    demoStore.set(db)
+    demoStore.login('admin@rallypoint.local', 'admin123')
+    expect(demoStore.allInquiries()).toEqual([])
+    expect(() => demoStore.respondToInquiry({ id: 'outside-club', status: 'resolved' }))
+      .toThrow('Inquiry not found')
   })
 })

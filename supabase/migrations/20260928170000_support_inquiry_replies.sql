@@ -20,7 +20,7 @@ create or replace function public.admin_update_support_inquiry(
 returns setof public.support_inquiries
 language plpgsql
 security definer
-set search_path = public, private, pg_catalog
+set search_path = pg_catalog, public, private
 as $$
 declare
   v_inquiry public.support_inquiries;
@@ -28,7 +28,7 @@ declare
   v_status_label text;
   v_notification_body text;
 begin
-  if (select private.current_role()) is distinct from 'admin'::public.user_role then
+  if private.current_club_role(private.current_club_id()) is distinct from 'admin'::public.user_role then
     raise exception 'Only admins can update inquiries' using errcode = '42501';
   end if;
 
@@ -43,7 +43,7 @@ begin
   select *
     into v_inquiry
     from public.support_inquiries
-    where id = p_inquiry_id
+    where id = p_inquiry_id and club_id = private.current_club_id()
     for update;
 
   if not found then
@@ -64,7 +64,7 @@ begin
         response = coalesce(v_response, response),
         responded_by = case when v_response is null then responded_by else auth.uid() end,
         responded_at = case when v_response is null then responded_at else now() end
-    where id = p_inquiry_id
+    where id = p_inquiry_id and club_id = private.current_club_id()
     returning * into v_inquiry;
 
   v_status_label := replace(v_inquiry.status, '_', ' ');
@@ -78,8 +78,8 @@ begin
     end
   );
 
-  insert into public.notifications (user_id, title, body)
-    values (v_inquiry.user_id, 'Inquiry update', v_notification_body);
+  insert into public.notifications (club_id, user_id, title, body)
+    values (v_inquiry.club_id, v_inquiry.user_id, 'Inquiry update', v_notification_body);
 
   return next v_inquiry;
 end;

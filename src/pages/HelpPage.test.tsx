@@ -46,6 +46,7 @@ const adminUser = {
 
 const inquiry = {
   id: 'inquiry-1',
+  club_id: 'club_rally_point',
   user_id: staffUser.id,
   category: 'booking',
   subject: 'Schedule access',

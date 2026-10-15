@@ -14,6 +14,7 @@ import {
 } from '../components/Shell'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
+import { isDemoMode } from '../lib/supabase'
 import type { Member, Notification, Transaction } from '../types'
 import { fmtDate, peso, friendlyStatus } from '../types'
 
@@ -116,7 +117,7 @@ export function MemberHome() {
 
             <section className="card p-4">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="text-subtitle font-semibold">Recent payments</h2>
+                <h2 className="text-subtitle font-semibold">{isDemoMode ? 'Recent payments' : 'Recent charges'}</h2>
                 <Link
                   to="/member/transactions"
                   className="control-feedback text-body font-semibold text-brand-800 min-h-12 px-2 inline-flex items-center"
@@ -126,7 +127,7 @@ export function MemberHome() {
               </div>
               {txs.length === 0 ? (
                 <p className="text-body font-normal text-slate-600 py-3">
-                  No payments yet.
+                  {isDemoMode ? 'No payments yet.' : 'No charges recorded yet.'}
                 </p>
               ) : (
                 txs.map((t) => (
@@ -140,7 +141,7 @@ export function MemberHome() {
                       </p>
                     </div>
                     <p className="text-subtitle font-bold whitespace-nowrap">
-                      {peso(t.amount)}
+                      {peso(t.amount)}{!isDemoMode || t.verification_status === 'unverified' ? ' recorded' : ''}
                     </p>
                   </div>
                 ))
@@ -166,7 +167,7 @@ export function MemberPay() {
   }, [user])
 
   async function pay() {
-    if (!user || !member) return
+    if (!isDemoMode || !user || !member) return
     setBusy(true)
     try {
       await api.payMembership(member.id, amount, user.id)
@@ -183,14 +184,14 @@ export function MemberPay() {
   return (
     <AppShell role="member">
       <AppHeader
-        title="Online payment"
-        subtitle="Membership renewal"
+        title={isDemoMode ? 'Online payment' : 'Renew at the desk'}
+        subtitle={isDemoMode ? 'Membership renewal' : 'Renew at the desk'}
         right={<SignOutButton />}
       />
       <main className="safe-bottom px-4 pt-4 space-y-4">
         <section className="card p-4">
           <p className="text-caption font-bold uppercase text-slate-400">
-            Amount due
+            {isDemoMode ? 'Amount due' : 'Renewal price'}
           </p>
           <p className="text-heading-1 font-bold text-slate-900 mt-1">
             {peso(amount)}
@@ -199,7 +200,12 @@ export function MemberPay() {
             {member?.membership_type ?? '—'} plan · {member?.member_code}
           </p>
         </section>
-        <section className="card p-4 space-y-3">
+        {!isDemoMode ? (
+          <section className="card border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            <p className="font-extrabold">Online renewal is not available yet.</p>
+            <p className="mt-1">No payment is collected online. This is the listed renewal price; please renew at the desk.</p>
+          </section>
+        ) : <section className="card p-4 space-y-3">
           <div>
             <label className="label">Cardholder</label>
             <input className="input" defaultValue={user?.full_name} />
@@ -231,7 +237,7 @@ export function MemberPay() {
           >
             {busy ? 'Processing…' : `Pay ${peso(amount)}`}
           </button>
-        </section>
+        </section>}
       </main>
       {msg ? <div className="toast">{msg}</div> : null}
     </AppShell>
@@ -255,7 +261,7 @@ export function MemberTransactions() {
     <AppShell role="member">
       <AppHeader
         title="Transactions"
-        subtitle="Your payments"
+        subtitle={isDemoMode ? 'Your payments' : 'Recorded charges'}
         right={<SignOutButton />}
       />
       <main className="safe-bottom px-4 pt-4">
@@ -271,7 +277,7 @@ export function MemberTransactions() {
                     {t.type.replace('_', ' ')} · {fmtDate(t.created_at)}
                   </p>
                 </div>
-                <p className="text-body font-bold">{peso(t.amount)}</p>
+                <p className="text-body font-bold">{peso(t.amount)}{!isDemoMode || t.verification_status === 'unverified' ? ' recorded' : ''}</p>
               </div>
             ))}
           </section>

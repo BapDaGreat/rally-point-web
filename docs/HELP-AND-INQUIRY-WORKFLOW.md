@@ -28,7 +28,7 @@ There is no five-item cap or automatic expiry. Inquiries persist until removed b
 
 ### Demo mode
 
-When Supabase configuration is blank or missing, `src/lib/supabase.ts` selects demo mode. Inquiries and notifications are stored in the browser-local demo database through `src/lib/demoStore.ts`. Each browser has its own demo data; demo records are not shared across browsers or users and are not live club records.
+When Supabase configuration is blank or missing, `src/lib/supabase.ts` selects demo mode. Inquiries and notifications are stored in the browser-local demo database through `src/lib/demoStore.ts` and `src/lib/demo/inquiries.ts`. Each browser has its own demo data; demo records are not shared across browsers or users and are not live club records.
 
 Use the seeded demo accounts from the README to inspect the workflow. Suggested walkthrough:
 
@@ -43,8 +43,8 @@ The API boundary in `src/lib/api.ts` writes to `public.support_inquiries`, reads
 Apply the existing migrations to a **verified local or staging target** in migration order. The Help inquiry workflow depends on:
 
 1. The baseline schema migrations `001_rally_point.sql` through `004_member_signup.sql`.
-2. `20260803125450_authorization_boundary.sql`, which defines the private `private.current_role()` helper required by the inquiry policies and reply operation.
-3. Any intervening timestamped migrations in chronological order, including `20260805094557_auth_rate_limits.sql`.
+2. The authorization and tenant migrations through `20260921111105_tenant_enforcement.sql`, including `private.current_club_id()` and `private.current_club_role(uuid)`.
+3. Any intervening timestamped migrations in chronological order, including the tenant grant repair and later booking migrations.
 4. `20260927105500_support_inquiries.sql`, which creates the inquiry table and read/insert RLS policies.
 5. `20260928170000_support_inquiry_replies.sql`, which adds reply metadata and the Admin status/reply operation.
 
@@ -53,9 +53,9 @@ Do not run only the inquiry migrations against an incomplete or legacy schema. C
 ### Live authorization details
 
 - A Staff user can insert an inquiry only for their own authenticated user ID and read only their own inquiries.
-- Admins can read all inquiries.
+- Admins can read all inquiries for the current club. Inquiries have a required `club_id`; they are club-wide rather than venue-specific.
 - Direct `UPDATE` permission on inquiries is revoked. Admin status/reply changes must use `public.admin_update_support_inquiry(...)`.
-- The RPC checks the caller’s trusted profile role, locks the target inquiry, validates the status/reply, enforces the one-response rule, updates the inquiry, and inserts the Staff notification in the same database transaction.
+- The RPC checks the caller’s active club Admin role, locks only an inquiry in that club, validates the status/reply, enforces the one-response rule, updates the inquiry, and inserts a notification with the same club ID in the same database transaction.
 - Notification reads and mark-read updates remain scoped to the authenticated user by the existing notifications policies.
 
 These controls require the authorization and inquiry migrations to be installed. Client-side role checks are not a substitute for RLS or the RPC role check.
@@ -70,7 +70,7 @@ These controls require the authorization and inquiry migrations to be installed.
 | Role-aware Help, contact, inquiry form, inbox/history | `src/pages/HelpPage.tsx` |
 | Public FAQ/social preview | `src/pages/LoginPage.tsx` |
 | Domain types | `src/types.ts` |
-| Demo/live data boundary | `src/lib/api.ts`, `src/lib/demoStore.ts` |
+| Demo/live data boundary | `src/lib/api.ts`, `src/lib/demoStore.ts`, `src/lib/demo/inquiries.ts` |
 | Inquiry table and RLS | `supabase/migrations/20260927105500_support_inquiries.sql` |
 | Reply RPC and notification transaction | `supabase/migrations/20260928170000_support_inquiry_replies.sql` |
 | UI and demo workflow tests | `src/pages/HelpPage.test.tsx`, `src/lib/demoStore.inquiries.test.ts` |

@@ -15,6 +15,39 @@ export type SkillLevel = 'all' | 'beginner' | 'intermediate' | 'advanced'
 export type InquiryCategory = 'booking' | 'membership' | 'payment' | 'technical' | 'other'
 export type InquiryStatus = 'open' | 'in_progress' | 'resolved'
 
+export interface Club {
+  id: string
+  slug: string
+  name: string
+  default_timezone: string
+  is_active: boolean
+}
+
+export interface Venue {
+  id: string
+  club_id: string
+  slug: string
+  name: string
+  timezone: string
+  open_hour: number
+  close_hour: number
+  is_active: boolean
+}
+
+export interface StaffVenueGrant {
+  club_id: string
+  user_id: string
+  venue_id: string
+  granted_by?: string | null
+  is_active: boolean
+}
+
+export interface TenantContext {
+  club: Club
+  venues: Venue[]
+  role?: Role | null
+}
+
 export interface Profile {
   id: string
   email: string
@@ -24,6 +57,7 @@ export interface Profile {
   avatar_url?: string | null
   branch_id?: string | null
   created_at: string
+  venue_ids?: string[]
 }
 
 export interface Branch {
@@ -64,6 +98,7 @@ export interface SuperadminStats {
 
 export interface Member {
   id: string
+  club_id?: string
   user_id?: string | null
   branch_id?: string | null
   member_code: string
@@ -82,6 +117,8 @@ export interface Member {
 export interface Court {
   id: string
   branch_id?: string | null
+  club_id?: string
+  venue_id?: string
   name: string
   status: CourtStatus
   hourly_rate: number
@@ -97,6 +134,8 @@ export interface CourtSessionPlayer {
 export interface CourtSession {
   id: string
   branch_id?: string | null
+  club_id?: string
+  venue_id?: string
   court_id: string
   member_id?: string | null
   guest_name?: string | null
@@ -115,6 +154,8 @@ export interface CourtSession {
 export interface Booking {
   id: string
   branch_id?: string | null
+  club_id?: string
+  venue_id?: string
   court_id: string
   member_id: string
   start_at: string
@@ -153,6 +194,8 @@ export interface PaymentIntent {
 
 export interface CheckIn {
   id: string
+  club_id?: string
+  venue_id?: string
   member_id: string
   checked_in_at: string
   staff_id?: string | null
@@ -163,6 +206,9 @@ export interface CheckIn {
 export interface Transaction {
   id: string
   branch_id?: string | null
+  club_id?: string
+  venue_id?: string | null
+  verification_status?: 'unverified' | 'verified'
   member_id?: string | null
   amount: number
   type: TxType
@@ -174,6 +220,8 @@ export interface Transaction {
 
 export interface Notification {
   id: string
+  club_id?: string
+  venue_id?: string | null
   user_id: string
   title: string
   body: string
@@ -184,6 +232,7 @@ export interface Notification {
 export interface SupportInquiry {
   id: string
   branch_id?: string | null
+  club_id: string
   user_id: string
   category: InquiryCategory
   subject: string
@@ -198,6 +247,8 @@ export interface SupportInquiry {
 
 export interface WalkIn {
   id: string
+  club_id?: string
+  venue_id?: string
   full_name: string
   phone?: string | null
   purpose: string
@@ -216,6 +267,8 @@ export interface DashboardStats {
 
 export interface OpenPlaySession {
   id: string
+  club_id?: string
+  venue_id?: string
   title: string
   court_id?: string | null
   start_at: string
@@ -234,6 +287,8 @@ export interface OpenPlaySession {
 
 export interface OpenPlaySignup {
   id: string
+  club_id?: string
+  venue_id?: string
   open_play_id: string
   member_id: string
   status: OpenPlaySignupStatus
@@ -245,6 +300,8 @@ export interface ScheduleBlock {
   id: string
   kind: 'session' | 'booking' | 'open_play'
   court_id?: string | null
+  venue_id?: string | null
+  venue_name?: string
   court_name: string
   title: string
   subtitle?: string
@@ -256,6 +313,8 @@ export interface ScheduleBlock {
 
 export interface Reminder {
   id: string
+  club_id?: string
+  venue_id?: string | null
   user_id: string
   kind: ReminderKind
   title: string

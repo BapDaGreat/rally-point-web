@@ -6,7 +6,7 @@ create extension if not exists pgtap with schema extensions;
 
 set local search_path = public, extensions, pg_catalog;
 
-select extensions.plan(15);
+select extensions.plan(18);
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
@@ -19,6 +19,15 @@ update public.profiles set role = 'staff' where id in (
   '22222222-2222-4222-8222-222222222222'
 );
 update public.profiles set role = 'admin' where id = '33333333-3333-4333-8333-333333333333';
+
+insert into public.club_staff_roles (club_id, user_id, role, is_active)
+values
+  (private.current_club_id(), '11111111-1111-4111-8111-111111111111', 'staff', true),
+  (private.current_club_id(), '22222222-2222-4222-8222-222222222222', 'staff', true),
+  (private.current_club_id(), '33333333-3333-4333-8333-333333333333', 'admin', true);
+
+insert into public.clubs (id, slug, name)
+values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'inquiry-other-club', 'Other Club');
 
 set local role authenticated;
 set local request.jwt.claim.sub = '11111111-1111-4111-8111-111111111111';
@@ -37,9 +46,19 @@ select extensions.throws_ok(
   'staff cannot submit an inquiry for another account'
 );
 
+select extensions.throws_ok(
+  $$insert into public.support_inquiries (club_id, user_id, category, subject, message)
+    values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', auth.uid(), 'other', 'Wrong club', 'A forged club id.')$$,
+  '42501',
+  null,
+  'staff cannot submit an inquiry in another club'
+);
+
 set local role postgres;
 insert into public.support_inquiries (id, user_id, category, subject, message)
 values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '22222222-2222-4222-8222-222222222222', 'other', 'Other staff concern', 'A separate private inquiry.');
+insert into public.support_inquiries (id, club_id, user_id, category, subject, message)
+values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', '22222222-2222-4222-8222-222222222222', 'other', 'Other club concern', 'A separate club inquiry.');
 
 set local role authenticated;
 set local request.jwt.claim.sub = '11111111-1111-4111-8111-111111111111';
@@ -76,7 +95,20 @@ set local request.jwt.claim.sub = '33333333-3333-4333-8333-333333333333';
 select extensions.is(
   (select count(*)::integer from public.support_inquiries),
   2,
-  'Admin can read all staff inquiries'
+  'Admin can read all staff inquiries in their club'
+);
+
+select extensions.is(
+  (select count(*)::integer from public.support_inquiries where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'),
+  0,
+  'Admin cannot read an inquiry in another club'
+);
+
+select extensions.throws_ok(
+  $$select * from public.admin_update_support_inquiry('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'resolved', null)$$,
+  'P0002',
+  'Inquiry not found',
+  'Admin cannot update an inquiry in another club'
 );
 
 select extensions.throws_ok(
