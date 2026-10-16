@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Clock3, Pencil, Plus, Search, UserPlus, Users } from 'lucide-react'
 import { AppHeader, AppShell, LoadingBlock, SignOutButton } from '../components/Shell'
+import { BackButton } from '../components/BackButton'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
+import { isDemoMode } from '../lib/supabase'
 import type {
   Court,
   CourtSession,
@@ -13,6 +15,7 @@ import type {
   MemberStatus,
   Profile,
   Transaction,
+  Venue,
 } from '../types'
 import { fmtDate, fmtTime, peso } from '../types'
 
@@ -41,7 +44,7 @@ export function AdminHome() {
           <>
             <section className="grid grid-cols-2 gap-3">
               <div className="stat-card col-span-2">
-                <p className="text-teal-100 text-xs font-bold uppercase">Revenue today</p>
+                <p className="text-teal-100 text-xs font-bold uppercase">{isDemoMode ? 'Revenue today' : 'Recorded charges today'}</p>
                 <p className="text-3xl font-extrabold mt-1">{peso(stats.revenue_today)}</p>
               </div>
               <div className="card p-4">
@@ -73,12 +76,18 @@ export function AdminHome() {
                           <Link to="/admin/users" className="btn-secondary text-sm">
                             Users
                           </Link>
+                          <Link to="/admin/venues" className="btn-secondary text-sm">
+                            Venues & access
+                          </Link>
                         </div>
 
             <section className="card p-4">
               <div className="flex items-center justify-between mb-1">
                 <h2 className="font-extrabold">Latest transactions</h2>
-                <Link to="/admin/transactions" className="text-xs font-bold text-brand-700">
+                <Link
+                  to="/admin/transactions"
+                  className="control-feedback px-2 text-xs font-bold text-brand-700 inline-flex items-center"
+                >
                   All
                 </Link>
               </div>
@@ -88,7 +97,7 @@ export function AdminHome() {
                     <p className="font-semibold text-sm truncate">{t.description}</p>
                     <p className="text-xs text-slate-400">{fmtDate(t.created_at)}</p>
                   </div>
-                  <p className="font-bold text-sm">{peso(t.amount)}</p>
+                  <p className="font-bold text-sm">{peso(t.amount)}{!isDemoMode || t.verification_status === 'unverified' ? ' recorded' : ''}</p>
                 </div>
               ))}
             </section>
@@ -128,10 +137,11 @@ export function AdminMembers() {
       <AppHeader
         title="Members"
         subtitle={`${members.length} on file`}
+        left={<BackButton />}
         right={
           <button
             type="button"
-            className="w-10 h-10 rounded-full bg-brand-700 text-white flex items-center justify-center"
+            className="w-10 h-10 rounded-full bg-brand-700 text-white flex items-center justify-center shadow-xs"
             onClick={() => nav('/admin/members/new')}
             aria-label="New member"
           >
@@ -241,7 +251,11 @@ export function AdminMemberForm() {
 
   return (
     <AppShell role="admin">
-      <AppHeader title={isNew ? 'New member' : 'Update member'} right={<SignOutButton />} />
+      <AppHeader
+        title={isNew ? 'New member' : 'Update member'}
+        subtitle="Member directory record"
+        left={<BackButton />}
+      />
       <main className="safe-bottom px-4 pt-4">
         {loading ? (
           <LoadingBlock />
@@ -285,7 +299,7 @@ export function AdminMemberForm() {
               <textarea className="input min-h-24" value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
             {error ? <p className="text-sm font-semibold text-red-600">{error}</p> : null}
-            <button className="btn-primary" disabled={busy}>
+            <button className="btn-primary" disabled={busy} aria-busy={busy}>
               {busy ? 'Saving…' : isNew ? 'Create member' : 'Save changes'}
             </button>
             {!isNew ? (
@@ -302,6 +316,8 @@ export function AdminMemberForm() {
 
 export function AdminOps() {
   const { user } = useAuth()
+  const [venues, setVenues] = useState<Venue[]>([])
+  const [venueId, setVenueId] = useState('')
   const [courts, setCourts] = useState<Court[]>([])
   const [sessions, setSessions] = useState<CourtSession[]>([])
   const [members, setMembers] = useState<Member[]>([])
@@ -319,7 +335,18 @@ export function AdminOps() {
   const [wiAmount, setWiAmount] = useState(350)
 
   async function reload() {
-    const [c, s, m] = await Promise.all([api.listCourts(), api.playingSessions(), api.listMembers()])
+    let selectedVenueId = venueId
+    if (typeof api.listVenues === 'function') {
+      const accessibleVenues = await api.listVenues(user?.id, 'admin')
+      setVenues(accessibleVenues)
+      selectedVenueId = venueId && accessibleVenues.some((venue) => venue.id === venueId) ? venueId : accessibleVenues[0]?.id ?? ''
+      if (selectedVenueId !== venueId) setVenueId(selectedVenueId)
+    }
+    const [c, s, m] = await Promise.all([
+      selectedVenueId ? api.listCourts(selectedVenueId) : api.listCourts(),
+      selectedVenueId ? api.playingSessions(selectedVenueId) : api.playingSessions(),
+      api.listMembers(),
+    ])
     setCourts(c)
     setSessions(s)
     setMembers(m)
@@ -331,13 +358,14 @@ export function AdminOps() {
   useEffect(() => {
     void reload()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [venueId])
 
   async function rent(e: FormEvent) {
     e.preventDefault()
     try {
       await api.createRental({
         court_id: courtId,
+        ...(venueId ? { venue_id: venueId } : {}),
         member_id: memberId || undefined,
         guest_name: guest || undefined,
         hours,
@@ -374,6 +402,7 @@ export function AdminOps() {
       phone: wiPhone,
       purpose: wiPurpose,
       amount: wiAmount,
+      ...(venueId ? { venue_id: venueId } : {}),
       created_by: user?.id,
     })
     setMsg('Walk-in registered')
@@ -383,7 +412,8 @@ export function AdminOps() {
 
   async function checkIn(e: FormEvent) {
     e.preventDefault()
-    await api.checkIn(checkMemberId, user?.id, checkNote || undefined)
+    if (venueId) await api.checkIn(checkMemberId, user?.id, checkNote || undefined, venueId)
+    else await api.checkIn(checkMemberId, user?.id, checkNote || undefined)
     setMsg('Checked in')
     setCheckNote('')
     setTimeout(() => setMsg(null), 2000)
@@ -393,6 +423,14 @@ export function AdminOps() {
     <AppShell role="admin">
       <AppHeader title="Floor ops" subtitle="Check-in · courts · walk-in" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-3 space-y-3">
+        {venues.length > 1 ? (
+          <section className="card p-3">
+            <label className="label" htmlFor="admin-ops-venue">Venue</label>
+            <select id="admin-ops-venue" className="input" value={venueId} onChange={(event) => setVenueId(event.target.value)}>
+              {venues.map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}
+            </select>
+          </section>
+        ) : null}
         <div className="flex gap-1 overflow-x-auto pb-1">
           {(
             [
@@ -422,25 +460,34 @@ export function AdminOps() {
               <Clock3 size={18} /> Currently playing
             </h2>
             {sessions.length === 0 ? <p className="text-sm text-slate-500">No live sessions.</p> : null}
-            {sessions.map((s) => (
-              <div key={s.id} className="list-row items-start">
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm">{s.court?.name}</p>
-                  <p className="text-xs text-slate-500">
-                    {s.member?.full_name || s.guest_name || 'Guest'} · until {fmtTime(s.end_at)}
-                  </p>
-                  <p className="text-xs font-semibold text-brand-800 mt-1">{peso(s.amount)}</p>
+            {sessions.map((s) => {
+              const fallbackPlayers = [
+                s.member ? { full_name: s.member.full_name } : null,
+                s.guest_name ? { full_name: s.guest_name } : null,
+              ].filter((player): player is { full_name: string } => Boolean(player))
+              const names = (s.players?.length ? s.players : fallbackPlayers).map((p) => p.full_name)
+              const playerLabel = names.length ? names.join(', ') : 'Guest'
+
+              return (
+                <div key={s.id} className="list-row items-start">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm">{s.court?.name}</p>
+                    <p className="text-xs text-slate-500">
+                      {playerLabel} · until {fmtTime(s.end_at)}
+                    </p>
+                    <p className="text-xs font-semibold text-brand-800 mt-1">{peso(s.amount)}</p>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <button type="button" className="text-xs font-bold text-brand-700 px-2 py-1" onClick={() => void extend(s.id)}>
+                      +1h
+                    </button>
+                    <button type="button" className="text-xs font-bold text-slate-500 px-2 py-1" onClick={() => void end(s.id)}>
+                      End
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <button type="button" className="text-xs font-bold text-brand-700 px-2 py-1" onClick={() => void extend(s.id)}>
-                    +1h
-                  </button>
-                  <button type="button" className="text-xs font-bold text-slate-500 px-2 py-1" onClick={() => void end(s.id)}>
-                    End
-                  </button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </section>
         ) : null}
 
@@ -546,7 +593,7 @@ export function AdminTransactions() {
 
   return (
     <AppShell role="admin">
-      <AppHeader title="Transactions" subtitle="All revenue" right={<SignOutButton />} />
+      <AppHeader title="Transactions" subtitle={isDemoMode ? 'All revenue' : 'Recorded charges'} right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4">
         {loading ? (
           <LoadingBlock />
@@ -560,7 +607,7 @@ export function AdminTransactions() {
                     {t.member?.full_name ?? 'Walk-in / club'} · {fmtDate(t.created_at)}
                   </p>
                 </div>
-                <p className="font-bold text-sm">{peso(t.amount)}</p>
+                <p className="font-bold text-sm">{peso(t.amount)}{!isDemoMode || t.verification_status === 'unverified' ? ' recorded' : ''}</p>
               </div>
             ))}
           </section>
@@ -583,7 +630,11 @@ export function AdminUsers() {
 
   return (
     <AppShell role="admin">
-      <AppHeader title="Users" subtitle="Staff & accounts" right={<SignOutButton />} />
+      <AppHeader
+        title="Users"
+        subtitle="Staff & accounts"
+        left={<BackButton />}
+      />
       <main className="safe-bottom px-4 pt-4">
         {loading ? (
           <LoadingBlock />

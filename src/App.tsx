@@ -1,5 +1,6 @@
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
-import { AuthProvider, useAuth } from './context/AuthContext'
+import { useAuth } from './context/AuthContext'
+import { AuthProvider } from './context/AuthProvider'
 import type { Role } from './types'
 import LoginPage from './pages/LoginPage'
 import {
@@ -23,11 +24,15 @@ import {
   AdminUsers,
 } from './pages/admin'
 import { AdminBookings, StaffBookings } from './pages/BookingsDesk'
+import { AdminVenues } from './pages/AdminVenues'
 import { LoadingBlock } from './components/Shell'
 import { useEffect } from 'react'
 import { api } from './lib/api'
+import { HelpPage } from './pages/HelpPage'
+import { SuperadminPage } from './pages/Superadmin'
 
 function homeFor(role: Role) {
+  if (role === 'superadmin') return '/superadmin'
   if (role === 'admin') return '/admin'
   if (role === 'staff') return '/staff'
   return '/member'
@@ -70,6 +75,7 @@ export default function App() {
           <Route path="/member/transactions" element={<MemberTransactions />} />
           <Route path="/member/notifications" element={<MemberNotifications />} />
           <Route path="/member/profile" element={<MemberProfile />} />
+          <Route path="/member/help" element={<HelpPage />} />
         </Route>
 
         <Route element={<Protected roles={['staff', 'admin']} />}>
@@ -80,9 +86,10 @@ export default function App() {
           <Route path="/staff/board" element={<StaffBoard />} />
           <Route path="/staff/open" element={<StaffOpenPlay />} />
           <Route path="/staff/courts" element={<StaffCourts />} />
+          <Route path="/staff/help" element={<HelpPage />} />
         </Route>
 
-        <Route element={<Protected roles={['admin']} />}>
+        <Route element={<Protected roles={['admin', 'superadmin']} />}>
           <Route path="/admin" element={<AdminHome />} />
           <Route path="/admin/members" element={<AdminMembers />} />
           <Route path="/admin/members/new" element={<AdminMemberForm />} />
@@ -93,6 +100,12 @@ export default function App() {
           <Route path="/admin/bookings" element={<AdminBookings />} />
           <Route path="/admin/transactions" element={<AdminTransactions />} />
           <Route path="/admin/users" element={<AdminUsers />} />
+          <Route path="/admin/venues" element={<AdminVenues />} />
+          <Route path="/admin/help" element={<HelpPage />} />
+        </Route>
+
+        <Route element={<Protected roles={['superadmin']} />}>
+          <Route path="/superadmin" element={<SuperadminPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

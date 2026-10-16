@@ -1,31 +1,107 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Clock3, Search, UserPlus } from 'lucide-react'
 import { AppHeader, AppShell, LoadingBlock, SignOutButton } from '../components/Shell'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
-import type { CheckIn, Court, CourtSession, Member } from '../types'
+import { isDemoMode } from '../lib/supabase'
+import type { CheckIn, Court, CourtSession, Member, Venue } from '../types'
 import { fmtDateTime, fmtTime, peso } from '../types'
 
+function useStaffVenues(userId?: string) {
+  const [venues, setVenues] = useState<Venue[]>([])
+  const [venueId, setVenueId] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    setVenues([])
+    setVenueId('')
+    setLoading(true)
+    setError(null)
+    if (!userId) return () => { active = false }
+    void api.listVenues(userId, 'staff').then((next) => {
+      if (!active) return
+      setVenues(next)
+      setVenueId(next[0]?.id ?? '')
+    }).catch((cause: unknown) => {
+      if (active) setError(cause instanceof Error ? cause.message : 'Could not load assigned venues')
+    }).finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [userId])
+
+  return { venues, venueId, setVenueId, loading, error }
+}
+
+function VenueControl({ venues, venueId, onChange }: { venues: Venue[]; venueId: string; onChange: (id: string) => void }) {
+  if (venues.length < 2) return null
+  return (
+    <div className="card p-3">
+      <label className="label" htmlFor="staff-venue">Venue</label>
+      <select id="staff-venue" className="input" value={venueId} onChange={(event) => onChange(event.target.value)}>
+        {venues.map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}
+      </select>
+    </div>
+  )
+}
+
+function loadStaffRoster() {
+  return api.memberRoster()
+}
+
 export function StaffHome() {
+  const { user } = useAuth()
+  const { venues, venueId, setVenueId, loading: venueLoading, error: venueError } = useStaffVenues(user?.id)
   const [sessions, setSessions] = useState<CourtSession[]>([])
   const [checkins, setCheckins] = useState<CheckIn[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
-    void (async () => {
-      const [s, c] = await Promise.all([api.playingSessions(), api.recentCheckins()])
+    let active = true
+    setSessions([])
+    setCheckins([])
+    setLoadError(null)
+    if (!venueId) return () => { active = false }
+    setLoading(true)
+    void Promise.all([
+      api.playingSessions(venueId),
+      api.recentCheckins(venueId),
+    ]).then(([s, c]) => {
+      if (!active) return
       setSessions(s)
       setCheckins(c.slice(0, 5))
-      setLoading(false)
-    })()
-  }, [])
+    }).catch((cause: unknown) => {
+      if (active) setLoadError(cause instanceof Error ? cause.message : 'Could not load the live floor')
+    }).finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [venueId])
+
+  const playerNames = (session: CourtSession) => {
+    const fallbackPlayers = [
+      session.member ? { full_name: session.member.full_name } : null,
+      session.guest_name ? { full_name: session.guest_name } : null,
+    ].filter((player): player is { full_name: string } => Boolean(player))
+
+    const names = (session.players?.length ? session.players : fallbackPlayers).map((p) => p.full_name)
+    return names.length ? names.join(', ') : 'Guest'
+  }
 
   return (
     <AppShell role="staff">
       <AppHeader title="Staff desk" subtitle="Live floor" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-4">
-        {loading ? (
+        <VenueControl venues={venues} venueId={venueId} onChange={setVenueId} />
+        {venueError ? (
+          <section className="card p-4 text-sm text-red-600">{venueError}</section>
+        ) : venueLoading ? (
+          <LoadingBlock />
+        ) : !venueId ? (
+          <section className="card p-4 text-sm text-slate-500">No assigned venue.</section>
+        ) : loadError ? (
+          <section className="card p-4 text-sm text-red-600" role="alert">{loadError}</section>
+        ) : loading ? (
           <LoadingBlock />
         ) : (
           <>
@@ -60,7 +136,7 @@ export function StaffHome() {
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm">{s.court?.name ?? 'Court'}</p>
                       <p className="text-xs text-slate-500 truncate">
-                        {s.member?.full_name || s.guest_name || 'Guest'} · ends {fmtTime(s.end_at)}
+                        {playerNames(s)} · ends {fmtTime(s.end_at)}
                       </p>
                     </div>
                     <span className="pill pill-ok">Live</span>
@@ -92,12 +168,16 @@ export function StaffMembers() {
   const [members, setMembers] = useState<Member[]>([])
   const [q, setQ] = useState('')
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    void api.listMembers().then((m) => {
-      setMembers(m)
-      setLoading(false)
-    })
+    let active = true
+    void loadStaffRoster().then((roster) => {
+      if (active) setMembers(roster)
+    }).catch((cause: unknown) => {
+      if (active) setError(cause instanceof Error ? cause.message : 'Could not load members')
+    }).finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
   }, [])
 
   const filtered = useMemo(() => {
@@ -106,9 +186,7 @@ export function StaffMembers() {
     return members.filter(
       (m) =>
         m.full_name.toLowerCase().includes(s) ||
-        m.member_code.toLowerCase().includes(s) ||
-        (m.phone ?? '').includes(s) ||
-        (m.email ?? '').toLowerCase().includes(s),
+        m.member_code.toLowerCase().includes(s),
     )
   }, [members, q])
 
@@ -125,13 +203,15 @@ export function StaffMembers() {
                   <input
                     className="input input-with-icon"
                     type="search"
-                    placeholder="Search name, code, phone…"
+                    placeholder="Search name or code…"
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
                     aria-label="Search members"
                   />
                 </div>
-        {loading ? (
+        {error ? (
+          <section className="card p-4 text-sm text-red-600" role="alert">{error}</section>
+        ) : loading ? (
           <LoadingBlock />
         ) : (
           <section className="card p-2">
@@ -162,6 +242,7 @@ export function StaffMembers() {
 
 export function StaffCheckIn() {
   const { user } = useAuth()
+  const { venues, venueId, setVenueId, loading: venueLoading, error: venueError } = useStaffVenues(user?.id)
   const [members, setMembers] = useState<Member[]>([])
   const [memberId, setMemberId] = useState('')
   const [note, setNote] = useState('')
@@ -170,19 +251,30 @@ export function StaffCheckIn() {
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [last, setLast] = useState<string | null>(null)
+  const [rosterError, setRosterError] = useState<string | null>(null)
 
   useEffect(() => {
-    void api.listMembers().then((m) => {
-      setMembers(m.filter((x) => x.status === 'active'))
-      if (m[0]) setMemberId(m[0].id)
+    let active = true
+    void loadStaffRoster().then((m) => {
+      if (!active) return
+      const activeMembers = m.filter((x) => x.status === 'active')
+      setMembers(activeMembers)
+      setMemberId(activeMembers[0]?.id ?? '')
+    }).catch((cause: unknown) => {
+      if (!active) return
+      setMembers([])
+      setMemberId('')
+      setRosterError(cause instanceof Error ? cause.message : 'Could not load check-in members')
     })
+    return () => { active = false }
   }, [])
 
   async function submit(e: FormEvent) {
     e.preventDefault()
+    if (!venueId) return
     setBusy(true)
     try {
-      await api.checkIn(memberId, user?.id, note || undefined)
+      await api.checkIn(memberId, user?.id, note || undefined, venueId)
       const name = members.find((m) => m.id === memberId)?.full_name
       setMsg('Checked in successfully')
       setLast(name ?? 'Member')
@@ -197,10 +289,10 @@ export function StaffCheckIn() {
 
   async function submitQr(e: FormEvent) {
     e.preventDefault()
-    if (!qr.trim()) return
+    if (!qr.trim() || !venueId) return
     setBusy(true)
     try {
-      const r = await api.checkInByQr(qr.trim(), user?.id)
+      const r = await api.checkInByQr(qr.trim(), user?.id, venueId)
       setMsg(`Checked in ${r.member.full_name}`)
       setLast(r.member.full_name)
       setQr('')
@@ -216,6 +308,10 @@ export function StaffCheckIn() {
     <AppShell role="staff">
       <AppHeader title="Check in" subtitle="QR or member list" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-3">
+        <VenueControl venues={venues} venueId={venueId} onChange={setVenueId} />
+        {venueError ? <section className="card p-4 text-sm text-red-600">{venueError}</section> : null}
+        {rosterError ? <section className="card p-4 text-sm text-red-600" role="alert">{rosterError}</section> : null}
+        {!venueLoading && !venueError && !venueId ? <section className="card p-4 text-sm text-slate-500">No assigned venue.</section> : null}
         <div className="flex gap-2">
           <button
             type="button"
@@ -248,7 +344,11 @@ export function StaffCheckIn() {
             <p className="text-xs text-slate-500">
               Point a hardware scanner here, or type the member code from their pass.
             </p>
-            <button className="btn-primary" disabled={busy || !qr.trim()}>
+            <button
+              className="btn-primary"
+              disabled={busy || !venueId || !qr.trim()}
+              aria-busy={busy}
+            >
               {busy ? 'Checking…' : 'Check in via QR'}
             </button>
           </form>
@@ -268,7 +368,11 @@ export function StaffCheckIn() {
               <label className="label">Note (optional)</label>
               <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Guest +1, etc." />
             </div>
-            <button className="btn-primary" disabled={busy || !memberId}>
+            <button
+              className="btn-primary"
+              disabled={busy || !venueId || !memberId}
+              aria-busy={busy}
+            >
               {busy ? 'Saving…' : 'Confirm check-in'}
             </button>
           </form>
@@ -288,6 +392,7 @@ export function StaffCheckIn() {
 
 export function StaffCourts() {
   const { user } = useAuth()
+  const { venues, venueId, setVenueId, loading: venueLoading, error: venueError } = useStaffVenues(user?.id)
   const [courts, setCourts] = useState<Court[]>([])
   const [sessions, setSessions] = useState<CourtSession[]>([])
   const [members, setMembers] = useState<Member[]>([])
@@ -297,25 +402,65 @@ export function StaffCourts() {
   const [hours, setHours] = useState(1)
   const [msg, setMsg] = useState<string | null>(null)
   const [tab, setTab] = useState<'rent' | 'playing' | 'extend' | 'walkin'>('playing')
+  const [addSessionId, setAddSessionId] = useState<string | null>(null)
+  const [addMemberId, setAddMemberId] = useState('')
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const currentVenueRef = useRef(venueId)
+  currentVenueRef.current = venueId
+  const requestRef = useRef(0)
 
-  async function reload() {
-    const [c, s, m] = await Promise.all([api.listCourts(), api.playingSessions(), api.listMembers()])
-    setCourts(c)
-    setSessions(s)
-    setMembers(m)
-    if (!courtId && c[0]) setCourtId(c.find((x) => x.status === 'available')?.id ?? c[0].id)
-    if (!memberId && m[0]) setMemberId(m[0].id)
+  const sessionPlayers = (session: CourtSession) => {
+    const fallbackPlayers = [
+      session.member ? { full_name: session.member.full_name } : null,
+      session.guest_name ? { full_name: session.guest_name } : null,
+    ].filter(Boolean) as Array<{ full_name: string }>
+    return (session.players?.length ? session.players : fallbackPlayers).map((player) => player.full_name)
   }
 
+  const reload = useCallback(async () => {
+    if (!venueId || currentVenueRef.current !== venueId) return
+    const request = ++requestRef.current
+    setLoadError(null)
+    try {
+      const [c, s, m] = await Promise.all([
+        api.listCourts(venueId),
+        api.playingSessions(venueId),
+        loadStaffRoster(),
+      ])
+      if (request !== requestRef.current || currentVenueRef.current !== venueId) return
+      setCourts(c)
+      setSessions(s)
+      setMembers(m)
+      if (c[0]) setCourtId((current) => current || c.find((x) => x.status === 'available')?.id || c[0].id)
+      if (m[0]) setMemberId((current) => current || m[0].id)
+    } catch (cause) {
+      if (request !== requestRef.current || currentVenueRef.current !== venueId) return
+      setCourts([])
+      setSessions([])
+      setMembers([])
+      setCourtId('')
+      setLoadError(cause instanceof Error ? cause.message : 'Could not load court operations')
+    }
+  }, [venueId])
+
   useEffect(() => {
-    void reload()
-  }, [])
+    requestRef.current += 1
+    setCourts([])
+    setSessions([])
+    setMembers([])
+    setCourtId('')
+    setLoadError(null)
+    if (venueId) void reload()
+    return () => { requestRef.current += 1 }
+  }, [venueId, reload])
 
   async function rent(e: FormEvent) {
     e.preventDefault()
+    if (!venueId || !courtId) return
     try {
       await api.createRental({
         court_id: courtId,
+        venue_id: venueId,
         member_id: memberId || undefined,
         guest_name: guest || undefined,
         hours,
@@ -343,6 +488,22 @@ export function StaffCourts() {
     }
   }
 
+  async function saveAddedMember(e: FormEvent) {
+    e.preventDefault()
+    if (!addSessionId || !addMemberId) return
+    try {
+      await api.addMemberToSession(addSessionId, addMemberId, user?.id)
+      setMsg('Member added to court')
+      setAddSessionId(null)
+      setAddMemberId('')
+      await reload()
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : 'Failed')
+    } finally {
+      setTimeout(() => setMsg(null), 2500)
+    }
+  }
+
   async function end(sessionId: string) {
     await api.endSession(sessionId)
     setMsg('Session ended')
@@ -357,11 +518,13 @@ export function StaffCourts() {
 
   async function walkIn(e: FormEvent) {
     e.preventDefault()
+    if (!venueId) return
     await api.createWalkIn({
       full_name: wiName,
       phone: wiPhone,
       purpose: wiPurpose,
       amount: wiAmount,
+      venue_id: venueId,
       created_by: user?.id,
     })
     setMsg('Walk-in registered')
@@ -374,6 +537,10 @@ export function StaffCourts() {
     <AppShell role="staff">
       <AppHeader title="Court ops" subtitle="Rent · play · extend" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-3 space-y-3">
+        <VenueControl venues={venues} venueId={venueId} onChange={setVenueId} />
+        {venueError ? <section className="card p-4 text-sm text-red-600">{venueError}</section> : null}
+        {loadError ? <section className="card p-4 text-sm text-red-600" role="alert">{loadError}</section> : null}
+        {!venueLoading && !venueError && !venueId ? <section className="card p-4 text-sm text-slate-500">No assigned venue.</section> : null}
         <div className="flex gap-1 overflow-x-auto no-scrollbar pb-1">
           {(
             [
@@ -399,7 +566,7 @@ export function StaffCourts() {
         {tab === 'playing' ? (
           <section className="card p-4">
             <h2 className="font-extrabold mb-2 flex items-center gap-2">
-              <Clock3 size={18} /> Currently playing
+              <Clock3 size={18} /> Live court sessions
             </h2>
             {sessions.length === 0 ? (
               <p className="text-sm text-slate-500">No live sessions.</p>
@@ -409,11 +576,54 @@ export function StaffCourts() {
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-sm">{s.court?.name}</p>
                     <p className="text-xs text-slate-500">
-                      {s.member?.full_name || s.guest_name || 'Guest'} · until {fmtTime(s.end_at)}
+                      {sessionPlayers(s).join(', ') || 'Guest'} · until {fmtTime(s.end_at)}
                     </p>
-                    <p className="text-xs font-semibold text-brand-800 mt-1">{peso(s.amount)}</p>
+                    <p className="text-xs font-semibold text-brand-800 mt-1">{peso(s.amount)}{!isDemoMode ? ' recorded' : ''}</p>
                   </div>
                   <div className="flex flex-col gap-1">
+                    {addSessionId === s.id ? (
+                      <form className="mt-2 space-y-2" onSubmit={saveAddedMember}>
+                        <div>
+                          <label className="label" htmlFor={`add-member-${s.id}`}>Member</label>
+                          <select
+                            id={`add-member-${s.id}`}
+                            className="input"
+                            value={addMemberId}
+                            onChange={(e) => setAddMemberId(e.target.value)}
+                            aria-label="Member"
+                          >
+                            <option value="">Select a member</option>
+                            {members.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.full_name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="submit" className="btn-primary flex-1">
+                            Save member
+                          </button>
+                          <button type="button" className="btn-secondary flex-1" onClick={() => {
+                            setAddSessionId(null)
+                            setAddMemberId('')
+                          }}>
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-xs font-bold text-brand-700 px-2 py-1"
+                        onClick={() => {
+                          setAddSessionId(s.id)
+                          setAddMemberId(members[0]?.id ?? '')
+                        }}
+                      >
+                        Add member
+                      </button>
+                    )}
                     <button type="button" className="text-xs font-bold text-brand-700 px-2 py-1" onClick={() => void extend(s.id)}>
                       +1h
                     </button>
@@ -465,7 +675,7 @@ export function StaffCourts() {
                 onChange={(e) => setHours(Number(e.target.value))}
               />
             </div>
-            <button className="btn-primary" type="submit">
+            <button className="btn-primary" type="submit" disabled={!venueId || !courtId}>
               Start rental
             </button>
           </form>
@@ -518,7 +728,7 @@ export function StaffCourts() {
                 onChange={(e) => setWiAmount(Number(e.target.value))}
               />
             </div>
-            <button className="btn-primary" type="submit">
+            <button className="btn-primary" type="submit" disabled={!venueId}>
               Register walk-in
             </button>
           </form>

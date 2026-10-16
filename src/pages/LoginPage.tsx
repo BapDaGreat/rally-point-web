@@ -1,36 +1,97 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { ArrowRight, Shield, UserPlus, UserRound } from 'lucide-react'
+import {
+  ArrowRight,
+  Camera,
+  Crown,
+  Eye,
+  EyeOff,
+  Shield,
+  UserPlus,
+  UserRound,
+} from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import type { Role } from '../types'
 import { RallyPointLogo } from '../components/RallyPointLogo'
+import { helpFaqs } from '../lib/helpContent'
 
 const demos: { role: Role; email: string; password: string; label: string }[] = [
-  { role: 'admin', email: 'admin@rallypoint.local', password: 'admin123', label: 'Admin' },
-  { role: 'staff', email: 'staff@rallypoint.local', password: 'staff123', label: 'Staff' },
-  { role: 'member', email: 'member@rallypoint.local', password: 'member123', label: 'Member' },
+  {
+    role: 'superadmin',
+    email: 'superadmin@rallypoint.local',
+    password: 'superadmin123',
+    label: 'Superadmin',
+  },
+  {
+    role: 'admin',
+    email: 'admin@rallypoint.local',
+    password: 'admin123',
+    label: 'Admin',
+  },
+  {
+    role: 'staff',
+    email: 'staff@rallypoint.local',
+    password: 'staff123',
+    label: 'Staff',
+  },
+  {
+    role: 'member',
+    email: 'member@rallypoint.local',
+    password: 'member123',
+    label: 'Member',
+  },
 ]
 
 const HERO_VIDEO = `${import.meta.env.BASE_URL}media/pickleball-hero.mp4`
 const HERO_POSTER = `${import.meta.env.BASE_URL}media/pickleball-poster.jpg`
 
 function homeFor(role: Role) {
+  if (role === 'superadmin') return '/superadmin'
   if (role === 'admin') return '/admin'
   if (role === 'staff') return '/staff'
   return '/member'
 }
 
-type Mode = 'login' | 'join'
+type Mode = 'login' | 'join' | 'reset'
+
+function authenticationErrorMessage(mode: Mode, error: unknown) {
+  const message = error instanceof Error ? error.message : 'Unable to continue. Please try again.'
+
+  if (/^Too many attempts\. Please try again in about \d+ minutes?\.$/i.test(message)) {
+    return message
+  }
+
+  if (/too many attempts|rate limit|too many requests|\b429\b/i.test(message)) {
+    return 'Too many attempts. Please try again in about 5 minutes.'
+  }
+
+  if (
+    /^Password must be at least \d+ characters$/i.test(message) ||
+    /^Please enter your name$/i.test(message)
+  ) {
+    return message
+  }
+
+  if (mode === 'reset') {
+    return 'Unable to send the reset email. Please check your email address and try again.'
+  }
+
+  return mode === 'login'
+    ? 'Unable to log in. Check your email and password, then try again.'
+    : 'Unable to create an account. Please check your details or try again.'
+}
 
 export default function LoginPage() {
-  const { user, loading, signIn, signUpMember, demo } = useAuth()
+  const { user, loading, signIn, signUpMember, resetPassword, demo } = useAuth()
   const nav = useNavigate()
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordVisible, setPasswordVisible] = useState(false)
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [resetSuccess, setResetSuccess] = useState(false)
   const [busy, setBusy] = useState(false)
 
   if (!loading && user) return <Navigate to={homeFor(user.role)} replace />
@@ -39,6 +100,7 @@ export default function LoginPage() {
     e.preventDefault()
     setBusy(true)
     setError(null)
+    setResetSuccess(false)
     try {
       if (mode === 'join') {
         const profile = await signUpMember({
@@ -48,17 +110,15 @@ export default function LoginPage() {
           phone: phone || undefined,
         })
         nav(homeFor(profile.role), { replace: true })
+      } else if (mode === 'reset') {
+        await resetPassword(email)
+        setResetSuccess(true)
       } else {
         const profile = await signIn(email, password)
         nav(homeFor(profile.role), { replace: true })
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong'
-      setError(
-        /invalid login credentials/i.test(msg)
-          ? 'Wrong email or password. New here? Tap “Join as member”.'
-          : msg,
-      )
+      setError(authenticationErrorMessage(mode, err))
     } finally {
       setBusy(false)
     }
@@ -66,7 +126,10 @@ export default function LoginPage() {
 
   function switchMode(next: Mode) {
     setMode(next)
+    setPassword('')
+    setPasswordVisible(false)
     setError(null)
+    setResetSuccess(false)
   }
 
   return (
@@ -115,14 +178,14 @@ export default function LoginPage() {
           </p>
 
           <p className="mt-5 max-w-md mx-auto lg:mx-0 text-base sm:text-lg leading-relaxed text-white/90 drop-shadow">
-            Book a court. Join open play. Show your QR at the desk. Players join online — staff &amp;
-            admin are set up by the club.
+            Book a court. Join open play. Show your QR at the desk. Players join online — staff
+            &amp; admin are set up by the club.
           </p>
 
           <div className="mt-8 hidden lg:flex flex-wrap gap-3">
             <div className="rounded-2xl border border-white/15 bg-black/35 px-4 py-3 backdrop-blur-md shadow-lg">
               <p className="text-sm font-bold text-teal-200">Members</p>
-              <p className="text-base font-semibold text-white">Book · pay · QR · open play</p>
+              <p className="text-base font-semibold text-white">{demo ? 'Book · pay · QR · open play' : 'Availability · QR · open play'}</p>
             </div>
             <div className="rounded-2xl border border-white/15 bg-black/35 px-4 py-3 backdrop-blur-md shadow-lg">
               <p className="text-sm font-bold text-teal-200">Staff / Admin</p>
@@ -137,19 +200,21 @@ export default function LoginPage() {
             <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1">
               <button
                 type="button"
-                className={`rounded-xl py-2.5 text-sm font-extrabold transition ${
+                className={`min-h-12 cursor-pointer rounded-xl py-2.5 text-sm font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 ${
                   mode === 'login' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
                 }`}
                 onClick={() => switchMode('login')}
+                aria-pressed={mode === 'login'}
               >
                 Log in
               </button>
               <button
                 type="button"
-                className={`rounded-xl py-2.5 text-sm font-extrabold transition inline-flex items-center justify-center gap-1.5 ${
+                className={`min-h-12 cursor-pointer rounded-xl py-2.5 text-sm font-extrabold transition inline-flex items-center justify-center gap-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 ${
                   mode === 'join' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
                 }`}
                 onClick={() => switchMode('join')}
+                aria-pressed={mode === 'join'}
               >
                 <UserPlus size={16} aria-hidden />
                 Join as member
@@ -158,14 +223,26 @@ export default function LoginPage() {
 
             <div className="mb-4">
               <p className="text-sm font-bold text-slate-500">
-                {mode === 'join' ? 'New player' : 'Welcome back'}
+                {mode === 'join'
+                  ? 'New player'
+                  : mode === 'reset'
+                  ? 'Forgot your password?'
+                  : 'Welcome back'}
               </p>
               <h2 className="mt-1 text-2xl font-extrabold text-slate-900">
-                {mode === 'join' ? 'Create member account' : 'Log in'}
+                {mode === 'join'
+                  ? 'Create member account'
+                  : mode === 'reset'
+                  ? 'Reset your password'
+                  : 'Log in'}
               </h2>
               <p className="mt-1.5 text-base text-slate-600">
                 {mode === 'join'
-                  ? 'For players only. You’ll get book, pay, open play, and your QR pass.'
+                  ? demo
+                    ? 'For players only. You’ll get book, pay, open play, and your QR pass.'
+                    : 'For players only. View availability, open play, and your QR pass.'
+                  : mode === 'reset'
+                  ? 'Enter your email and we’ll send a password reset link.'
                   : 'Members, staff, and admin all use this log-in.'}
               </p>
             </div>
@@ -212,43 +289,105 @@ export default function LoginPage() {
                   id="email"
                   className="input"
                   type="email"
-                  autoComplete="username"
+                  autoComplete={mode === 'reset' ? 'email' : 'username'}
                   placeholder="you@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
               </div>
-              <div>
-                <label className="label" htmlFor="password">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  className="input"
-                  type="password"
-                  autoComplete={mode === 'join' ? 'new-password' : 'current-password'}
-                  placeholder={mode === 'join' ? 'At least 6 characters' : '••••••••'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={mode === 'join' ? 6 : undefined}
-                />
-              </div>
+
+              {mode !== 'reset' ? (
+                <div>
+                  <label className="label" htmlFor="password">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="password"
+                      className="input pr-14"
+                      type={passwordVisible ? 'text' : 'password'}
+                      autoComplete={mode === 'join' ? 'new-password' : 'current-password'}
+                      placeholder={mode === 'join' ? 'At least 6 characters' : '••••••••'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={mode === 'join' ? 6 : undefined}
+                      aria-describedby={error ? 'authentication-error' : undefined}
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center rounded-xl text-slate-600 transition hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                      onClick={() => setPasswordVisible((visible) => !visible)}
+                      aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+                      aria-pressed={passwordVisible}
+                    >
+                      {passwordVisible ? (
+                        <EyeOff size={20} aria-hidden />
+                      ) : (
+                        <Eye size={20} aria-hidden />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {mode === 'login' ? (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    className="text-sm font-semibold text-slate-500 hover:text-slate-700"
+                    onClick={() => switchMode('reset')}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              ) : null}
 
               {error ? (
-                <p className="text-sm font-semibold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+                <p
+                  id="authentication-error"
+                  role="alert"
+                  aria-live="assertive"
+                  className="text-sm font-semibold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2"
+                >
                   {error}
                 </p>
               ) : null}
 
-              <button className="btn-primary gap-2" type="submit" disabled={busy}>
-                {busy ? 'Please wait…' : mode === 'join' ? 'Join Rally Point' : 'Log in'}
+              {resetSuccess ? (
+                <p
+                  role="status"
+                  className="text-sm font-semibold text-teal-700 bg-teal-50 border border-teal-100 rounded-xl px-3 py-2"
+                >
+                  Check your inbox for a password reset link.
+                </p>
+              ) : null}
+
+              <button className="btn-primary gap-2" type="submit" disabled={busy} aria-busy={busy}>
+                {busy
+                  ? 'Please wait…'
+                  : mode === 'join'
+                  ? 'Join Rally Point'
+                  : mode === 'reset'
+                  ? 'Send reset link'
+                  : 'Log in'}
                 {!busy ? <ArrowRight size={18} aria-hidden /> : null}
               </button>
             </form>
 
-            {mode === 'login' ? (
+            {mode === 'reset' ? (
+              <p className="mt-4 text-center text-base text-slate-600">
+                Remembered your password?{' '}
+                <button
+                  type="button"
+                  className="font-extrabold text-brand-800 underline-offset-2 hover:underline"
+                  onClick={() => switchMode('login')}
+                >
+                  Back to log in
+                </button>
+              </p>
+            ) : mode === 'login' ? (
               <p className="mt-4 text-center text-base text-slate-600">
                 New player?{' '}
                 <button
@@ -277,7 +416,7 @@ export default function LoginPage() {
                 <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
                   Quick demo logins
                 </p>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {demos.map((d) => (
                     <button
                       key={d.role}
@@ -290,7 +429,13 @@ export default function LoginPage() {
                       }}
                     >
                       <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center mb-2">
-                        {d.role === 'admin' ? <Shield size={16} /> : <UserRound size={16} />}
+                        {d.role === 'superadmin' ? (
+                          <Crown size={16} />
+                        ) : d.role === 'admin' ? (
+                          <Shield size={16} />
+                        ) : (
+                          <UserRound size={16} />
+                        )}
                       </div>
                       <p className="text-sm font-bold text-slate-800">{d.label}</p>
                       <p className="text-[10px] text-slate-400 mt-0.5 truncate">{d.password}</p>
@@ -303,6 +448,49 @@ export default function LoginPage() {
                 Staff / admin accounts are created by the club — not by joining here.
               </p>
             )}
+
+            <section className="mt-6 border-t border-slate-200 pt-5" aria-labelledby="login-faq-title">
+              <div className="flex items-baseline justify-between gap-3">
+                <h3 id="login-faq-title" className="text-lg font-extrabold text-slate-900">
+                  Quick questions
+                </h3>
+                <span className="text-xs font-semibold text-slate-500">FAQ</span>
+              </div>
+              <div className="mt-2 divide-y divide-slate-200">
+                {helpFaqs.slice(0, 3).map(({ question, answer }) => (
+                  <details key={question} className="py-1">
+                    <summary className="flex min-h-12 cursor-pointer items-center text-sm font-bold text-slate-800">
+                      {question}
+                    </summary>
+                    <p className="pb-3 text-sm leading-relaxed text-slate-600">{answer}</p>
+                  </details>
+                ))}
+              </div>
+              <p className="mt-2 text-center text-xs text-slate-500">
+                More FAQs and Contact Us are available in Help after you sign in.
+              </p>
+            </section>
+
+            <section className="mt-5 border-t border-slate-200 pt-4" aria-labelledby="login-social-title">
+              <h3 id="login-social-title" className="text-center text-sm font-bold text-slate-700">
+                Find us on social media
+              </h3>
+              <div className="mt-3 flex justify-center gap-3" aria-label="Social profile previews">
+                <span className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-600">
+                  <span aria-hidden className="inline-flex size-[18px] items-center justify-center rounded-full bg-blue-700 text-sm font-extrabold leading-none text-white">
+                    f
+                  </span>
+                  Facebook
+                </span>
+                <span className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-600">
+                  <Camera size={18} aria-hidden />
+                  Instagram
+                </span>
+              </div>
+              <p className="mt-2 text-center text-xs text-slate-500">
+                Social links will be added when the official pages are confirmed.
+              </p>
+            </section>
           </div>
         </div>
       </div>

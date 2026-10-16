@@ -10,7 +10,13 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+coverage
+.playwright-cli/
 *.local
+
+# Local project documentation and planning artifacts
+docs/*
+!docs/HELP-AND-INQUIRY-WORKFLOW.md
 
 # Editor directories and files
 .vscode/*
@@ -23,4 +29,6 @@ dist-ssr
 *.sln
 *.sw?
 .env
+.env.*
+!.env.example
 admin-credentials.local.txt
