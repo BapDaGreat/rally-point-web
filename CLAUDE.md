@@ -39,19 +39,30 @@ Never edit, move, or regenerate anything under `docs/release-private/`. Those ar
   - Superadmins still cannot open club screens or change club data.
 - **Logo.** The current artwork says "Gensan", so only Rally Point Gensan shows it. Other clubs and the platform portal show a neutral initials badge (`ClubMark` in `src/components/Shell.tsx`) until they have their own artwork.
 - **Commission.** A trigger turns court-time charges (`booking`, `court_rental`, `extension`) into `platform_commissions` rows at the club's rate. Payments are still simulated (`src/lib/payments.ts`), so these are recorded charges, not collected money; real checkout waits on a provider decision and its credentials. While the pause holds, the live ledger stays empty.
-- **Staging (2026-10-17, owner-approved)** now has all 21 migrations: tenant enforcement, the two support-inquiry migrations, and the four October 17 club-platform migrations.
-  - **How it was applied:**
+- **Staging (2026-10-17, owner-approved)** now has all 23 migrations: tenant enforcement, the two support-inquiry migrations, the four October 17 club-platform migrations, and the two Supabase advisor fixes (`20261017160000_supabase_advisor_fixes.sql`, `20261017170000_supabase_advisor_followup.sql`).
+  - **How the club platform was applied:**
     - a fresh backup was captured (`scripts/run-staging-backup-capture.mjs`);
     - the backup was restored and verified locally (`scripts/run-staging-backup-restore-verify.mjs`);
     - the package was dry-run on a restored copy;
     - the package (`docs/release-private/club-platform-20261017-r1/`) was applied by `scripts/run-club-platform-staging-apply.mjs`, one transaction per migration.
+  - **How the advisor fixes were applied:** the same backup, restore check and dry run, each run as `--release <id>`, then `scripts/run-staging-release-apply.mjs --release <id> --apply-staging`.
+    - Releases are defined in `scripts/club-platform-staging.mjs`. Each pins its SQL and scripts in a manifest.
+    - The apply refuses to run unless `scripts/staging-release-approvals.mjs` holds the owner-approved manifest SHA-256.
+  - **Advisors:** Supabase reports no errors.
+    - Kept on purpose:
+      - `get_public_club` is open to anonymous callers, for the join page and TV board;
+      - 27 trusted RPCs are open to signed-in users and check roles inside;
+      - leaked-password protection is a dashboard setting, still off;
+      - the "unused index" notes are the new foreign-key indexes on a quiet database.
+    - The six public views run with the caller's rights. Their logic lives in definer functions: `private.*_rows()`, and `board.public_schedule_rows()` for the anonymous TV board. The `board` schema is not exposed through the API.
+    - Hosted staging gives `service_role` SELECT on those views; local builds do not. Check grants against a restored copy, not only a local build.
   - **Isolation checked:** two-club isolation passed on staging (55 checks, rolled back) and over the live API.
   - **Clubs:** staging has two active clubs, Rally Point Gensan and the September `tenant-fixture-second-club`. No platform superadmin exists yet.
   - **Still paused:** the reservation-write pause holds. The frozen resume package no longer matches staging, so a resume needs a new package.
   - **Published site:** the published staging site still runs the earlier build, which keeps working on the Gensan default. This branch's frontend is not published.
   - **Production** is unchanged and stays one club.
   - **Details and evidence:** `docs/TENANT-READY-ROLLOUT.md`; evidence is under `docs/release-private/` (local only).
-- **Local SQL** runs through `npx supabase test db` (482 checks in 14 suites as of 2026-10-17). On the plain chain, `null_role_guards` and `tenant_boundary` fail where they call the nine paused RPCs; this predates the multi-club work. With those RPCs temporarily granted in the local database (as `scripts/run-reservation-resume-gate23-local.mjs` does), every suite passes.
+- **Local SQL** runs through `npx supabase test db` (515 checks in 16 suites as of 2026-10-17). On the plain chain, `null_role_guards` and `tenant_boundary` fail where they call the nine paused RPCs; this predates the multi-club work. With those RPCs temporarily granted in the local database (as `scripts/run-reservation-resume-gate23-local.mjs` does), every suite passes.
 
 ## Hosted systems and connected tools
 
