@@ -19,6 +19,7 @@ docs/*
 !docs/README.md
 !docs/CODEX.md
 !docs/HELP-AND-INQUIRY-WORKFLOW.md
+architecture/
 
 # Editor directories and files
 .vscode/*
@@ -37,5 +38,12 @@ admin-credentials.local.txt
 
 # Claude Code personal files
 CLAUDE.local.md
+.claude/
 .claude/settings.local.json
 .claude/worktrees/
+
+# Other local tool state and generated snapshots
+.codex/
+.ecc/
+.obsidian/
+graphify-out/
