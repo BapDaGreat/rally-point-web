@@ -1,14 +1,17 @@
-import type { Branch, CheckIn, Court, CourtSession, Member, MembershipType, Notification, OpenPlaySession, OpenPlaySignup, PlatformCommission, Profile, Reminder, Transaction } from '../../types'
+import type { CheckIn, ClubAccount, ClubStaffRole, Court, CourtSession, Member, MembershipType, Notification, OpenPlaySession, OpenPlaySignup, Profile, Reminder, Transaction } from '../../types'
 import { daysFromNow, todayISO } from './common'
+import { recordCommission } from './commissions'
 import type { DemoDB } from './model'
-import { DEMO_CLUB_ID, DEMO_VENUE_ID, demoClub } from '../tenant'
+import { DEMO_CLUB_ID, DEMO_DAVAO_CLUB_ID, DEMO_DAVAO_VENUE_ID, DEMO_VENUE_ID, demoClub, demoDavaoClub } from '../tenant'
 
 export function seed(): DemoDB {
   const superadminId = 'user_superadmin'
   const adminId = 'user_admin'
   const staffId = 'user_staff'
   const memberUserId = 'user_member'
+  const davaoAdminId = 'user_davao_admin'
 
+  // Profiles are identity only. Authority comes from clubRoles, members and platformRoles.
   const profiles: Profile[] = [
     {
       id: superadminId,
@@ -39,6 +42,14 @@ export function seed(): DemoDB {
       full_name: 'Mia Member',
       role: 'member',
       phone: '+63 917 555 0101',
+      created_at: todayISO(),
+    },
+    {
+      id: davaoAdminId,
+      email: 'davao.admin@rallypoint.local',
+      full_name: 'Dana Davao',
+      role: 'admin',
+      phone: '+63 917 000 0003',
       created_at: todayISO(),
     },
   ]
@@ -104,10 +115,10 @@ export function seed(): DemoDB {
   }
 
   const courts: Court[] = [
-    { id: 'court_1', branch_id: 'branch_gensan', name: 'Court A', status: 'occupied', hourly_rate: 500 },
-    { id: 'court_2', branch_id: 'branch_gensan', name: 'Court B', status: 'available', hourly_rate: 500 },
-    { id: 'court_3', branch_id: 'branch_gensan', name: 'Court C', status: 'occupied', hourly_rate: 650 },
-    { id: 'court_4', branch_id: 'branch_gensan', name: 'Court D', status: 'available', hourly_rate: 650 },
+    { id: 'court_1', name: 'Court A', status: 'occupied', hourly_rate: 500 },
+    { id: 'court_2', name: 'Court B', status: 'available', hourly_rate: 500 },
+    { id: 'court_3', name: 'Court C', status: 'occupied', hourly_rate: 650 },
+    { id: 'court_4', name: 'Court D', status: 'available', hourly_rate: 650 },
   ]
 
   const now = Date.now()
@@ -283,11 +294,6 @@ export function seed(): DemoDB {
   const reminders: Reminder[] = []
 
   const club_id = DEMO_CLUB_ID
-  const branches: Branch[] = [
-    { id: 'branch_gensan', name: 'Rally Point Gensan', slug: 'gensan', city: 'General Santos City', address: 'General Santos City', email: 'gensan@rallypoint.local', phone: '+63 917 555 0100', commission_rate: 5, commission_type: 'percentage', status: 'active', created_at: todayISO() },
-    { id: 'branch_davao', name: 'Rally Point Davao', slug: 'davao', city: 'Davao City', address: 'Davao City', email: 'davao@rallypoint.local', phone: '+63 917 555 0200', commission_rate: 5, commission_type: 'percentage', status: 'active', created_at: todayISO() },
-  ]
-  const commissions: PlatformCommission[] = []
   const mainVenue = {
     id: DEMO_VENUE_ID,
     club_id,
@@ -309,19 +315,179 @@ export function seed(): DemoDB {
     is_active: true,
   }
 
-  return {
-    clubs: [demoClub],
-    venues: [mainVenue, secondVenue],
+  // A second, independent club with its own venue, courts, admin and members.
+  const davaoVenue = {
+    id: DEMO_DAVAO_VENUE_ID,
+    club_id: DEMO_DAVAO_CLUB_ID,
+    slug: 'davao-main',
+    name: 'Rally Point Davao',
+    timezone: 'Asia/Manila',
+    open_hour: 6,
+    close_hour: 22,
+    is_active: true,
+  }
+  const davaoCourts: Court[] = [
+    { id: 'court_davao_1', club_id: DEMO_DAVAO_CLUB_ID, venue_id: DEMO_DAVAO_VENUE_ID, name: 'Davao Court 1', status: 'available', hourly_rate: 450 },
+    { id: 'court_davao_2', club_id: DEMO_DAVAO_CLUB_ID, venue_id: DEMO_DAVAO_VENUE_ID, name: 'Davao Court 2', status: 'available', hourly_rate: 450 },
+  ]
+  // Mia belongs to both clubs: each membership is owned by its club and has its own code.
+  const davaoMembers: Member[] = [
+    {
+      id: 'mem_davao_001',
+      club_id: DEMO_DAVAO_CLUB_ID,
+      user_id: memberUserId,
+      member_code: 'DV-1001',
+      full_name: 'Mia Member',
+      email: 'member@rallypoint.local',
+      phone: '+63 917 555 0101',
+      membership_type: 'standard',
+      status: 'active',
+      join_date: daysFromNow(-14),
+      expiry_date: daysFromNow(16),
+      qr_token: 'QR_MIA_DAVAO',
+      created_at: todayISO(),
+    },
+    {
+      id: 'mem_davao_002',
+      club_id: DEMO_DAVAO_CLUB_ID,
+      user_id: null,
+      member_code: 'DV-1002',
+      full_name: 'Rico Dela Cruz',
+      email: 'rico@email.com',
+      phone: '+63 917 333 1001',
+      membership_type: 'premium',
+      status: 'active',
+      join_date: daysFromNow(-60),
+      expiry_date: daysFromNow(30),
+      created_at: todayISO(),
+    },
+    {
+      id: 'mem_davao_003',
+      club_id: DEMO_DAVAO_CLUB_ID,
+      user_id: null,
+      member_code: 'DV-1003',
+      full_name: 'Ana Reyes',
+      email: 'ana@email.com',
+      phone: '+63 917 333 1002',
+      membership_type: 'basic',
+      status: 'active',
+      join_date: daysFromNow(-20),
+      expiry_date: daysFromNow(10),
+      created_at: todayISO(),
+    },
+  ]
+  const davaoTransactions: Transaction[] = [
+    {
+      id: 'tx_davao_1',
+      club_id: DEMO_DAVAO_CLUB_ID,
+      venue_id: DEMO_DAVAO_VENUE_ID,
+      verification_status: 'unverified',
+      member_id: 'mem_davao_002',
+      amount: 900,
+      type: 'court_rental',
+      description: 'Davao Court 1 — 2 hours',
+      created_at: seededTransactionTime(3 * 3600000),
+      created_by: davaoAdminId,
+    },
+    {
+      id: 'tx_davao_2',
+      club_id: DEMO_DAVAO_CLUB_ID,
+      venue_id: DEMO_DAVAO_VENUE_ID,
+      verification_status: 'unverified',
+      member_id: 'mem_davao_002',
+      amount: 450,
+      type: 'extension',
+      description: 'Extend Davao Court 1 +1 hour',
+      created_at: seededTransactionTime(100 * 60000),
+      created_by: davaoAdminId,
+    },
+    {
+      id: 'tx_davao_3',
+      club_id: DEMO_DAVAO_CLUB_ID,
+      venue_id: null,
+      verification_status: 'unverified',
+      member_id: 'mem_davao_003',
+      amount: 2000,
+      type: 'membership',
+      description: 'Basic membership',
+      created_at: seededTransactionTime(60 * 60000),
+      created_by: davaoAdminId,
+    },
+    {
+      id: 'tx_davao_4',
+      club_id: DEMO_DAVAO_CLUB_ID,
+      venue_id: DEMO_DAVAO_VENUE_ID,
+      verification_status: 'unverified',
+      member_id: null,
+      amount: 300,
+      type: 'walk_in',
+      description: 'Walk-in day pass',
+      created_at: seededTransactionTime(20 * 60000),
+      created_by: davaoAdminId,
+    },
+  ]
+  const davaoNotifications: Notification[] = [
+    {
+      id: 'n_davao_1',
+      club_id: DEMO_DAVAO_CLUB_ID,
+      venue_id: null,
+      user_id: memberUserId,
+      title: 'Welcome to Rally Point Davao',
+      body: 'Your Davao membership is active. Book a court or show your QR at the desk.',
+      read: false,
+      created_at: new Date(now - 2 * 3600000).toISOString(),
+    },
+  ]
+
+  const clubAccounts: ClubAccount[] = [
+    {
+      club_id: DEMO_CLUB_ID,
+      status: 'active',
+      commission_rate: 5,
+      city: 'General Santos City',
+      address: 'General Santos City',
+      contact_email: 'gensan@rallypoint.local',
+      contact_phone: '+63 917 555 0100',
+      created_at: todayISO(),
+      updated_at: todayISO(),
+    },
+    {
+      club_id: DEMO_DAVAO_CLUB_ID,
+      status: 'active',
+      commission_rate: 6,
+      city: 'Davao City',
+      address: 'Davao City',
+      contact_email: 'davao@rallypoint.local',
+      contact_phone: '+63 917 555 0200',
+      created_at: todayISO(),
+      updated_at: todayISO(),
+    },
+  ]
+  const clubRoles: ClubStaffRole[] = [
+    { club_id: DEMO_CLUB_ID, user_id: adminId, role: 'admin', is_active: true },
+    { club_id: DEMO_CLUB_ID, user_id: staffId, role: 'staff', is_active: true },
+    { club_id: DEMO_DAVAO_CLUB_ID, user_id: davaoAdminId, role: 'admin', is_active: true },
+  ]
+
+  const db: DemoDB = {
+    clubs: [demoClub, demoDavaoClub],
+    clubAccounts,
+    clubRoles,
+    platformRoles: [{ user_id: superadminId, role: 'superadmin' }],
+    auditLog: [],
+    venues: [mainVenue, secondVenue, davaoVenue],
     staffVenueGrants: [{ club_id, user_id: staffId, venue_id: DEMO_VENUE_ID, granted_by: adminId, is_active: true }],
-    branches,
-    commissions,
+    commissions: [],
     profiles,
-    members: members.map((member) => ({ ...member, club_id })),
-    courts: courts.map((court, index) => ({
-      ...court,
-      club_id,
-      venue_id: index < 2 ? DEMO_VENUE_ID : secondVenue.id,
-    })),
+    members: [...members.map((member) => ({ ...member, club_id })), ...davaoMembers],
+    courts: [
+      ...courts.map((court, index) => ({
+        ...court,
+        club_id,
+        venue_id: index < 2 ? DEMO_VENUE_ID : secondVenue.id,
+      })),
+      ...davaoCourts,
+    ],
     sessions: sessions.map((session) => ({
       ...session,
       club_id,
@@ -332,15 +498,24 @@ export function seed(): DemoDB {
     openPlaySignups,
     reminders: reminders.map((reminder) => ({ ...reminder, club_id })),
     checkins: checkins.map((checkin) => ({ ...checkin, club_id, venue_id: checkin.member_id === 'mem_002' ? secondVenue.id : DEMO_VENUE_ID })),
-    transactions: transactions.map((transaction) => ({
-      ...transaction,
-      club_id,
-      venue_id: transaction.type === 'membership' ? null : DEMO_VENUE_ID,
-      verification_status: 'unverified' as const,
-    })),
-    notifications: notifications.map((notification) => ({ ...notification, club_id })),
+    transactions: [
+      ...transactions.map((transaction) => ({
+        ...transaction,
+        club_id,
+        venue_id: transaction.type === 'membership' ? null : DEMO_VENUE_ID,
+        verification_status: 'unverified' as const,
+      })),
+      ...davaoTransactions,
+    ],
+    notifications: [...notifications.map((notification) => ({ ...notification, club_id })), ...davaoNotifications],
     inquiries: [],
     walkins: [],
     sessionUserId: null,
   }
+
+  // Seeded court-time charges get their commission lines, oldest first so the newest lead.
+  for (const transaction of db.transactions.slice().sort((a, b) => a.created_at.localeCompare(b.created_at))) {
+    recordCommission(db, transaction)
+  }
+  return db
 }

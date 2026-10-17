@@ -1,8 +1,15 @@
 import { render, screen, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
-import type { Role } from '../types'
-import { AppHeader, AppShell, BottomNav } from './Shell'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { MyClub, Role } from '../types'
+import { AppHeader, AppShell, BottomNav, ClubSwitcher } from './Shell'
+
+const auth = vi.hoisted(() => ({
+  clubs: [] as MyClub[],
+  activeClub: null as MyClub | null,
+  switchClub: vi.fn(),
+}))
 
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({
@@ -11,8 +18,20 @@ vi.mock('../context/AuthContext', () => ({
       full_name: 'Demo Member',
     },
     signOut: vi.fn(),
+    clubs: auth.clubs,
+    activeClub: auth.activeClub,
+    switchClub: auth.switchClub,
   }),
 }))
+
+const gensan: MyClub = { club_id: 'club-gensan', slug: 'rally-point-gensan', name: 'Rally Point Gensan', role: 'member' }
+const davao: MyClub = { club_id: 'club-davao', slug: 'rally-point-davao', name: 'Rally Point Davao', role: 'admin' }
+
+beforeEach(() => {
+  auth.clubs = []
+  auth.activeClub = null
+  auth.switchClub.mockClear()
+})
 
 const roleLinks: Record<Role, Array<[label: string, href: string]>> = {
   member: [
@@ -39,13 +58,11 @@ const roleLinks: Record<Role, Array<[label: string, href: string]>> = {
     ['Bookings', '/admin/bookings'],
     ['Help', '/admin/help'],
   ],
+  // The platform portal only; superadmins have no club screens.
   superadmin: [
     ['Overview', '/superadmin'],
-    ['Floor', '/admin/ops'],
-    ['Schedule', '/admin/board'],
-    ['Open play', '/admin/open'],
-    ['Bookings', '/admin/bookings'],
-    ['Help', '/admin/help'],
+    ['Clubs', '/superadmin/clubs'],
+    ['Ledger', '/superadmin/ledger'],
   ],
 }
 
@@ -67,7 +84,7 @@ describe('BottomNav', () => {
       const links = within(nav).getAllByRole('link')
 
       expect(nav).toHaveClass('bottom-nav')
-      expect(nav.firstElementChild).toHaveClass('grid-cols-6')
+      expect(nav.firstElementChild).toHaveClass(`grid-cols-${expectedLinks.length}`)
       expect(links).toHaveLength(expectedLinks.length)
       expectedLinks.forEach(([label, href], index) => {
         expect(links[index]).toHaveAccessibleName(label)
@@ -108,6 +125,40 @@ describe('BottomNav', () => {
   })
 })
 
+function Where() {
+  return <p>At {useLocation().pathname}</p>
+}
+
+describe('ClubSwitcher', () => {
+  it('stays hidden for someone in one club', () => {
+    auth.clubs = [gensan]
+    auth.activeClub = gensan
+    render(<MemoryRouter><ClubSwitcher /></MemoryRouter>)
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  })
+
+  it('switches clubs and goes to the home screen for the role in that club', async () => {
+    auth.clubs = [davao, gensan]
+    auth.activeClub = gensan
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/member/book']}>
+        <ClubSwitcher />
+        <Routes>
+          <Route path="*" element={<Where />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    const select = screen.getByRole('combobox', { name: 'Club' })
+    expect(select).toHaveValue('club-gensan')
+    expect(within(select).getByRole('option', { name: 'Rally Point Davao · Admin' })).toBeInTheDocument()
+
+    await user.selectOptions(select, 'club-davao')
+    expect(auth.switchClub).toHaveBeenCalledWith('club-davao')
+    expect(screen.getByText('At /admin')).toBeInTheDocument()
+  })
+})
+
 describe('AppShell', () => {
   it('shares a centered content rail while preserving both navigation variants', () => {
     const { container } = render(
@@ -128,5 +179,28 @@ describe('AppShell', () => {
       screen.getAllByRole('navigation', { name: 'Main menu' }),
     ).toHaveLength(2)
     expect(screen.getByText('Member content')).toHaveClass('safe-bottom')
+  })
+
+  it('shows a neutral badge instead of the Gensan logo for other clubs', () => {
+    auth.clubs = [davao]
+    auth.activeClub = davao
+    const { container } = render(
+      <MemoryRouter>
+        <AppHeader title="Admin home" />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('RD')).toBeInTheDocument()
+    expect(container.querySelector('img')).toBeNull()
+  })
+
+  it('names the active club in the header', () => {
+    auth.clubs = [gensan]
+    auth.activeClub = gensan
+    render(
+      <MemoryRouter>
+        <AppHeader title="Member home" />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Rally Point Gensan')).toBeInTheDocument()
   })
 })

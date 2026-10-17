@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { BackButton } from '../components/BackButton'
 import { AppHeader, AppShell, LoadingBlock, SignOutButton } from '../components/Shell'
+import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import type { Profile, Venue } from '../types'
 
 export function AdminVenues() {
+  const { activeClub } = useAuth()
   const [venues, setVenues] = useState<Venue[]>([])
   const [staff, setStaff] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
@@ -89,7 +91,7 @@ export function AdminVenues() {
       <main className="safe-bottom px-4 pt-3 space-y-4">
         <div className="flex items-center gap-2">
           <BackButton />
-          <p className="text-sm text-slate-500">Rally Point Gensan club</p>
+          <p className="text-sm text-slate-500">{activeClub?.name ?? 'Your club'}</p>
         </div>
 
         <form className="card p-4 space-y-3" onSubmit={createVenue}>

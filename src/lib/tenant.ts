@@ -1,36 +1,39 @@
-import type { Venue } from '../types'
+import type { Club, Venue } from '../types'
 
-/** The first release is intentionally pinned to one server-owned club. */
-export const RALLY_POINT_CLUB_SLUG = 'rally-point-gensan'
+/** The club that sign-ups without a club link join (also used by the live app). */
+export const DEFAULT_CLUB_SLUG = 'rally-point-gensan'
+/** @deprecated Use DEFAULT_CLUB_SLUG. Kept for one release while callers move over. */
+export const RALLY_POINT_CLUB_SLUG = DEFAULT_CLUB_SLUG
+
+// Browser-local demo identities. They never grant access; they only label demo rows.
 export const DEMO_CLUB_ID = 'club_rally_point'
+export const DEMO_DAVAO_CLUB_ID = 'club_rally_davao'
 export const DEMO_VENUE_ID = 'venue_gensan_main'
-// Stable database identity for the first live club. The browser never chooses
-// this value; it is only used to scope fixed-club API queries and RPC inputs.
-export const RALLY_POINT_CLUB_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+export const DEMO_DAVAO_VENUE_ID = 'venue_davao_main'
 
-export const demoClub = {
+export const demoClub: Club = {
   id: DEMO_CLUB_ID,
-  slug: RALLY_POINT_CLUB_SLUG,
-  name: 'Rally Point Club',
+  slug: DEFAULT_CLUB_SLUG,
+  name: 'Rally Point Gensan',
   default_timezone: 'Asia/Manila',
   is_active: true,
-} as const
+}
 
-export function isRallyPointVenue(venue: Pick<Venue, 'club_id'>) {
-  return venue.club_id === DEMO_CLUB_ID
+export const demoDavaoClub: Club = {
+  id: DEMO_DAVAO_CLUB_ID,
+  slug: 'rally-point-davao',
+  name: 'Rally Point Davao',
+  default_timezone: 'Asia/Manila',
+  is_active: true,
 }
 
 /**
- * Pick a venue only from the already-authorized, fixed-club list. A forged id
- * therefore falls back to the first active venue rather than widening scope.
+ * Pick a venue only from the already-authorized list (optionally limited to one
+ * club). A forged id falls back to the first active venue instead of widening scope.
  */
-export function chooseVenueId(venues: Venue[], requestedId?: string | null) {
-  const active = venues.filter((venue) => venue.is_active && isRallyPointVenue(venue))
+export function chooseVenueId(venues: Venue[], requestedId?: string | null, clubId?: string | null) {
+  const active = venues.filter((venue) => venue.is_active && (!clubId || venue.club_id === clubId))
   if (!active.length) return null
   if (requestedId && active.some((venue) => venue.id === requestedId)) return requestedId
   return active[0].id
-}
-
-export function venueLabel(venues: Venue[], venueId?: string | null) {
-  return venues.find((venue) => venue.id === venueId)?.name ?? 'All venues'
 }

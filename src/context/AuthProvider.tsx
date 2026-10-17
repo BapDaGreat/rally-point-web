@@ -7,31 +7,56 @@ import {
 } from 'react'
 import { isDemoMode, supabase } from '../lib/supabase'
 import { demoStore } from '../lib/demoStore'
-import type { Profile } from '../types'
+import { api } from '../lib/api'
+import {
+  CLUB_UNAVAILABLE_EVENT,
+  chooseActiveClub,
+  getActiveClubId,
+  rememberClub,
+  setActiveClubId,
+} from '../lib/clubContext'
+import type { MyClub, Profile } from '../types'
 import { AuthContext } from './AuthContext'
 
-async function fetchProfile(userId: string): Promise<Profile | null> {
+interface Access {
+  profile: Profile
+  clubs: MyClub[]
+  activeClub: MyClub | null
+}
+
+/**
+ * Works out where a person may act. Identity comes from profiles; authority
+ * comes only from trusted club roles, memberships and platform roles, never
+ * from profiles.role. Returns null when the person has no access anywhere.
+ */
+async function loadAccess(identity: Profile, preferredClubId?: string | null): Promise<Access | null> {
+  const [clubs, platform] = await Promise.all([api.myClubs(identity.id), api.platformAccess(identity.id)])
+  if (platform === 'superadmin') {
+    // Platform accounts work in the platform portal only, with no club context.
+    setActiveClubId(null)
+    return { profile: { ...identity, role: 'superadmin' }, clubs: [], activeClub: null }
+  }
+  const activeClub = chooseActiveClub(clubs, identity.id, preferredClubId)
+  if (!activeClub) {
+    setActiveClubId(null)
+    return null
+  }
+  setActiveClubId(activeClub.club_id)
+  rememberClub(identity.id, activeClub.club_id)
+  return { profile: { ...identity, role: activeClub.role }, clubs, activeClub }
+}
+
+async function fetchIdentity(userId: string): Promise<Profile | null> {
   if (!supabase) return null
   const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
   if (error) throw error
-  if (!data) return null
-
-  // The profile row is identity data only. In live mode, authorization comes
-  // from the server-owned club assignment/roster boundary, never profiles.role.
-  // The optional guard keeps the focused auth unit tests compatible with their
-  // intentionally tiny Supabase double.
-  if (typeof supabase.rpc === 'function') {
-    const access = await supabase.rpc('get_current_access')
-    if (access.error) throw access.error
-    const row = Array.isArray(access.data) ? access.data[0] : access.data
-    if (!row?.role) return null
-    return { ...(data as Profile), role: row.role as Profile['role'] }
-  }
-  return data as Profile
+  return (data as Profile | null) ?? null
 }
 
 const profileSetupError =
   'Your club profile is not ready. Please try again or contact staff.'
+
+const invalidClubLinkError = 'This club link is not valid. Ask the club for a new link.'
 
 async function clearUnauthorizedSession() {
   if (!supabase) return
@@ -45,41 +70,58 @@ async function clearUnauthorizedSession() {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null)
+  const [clubs, setClubs] = useState<MyClub[]>([])
+  const [activeClub, setActiveClub] = useState<MyClub | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const applyAccess = useCallback((access: Access | null) => {
+    if (!access) setActiveClubId(null)
+    setUser(access?.profile ?? null)
+    setClubs(access?.clubs ?? [])
+    setActiveClub(access?.activeClub ?? null)
+  }, [])
 
   const refresh = useCallback(async () => {
     if (isDemoMode) {
-      setUser(demoStore.currentUser())
+      try {
+        const identity = demoStore.currentUser()
+        applyAccess(identity ? await loadAccess(identity, getActiveClubId()) : null)
+      } catch (error) {
+        console.error(error)
+        applyAccess(null)
+      }
       setLoading(false)
       return
     }
     if (!supabase) {
-      setUser(null)
+      applyAccess(null)
       setLoading(false)
       return
     }
     const { data } = await supabase.auth.getSession()
     const uid = data.session?.user?.id
     if (!uid) {
-      setUser(null)
+      applyAccess(null)
       setLoading(false)
       return
     }
     try {
-      const profile = await fetchProfile(uid)
-      if (!profile) {
-        setUser(null)
+      const identity = await fetchIdentity(uid)
+      // Keep this tab's club across token refreshes when it is still allowed.
+      const access = identity ? await loadAccess(identity, getActiveClubId()) : null
+      if (!access) {
+        applyAccess(null)
         await clearUnauthorizedSession()
       } else {
-        setUser(profile)
+        applyAccess(access)
       }
     } catch (error) {
       console.error(error)
-      setUser(null)
+      applyAccess(null)
       await clearUnauthorizedSession()
     }
     setLoading(false)
-  }, [])
+  }, [applyAccess])
 
   useEffect(() => {
     void refresh()
@@ -91,11 +133,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [refresh])
 
+  // A club can be suspended while someone is using it; re-check where they may act.
+  useEffect(() => {
+    const recheck = () => void refresh()
+    window.addEventListener(CLUB_UNAVAILABLE_EVENT, recheck)
+    return () => window.removeEventListener(CLUB_UNAVAILABLE_EVENT, recheck)
+  }, [refresh])
+
   const signIn = useCallback(async (email: string, password: string) => {
     if (isDemoMode) {
-      const profile = demoStore.login(email, password)
-      setUser(profile)
-      return profile
+      const identity = demoStore.login(email, password)
+      const access = await loadAccess(identity)
+      if (!access) {
+        demoStore.logout()
+        applyAccess(null)
+        throw new Error(profileSetupError)
+      }
+      applyAccess(access)
+      return access.profile
     }
     if (!supabase) throw new Error('Supabase not configured')
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
@@ -103,46 +158,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const uid = data.user?.id
     if (!uid) throw new Error('No user returned')
     try {
-      const profile = await fetchProfile(uid)
-      if (!profile) throw new Error(profileSetupError)
-      setUser(profile)
-      return profile
+      const identity = await fetchIdentity(uid)
+      const access = identity ? await loadAccess(identity) : null
+      if (!access) throw new Error(profileSetupError)
+      applyAccess(access)
+      return access.profile
     } catch {
-      setUser(null)
+      applyAccess(null)
       await clearUnauthorizedSession()
       throw new Error(profileSetupError)
     }
-  }, [])
+  }, [applyAccess])
 
   const signUpMember = useCallback(
-    async (input: { email: string; password: string; full_name: string; phone?: string }) => {
+    async (input: { email: string; password: string; full_name: string; phone?: string; clubSlug?: string }) => {
       const email = input.email.trim().toLowerCase()
       const full_name = input.full_name.trim()
       if (!full_name) throw new Error('Please enter your name')
       if (input.password.length < 6) throw new Error('Password must be at least 6 characters')
 
+      // A join link names its club; check it before creating the account.
+      const clubSlug = input.clubSlug?.trim() || undefined
+      const joining = clubSlug ? await api.publicClub(clubSlug) : null
+      if (clubSlug && !joining) throw new Error(invalidClubLinkError)
+
       if (isDemoMode) {
-        const profile = demoStore.registerMember({
+        const identity = demoStore.registerMember({
           email,
           password: input.password,
           full_name,
           phone: input.phone?.trim() || undefined,
+          clubSlug,
         })
-        setUser(profile)
-        return profile
+        const access = await loadAccess(identity, joining?.id)
+        if (!access) throw new Error(profileSetupError)
+        applyAccess(access)
+        return access.profile
       }
       if (!supabase) throw new Error('Supabase not configured')
 
-      // Public signup is always member — never admin/staff
+      // Public signup is always member — never admin/staff. Only the club link
+      // is added to the sign-up details, and only when one was used.
+      const details: Record<string, string | null> = { full_name, phone: input.phone?.trim() || null }
+      if (clubSlug) details.club_slug = clubSlug
       const { data, error } = await supabase.auth.signUp({
         email,
         password: input.password,
-        options: {
-          data: {
-            full_name,
-            phone: input.phone?.trim() || null,
-          },
-        },
+        options: { data: details },
       })
       if (error) throw error
       if (!data.user) throw new Error('Sign-up failed')
@@ -155,17 +217,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const profile = await fetchProfile(data.user.id)
-        if (!profile || profile.role !== 'member') throw new Error(profileSetupError)
-        setUser(profile)
-        return profile
+        const identity = await fetchIdentity(data.user.id)
+        const access = identity ? await loadAccess(identity, joining?.id) : null
+        if (!access || access.profile.role !== 'member') throw new Error(profileSetupError)
+        applyAccess(access)
+        return access.profile
       } catch {
-        setUser(null)
+        applyAccess(null)
         await clearUnauthorizedSession()
         throw new Error(profileSetupError)
       }
     },
-    [],
+    [applyAccess],
+  )
+
+  const joinClub = useCallback(
+    async (slug: string) => {
+      if (!user) throw new Error('Please sign in to join a club')
+      const clubId = await api.joinClub(user.id, slug)
+      const identity = isDemoMode ? demoStore.currentUser() : await fetchIdentity(user.id)
+      const access = identity ? await loadAccess(identity, clubId) : null
+      if (!access?.activeClub) throw new Error(profileSetupError)
+      applyAccess(access)
+      return access.activeClub
+    },
+    [user, applyAccess],
+  )
+
+  const switchClub = useCallback(
+    (clubId: string) => {
+      if (!user) return
+      const next = clubs.find((club) => club.club_id === clubId)
+      if (!next) return
+      setActiveClubId(next.club_id)
+      rememberClub(user.id, next.club_id)
+      setActiveClub(next)
+      setUser({ ...user, role: next.role })
+    },
+    [user, clubs],
   )
 
   const resetPassword = useCallback(async (email: string) => {
@@ -181,25 +270,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     if (isDemoMode) {
       demoStore.logout()
-      setUser(null)
+      applyAccess(null)
       return
     }
     if (supabase) await supabase.auth.signOut()
-    setUser(null)
-  }, [])
+    applyAccess(null)
+  }, [applyAccess])
 
   const value = useMemo(
     () => ({
       user,
       loading,
       demo: isDemoMode,
+      clubs,
+      activeClub,
+      switchClub,
+      joinClub,
       signIn,
       signUpMember,
       resetPassword,
       signOut,
       refresh,
     }),
-    [user, loading, signIn, signUpMember, resetPassword, signOut, refresh],
+    [user, loading, clubs, activeClub, switchClub, joinClub, signIn, signUpMember, resetPassword, signOut, refresh],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -3,6 +3,7 @@ const seededDemoPasswords = new Map<string, string>([
   ['admin@rallypoint.local', 'admin123'],
   ['staff@rallypoint.local', 'staff123'],
   ['member@rallypoint.local', 'member123'],
+  ['davao.admin@rallypoint.local', 'davao123'],
 ])
 
 let demoPasswords = new Map(seededDemoPasswords)

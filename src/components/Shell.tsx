@@ -1,7 +1,8 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import {
   Building2,
   CalendarDays,
+  Coins,
   Home,
   HelpCircle,
   LayoutDashboard,
@@ -12,8 +13,10 @@ import {
   Users,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import type { Role } from '../types'
+import type { ClubRole, Role } from '../types'
 import { useAuth } from '../context/AuthContext'
+import { homeFor } from '../lib/roleHome'
+import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
 import { RallyPointLogo } from './RallyPointLogo'
 
 /** Plain-language nav — short words players of any age recognize */
@@ -44,14 +47,74 @@ const adminTabs = [
   { to: '/admin/help', label: 'Help', icon: HelpCircle },
 ]
 
+/**
+ * The current logo artwork says "Gensan", so it is shown only for that club.
+ * Other clubs and the platform portal get a neutral badge until they have their own.
+ */
+function ClubMark({ size }: { size: 'small' | 'large' }) {
+  const { activeClub, user } = useAuth()
+  const showGensanLogo = activeClub ? activeClub.slug === DEFAULT_CLUB_SLUG : user?.role !== 'superadmin'
+  const box = size === 'large' ? 'w-11 h-11' : 'w-8 h-8'
+  if (showGensanLogo) return <RallyPointLogo variant="mark" className={`${box} object-contain`} />
+  const words = (activeClub?.name ?? 'Rally Point').split(/\s+/).filter(Boolean)
+  const initials = `${words[0]?.[0] ?? ''}${words.length > 1 ? words[words.length - 1][0] : ''}`.toUpperCase()
+  return (
+    <span
+      aria-hidden
+      className={`${box} grid shrink-0 place-items-center rounded-xl bg-brand-700 font-bold text-white ${size === 'large' ? 'text-base' : 'text-caption'}`}
+    >
+      {initials}
+    </span>
+  )
+}
+
+// The platform portal only: superadmins have no club screens.
 const superadminTabs = [
-  { to: '/superadmin', end: true, label: 'Overview', icon: Building2 },
-  { to: '/admin/ops', label: 'Floor', icon: Home },
-  { to: '/admin/board', label: 'Schedule', icon: Tv },
-  { to: '/admin/open', label: 'Open play', icon: Users },
-  { to: '/admin/bookings', label: 'Bookings', icon: CalendarDays },
-  { to: '/admin/help', label: 'Help', icon: HelpCircle },
+  { to: '/superadmin', end: true, label: 'Overview', icon: LayoutDashboard },
+  { to: '/superadmin/clubs', label: 'Clubs', icon: Building2 },
+  { to: '/superadmin/ledger', label: 'Ledger', icon: Coins },
 ]
+
+const clubRoleLabel: Record<ClubRole, string> = { member: 'Member', staff: 'Staff', admin: 'Admin' }
+
+/**
+ * Lets someone who belongs to several clubs move between them. Hidden for
+ * everyone else. Switching takes them to their home screen in that club.
+ */
+export function ClubSwitcher({ tone = 'light', className = '' }: { tone?: 'light' | 'dark'; className?: string }) {
+  const auth = useAuth()
+  const navigate = useNavigate()
+  const clubs = auth.clubs ?? []
+  const activeClub = auth.activeClub ?? null
+  if (clubs.length < 2 || !activeClub) return null
+  const selectClass =
+    tone === 'dark'
+      ? 'w-full min-h-12 rounded-xl border border-white/25 bg-white/10 px-3 text-body font-semibold text-white'
+      : 'input min-h-12 w-full'
+  return (
+    <label className={`block ${className}`}>
+      <span className={tone === 'dark' ? 'text-caption text-teal-200/90' : 'text-caption font-semibold text-slate-600'}>
+        Club
+      </span>
+      <select
+        className={selectClass}
+        value={activeClub.club_id}
+        onChange={(event) => {
+          const next = clubs.find((club) => club.club_id === event.target.value)
+          if (!next) return
+          auth.switchClub(next.club_id)
+          navigate(homeFor(next.role), { replace: true })
+        }}
+      >
+        {clubs.map((club) => (
+          <option key={club.club_id} value={club.club_id} className="text-slate-900">
+            {club.name} · {clubRoleLabel[club.role]}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
 
 function tabsFor(role: Role) {
   if (role === 'superadmin') return superadminTabs
@@ -61,8 +124,9 @@ function tabsFor(role: Role) {
 }
 
 export function SideNav({ role }: { role: Role }) {
-  const { user, signOut } = useAuth()
+  const { user, signOut, activeClub } = useAuth()
   const tabs = tabsFor(role)
+  const placeName = activeClub?.name ?? (role === 'superadmin' ? 'Rally Point platform' : 'Rally Point')
   const roleLabel =
     role === 'superadmin' ? 'Superadmin' : role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Member'
 
@@ -70,10 +134,10 @@ export function SideNav({ role }: { role: Role }) {
     <aside className="side-nav">
       <div className="px-2 mb-6">
         <div className="flex items-center gap-2.5 mb-1">
-          <RallyPointLogo variant="mark" className="w-11 h-11 object-contain" />
+          <ClubMark size="large" />
           <div>
             <p className="text-caption font-normal text-teal-200/90">
-              Rally Point
+              {placeName}
             </p>
             <p className="text-subtitle font-medium">{roleLabel}</p>
           </div>
@@ -86,6 +150,7 @@ export function SideNav({ role }: { role: Role }) {
             {user.full_name}
           </p>
         ) : null}
+        <ClubSwitcher tone="dark" className="mt-3" />
       </div>
 
       <nav className="flex flex-col gap-1.5 flex-1" aria-label="Main menu">
@@ -123,7 +188,9 @@ export function BottomNav({ role }: { role: Role }) {
       ? 'grid-cols-6'
       : tabs.length === 5
         ? 'grid-cols-5'
-        : 'grid-cols-4'
+        : tabs.length === 4
+          ? 'grid-cols-4'
+          : 'grid-cols-3'
   return (
     <nav className="bottom-nav" aria-label="Main menu">
       <div className={`grid ${cols} px-1 pt-1.5 pb-1.5`}>
@@ -176,6 +243,7 @@ export function AppHeader({
   left?: ReactNode
   right?: ReactNode
 }) {
+  const clubName = useAuth().activeClub?.name ?? 'Rally Point'
   return (
     <header className="sticky top-0 z-30 bg-white/98 backdrop-blur border-b border-slate-200 pt-4 pb-3.5">
       <div className="app-content-rail flex items-start justify-between gap-3">
@@ -183,8 +251,8 @@ export function AppHeader({
           {left ? <div className="shrink-0 mt-0.5">{left}</div> : null}
           <div className="min-w-0">
             <div className="flex items-center gap-2 md:hidden mb-1">
-              <RallyPointLogo variant="mark" className="w-8 h-8 object-contain" />
-              <p className="text-caption font-bold text-brand-800">Rally Point</p>
+              <ClubMark size="small" />
+              <p className="text-caption font-bold text-brand-800">{clubName}</p>
             </div>
             {title ? (
               <h1 className="text-heading-2 font-semibold text-slate-900 tracking-normal">
@@ -196,6 +264,7 @@ export function AppHeader({
                 {subtitle}
               </p>
             ) : null}
+            <ClubSwitcher className="mt-2 md:hidden" />
           </div>
         </div>
         <div className="shrink-0">{right}</div>

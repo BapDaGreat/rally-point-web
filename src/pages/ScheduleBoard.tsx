@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { Maximize2, RefreshCw } from 'lucide-react'
 import { AppHeader, AppShell, LoadingBlock, SignOutButton } from '../components/Shell'
+import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
-import type { Venue } from '../types'
+import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
+import type { PublicClub, Venue } from '../types'
 import type { Court, Role, ScheduleBlock } from '../types'
 import { fmtTime, ymdLocal } from '../types'
 import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR } from '../types'
@@ -17,10 +19,14 @@ function kindColor(kind: ScheduleBlock['kind']) {
 export function ScheduleBoard({
   role,
   tv = false,
+  club,
 }: {
   role?: Role
   tv?: boolean
+  /** The club a public TV board shows (from its link). */
+  club?: PublicClub | null
 }) {
+  const { activeClub } = useAuth()
   const [dateYmd, setDateYmd] = useState(ymdLocal(new Date()))
   const [blocks, setBlocks] = useState<ScheduleBlock[]>([])
   const [courts, setCourts] = useState<Court[]>([])
@@ -42,7 +48,7 @@ export function ScheduleBoard({
         if (selectedVenueId !== venueId) setVenueId(selectedVenueId)
       }
       const schedule = tv && typeof api.publicDaySchedule === 'function'
-        ? api.publicDaySchedule(dateYmd)
+        ? api.publicDaySchedule(dateYmd, undefined, club?.id)
         : selectedVenueId
           ? api.daySchedule(dateYmd, selectedVenueId)
           : api.daySchedule(dateYmd)
@@ -70,7 +76,7 @@ export function ScheduleBoard({
     const t = setInterval(() => void reload(), 30000)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateYmd, venueId, role, tv])
+  }, [dateYmd, venueId, role, tv, club?.id])
 
   useEffect(() => {
     const t = setInterval(() => setClock(new Date()), 1000)
@@ -88,7 +94,7 @@ export function ScheduleBoard({
       {tv ? (
         <header className="flex flex-wrap items-end justify-between gap-3 mb-4">
           <div>
-            <p className="text-teal-300 text-xs font-bold uppercase tracking-widest">Rally Point · Live board</p>
+            <p className="text-teal-300 text-xs font-bold uppercase tracking-widest">{club?.name ?? 'Rally Point'} · Live board</p>
             <h1 className="text-3xl md:text-4xl font-black mt-1">
               {new Date(dateYmd + 'T12:00:00').toLocaleDateString('en-US', {
                 weekday: 'long',
@@ -129,7 +135,7 @@ export function ScheduleBoard({
           >
             <RefreshCw size={14} /> Refresh
           </button>
-          <Link to="/board/tv" target="_blank" className="btn-primary text-sm ml-auto">
+          <Link to={activeClub ? `/board/tv/${activeClub.slug}` : '/board/tv'} target="_blank" className="btn-primary text-sm ml-auto">
             <Maximize2 size={14} /> TV mode
           </Link>
         </section>
@@ -266,6 +272,37 @@ export function AdminBoard() {
   return <ScheduleBoard role="admin" />
 }
 
+/** Public club screen. Without a club link it shows the default Rally Point Gensan club. */
 export function TvBoard() {
-  return <ScheduleBoard tv />
+  const { slug } = useParams()
+  // undefined = still looking the club up; null = the link names no active club.
+  const [club, setClub] = useState<PublicClub | null | undefined>(undefined)
+  const canLookUp = typeof api.publicClub === 'function'
+
+  useEffect(() => {
+    if (!canLookUp) return
+    let cancelled = false
+    api
+      .publicClub(slug ?? DEFAULT_CLUB_SLUG)
+      .then((found) => {
+        if (!cancelled) setClub(found)
+      })
+      .catch(() => {
+        if (!cancelled) setClub(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [slug, canLookUp])
+
+  if (!canLookUp) return <ScheduleBoard tv />
+  if (club === undefined) return <div className="min-h-screen bg-slate-950" aria-busy="true" />
+  if (club === null) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-slate-950 p-6 text-center text-white">
+        <p className="text-2xl font-bold">This club board is not available.</p>
+      </div>
+    )
+  }
+  return <ScheduleBoard tv club={club} />
 }

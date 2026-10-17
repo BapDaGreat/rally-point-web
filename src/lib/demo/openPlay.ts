@@ -1,4 +1,5 @@
 import type { OpenPlaySession, OpenPlaySignup, SkillLevel } from '../../types'
+import { activeClubId } from './access'
 import { todayISO, uid } from './common'
 import type { DemoDB } from './model'
 import { load, save } from './persistence'
@@ -19,9 +20,10 @@ export const openPlayOperations = {
   },
   listOpenPlays(includePast = false, venueId?: string) {
     const db = load()
+    const clubId = activeClubId(db)
     const now = Date.now() - 30 * 60000
     return db.openPlays
-      .filter((op) => (!venueId || op.venue_id === venueId) && (includePast || (op.status !== 'cancelled' && new Date(op.end_at).getTime() >= now)))
+      .filter((op) => op.club_id === clubId && (!venueId || op.venue_id === venueId) && (includePast || (op.status !== 'cancelled' && new Date(op.end_at).getTime() >= now)))
       .sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at))
       .map((op) => this.hydrateOpenPlay(db, op))
   },
@@ -38,11 +40,12 @@ export const openPlayOperations = {
     created_by?: string
   }) {
     const db = load()
-    const court = input.court_id ? db.courts.find((candidate) => candidate.id === input.court_id) : undefined
+    const clubId = activeClubId(db)
+    const court = input.court_id ? db.courts.find((candidate) => candidate.id === input.court_id && candidate.club_id === clubId) : undefined
     if (input.court_id && !court) throw new Error('Court not found')
     const op: OpenPlaySession = {
       id: uid('op'),
-      club_id: court?.club_id ?? db.clubs[0]?.id,
+      club_id: court?.club_id ?? clubId,
       venue_id: input.venue_id ?? court?.venue_id,
       title: input.title,
       court_id: input.court_id ?? null,
@@ -62,9 +65,12 @@ export const openPlayOperations = {
   },
   joinOpenPlay(openPlayId: string, memberId: string, userId: string) {
     const db = load()
-    const op = db.openPlays.find((x) => x.id === openPlayId)
+    const clubId = activeClubId(db)
+    const op = db.openPlays.find((x) => x.id === openPlayId && x.club_id === clubId)
     if (!op) throw new Error('Session not found')
     if (op.status === 'cancelled' || op.status === 'completed') throw new Error('Session closed')
+    const member = db.members.find((m) => m.id === memberId)
+    if (member && member.club_id !== op.club_id) throw new Error('Member belongs to another club')
     const existing = db.openPlaySignups.find(
       (s) => s.open_play_id === openPlayId && s.member_id === memberId && s.status !== 'cancelled',
     )

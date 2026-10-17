@@ -26,12 +26,20 @@ import type {
   SupportInquiry,
   InquiryCategory,
   InquiryStatus,
-  Branch,
+  ClubStatus,
+  MyClub,
+  PlatformAction,
+  PlatformClub,
+  PlatformClubAdmin,
   PlatformCommission,
+  ProvisionClubInput,
+  PublicClub,
   SuperadminStats,
+  SupportSession,
+  SupportSnapshot,
 } from '../types'
 import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, hourLabel, localRangeISO } from '../types'
-import { RALLY_POINT_CLUB_ID, RALLY_POINT_CLUB_SLUG } from './tenant'
+import { CLUB_HEADER, getActiveClubId, notifyClubUnavailable, requireActiveClubId } from './clubContext'
 
 function startOfToday() {
   const d = new Date()
@@ -50,11 +58,15 @@ export const api = {
     const { data: club, error: clubError } = await supabase
       .from('clubs')
       .select('id, slug, name, default_timezone, is_active')
-      .eq('slug', RALLY_POINT_CLUB_SLUG)
+      .eq('id', requireActiveClubId())
       .eq('is_active', true)
       .maybeSingle()
     if (clubError) throw clubError
-    if (!club) throw new Error('Rally Point club is not configured')
+    if (!club) {
+      // The club may have been suspended; let the app re-check where this person can act.
+      notifyClubUnavailable()
+      throw new Error('This club is not available right now. Please sign in again.')
+    }
     const { data: venues, error: venueError } = await supabase
       .from('venues')
       .select('id, club_id, slug, name, timezone, open_hour, close_hour, is_active')
@@ -74,7 +86,7 @@ export const api = {
     const { data, error } = await supabase!
       .from('venues')
       .select('id, club_id, slug, name, timezone, open_hour, close_hour, is_active')
-      .eq('club_id', RALLY_POINT_CLUB_ID)
+      .eq('club_id', requireActiveClubId())
       .order('name')
     if (error) throw error
     return (data ?? []) as Venue[]
@@ -83,16 +95,16 @@ export const api = {
   async stats(venueId?: string): Promise<DashboardStats> {
     if (isDemoMode) return demoStore.stats(venueId)
     if (!supabase) throw new Error('No backend')
-    let playingQuery = supabase.from('court_sessions').select('id').eq('club_id', RALLY_POINT_CLUB_ID).eq('status', 'playing')
-    let txQuery = supabase.from('transactions').select('amount').eq('club_id', RALLY_POINT_CLUB_ID).gte('created_at', startOfToday())
-    let courtQuery = supabase.from('courts').select('status').eq('club_id', RALLY_POINT_CLUB_ID)
+    let playingQuery = supabase.from('court_sessions').select('id').eq('club_id', requireActiveClubId()).eq('status', 'playing')
+    let txQuery = supabase.from('transactions').select('amount').eq('club_id', requireActiveClubId()).gte('created_at', startOfToday())
+    let courtQuery = supabase.from('courts').select('status').eq('club_id', requireActiveClubId())
     if (venueId) {
       playingQuery = playingQuery.eq('venue_id', venueId)
       txQuery = txQuery.eq('venue_id', venueId)
       courtQuery = courtQuery.eq('venue_id', venueId)
     }
     const [{ data: memberRows }, { data: playing }, { data: txs }, { data: courts }] = await Promise.all([
-      supabase.from('member_roster').select('id').eq('club_id', RALLY_POINT_CLUB_ID),
+      supabase.from('member_roster').select('id').eq('club_id', requireActiveClubId()),
       playingQuery,
       txQuery,
       courtQuery,
@@ -107,21 +119,21 @@ export const api = {
 
   async listMembers(): Promise<Member[]> {
     if (isDemoMode) return demoStore.members()
-    const { data, error } = await supabase!.from('member_admin').select('*').eq('club_id', RALLY_POINT_CLUB_ID).order('full_name')
+    const { data, error } = await supabase!.from('member_admin').select('*').eq('club_id', requireActiveClubId()).order('full_name')
     if (error) throw error
     return data as Member[]
   },
 
   async memberRoster(): Promise<Member[]> {
     if (isDemoMode) return demoStore.members().map(({ email: _email, phone: _phone, qr_token: _qr, ...member }) => member)
-    const { data, error } = await supabase!.from('member_roster').select('*').eq('club_id', RALLY_POINT_CLUB_ID).order('full_name')
+    const { data, error } = await supabase!.from('member_roster').select('*').eq('club_id', requireActiveClubId()).order('full_name')
     if (error) throw error
     return data as Member[]
   },
 
   async getMember(id: string): Promise<Member | null> {
     if (isDemoMode) return demoStore.member(id)
-    const { data, error } = await supabase!.from('member_admin').select('*').eq('club_id', RALLY_POINT_CLUB_ID).eq('id', id).maybeSingle()
+    const { data, error } = await supabase!.from('member_admin').select('*').eq('club_id', requireActiveClubId()).eq('id', id).maybeSingle()
     if (error) throw error
     return data as Member | null
   },
@@ -164,7 +176,7 @@ export const api = {
 
   async listCourts(venueId?: string): Promise<Court[]> {
     if (isDemoMode) return demoStore.courts(venueId)
-    let query = supabase!.from('courts').select('*').eq('club_id', RALLY_POINT_CLUB_ID).order('name')
+    let query = supabase!.from('courts').select('*').eq('club_id', requireActiveClubId()).order('name')
     if (venueId) query = query.eq('venue_id', venueId)
     const { data, error } = await query
     if (error) throw error
@@ -176,7 +188,7 @@ export const api = {
     let query = supabase!
       .from('court_sessions')
       .select('*, court:courts(*)')
-      .eq('club_id', RALLY_POINT_CLUB_ID)
+      .eq('club_id', requireActiveClubId())
       .in('status', ['playing', 'scheduled'])
       .order('start_at', { ascending: false })
     if (venueId) query = query.eq('venue_id', venueId)
@@ -200,7 +212,7 @@ export const api = {
     let scheduleQuery = supabase!
       .from('public_schedule')
       .select('court_id, start_at, end_at')
-      .eq('club_id', RALLY_POINT_CLUB_ID)
+      .eq('club_id', requireActiveClubId())
       .lt('start_at', dayEnd)
       .gt('end_at', dayStart)
     if (venueId) scheduleQuery = scheduleQuery.eq('venue_id', venueId)
@@ -247,7 +259,7 @@ export const api = {
   }): Promise<Booking> {
     if (isDemoMode) return demoStore.createBooking(opts)
     const { data, error } = await supabase!.rpc('create_unpaid_desk_booking', {
-      p_club_id: RALLY_POINT_CLUB_ID,
+      p_club_id: requireActiveClubId(),
       p_venue_id: opts.venue_id,
       p_court_id: opts.court_id,
       p_member_id: opts.member_id,
@@ -284,7 +296,7 @@ export const api = {
     let query = supabase!
       .from('bookings')
       .select('*, court:courts(*)')
-      .eq('club_id', RALLY_POINT_CLUB_ID)
+      .eq('club_id', requireActiveClubId())
       .eq('member_id', memberId)
       .order('start_at', { ascending: false })
     if (venueId) query = query.eq('venue_id', venueId)
@@ -303,7 +315,7 @@ export const api = {
     let query = supabase!
       .from('bookings')
       .select('*, court:courts(*)')
-      .eq('club_id', RALLY_POINT_CLUB_ID)
+      .eq('club_id', requireActiveClubId())
       .order('start_at', { ascending: false })
       .limit(100)
     if (venueId) query = query.eq('venue_id', venueId)
@@ -331,7 +343,7 @@ export const api = {
   }) {
     if (isDemoMode) return demoStore.createRental(opts)
     const { data: rpcData, error: rpcError } = await supabase!.rpc('create_desk_rental', {
-      p_club_id: RALLY_POINT_CLUB_ID,
+      p_club_id: requireActiveClubId(),
       p_venue_id: opts.venue_id ?? null,
       p_court_id: opts.court_id,
       p_member_id: opts.member_id ?? null,
@@ -385,7 +397,7 @@ export const api = {
     let query = supabase!
       .from('checkins')
       .select('*')
-      .eq('club_id', RALLY_POINT_CLUB_ID)
+      .eq('club_id', requireActiveClubId())
       .order('checked_in_at', { ascending: false })
       .limit(30)
     if (venueId) query = query.eq('venue_id', venueId)
@@ -397,7 +409,7 @@ export const api = {
 
   async transactions(userId?: string, role?: Role): Promise<Transaction[]> {
     if (isDemoMode) return demoStore.transactions(userId, role)
-    let q = supabase!.from('transactions').select('*').eq('club_id', RALLY_POINT_CLUB_ID).order('created_at', {
+    let q = supabase!.from('transactions').select('*').eq('club_id', requireActiveClubId()).order('created_at', {
       ascending: false,
     })
     if (role === 'member' && userId) {
@@ -437,7 +449,7 @@ export const api = {
     if (isDemoMode) return demoStore.createInquiry(input)
     const { data, error } = await supabase!
       .from('support_inquiries')
-      .insert({ ...input, club_id: RALLY_POINT_CLUB_ID, status: 'open' })
+      .insert({ ...input, club_id: requireActiveClubId(), status: 'open' })
       .select()
       .single()
     if (error) throw error
@@ -453,7 +465,7 @@ export const api = {
     const base = supabase!
       .from('support_inquiries')
       .select('*')
-      .eq('club_id', RALLY_POINT_CLUB_ID)
+      .eq('club_id', requireActiveClubId())
       .order('created_at', { ascending: false })
     const query = role === 'admin' ? base : base.eq('user_id', userId)
     const { data, error } = await query
@@ -573,7 +585,7 @@ export const api = {
       let query = supabase!
         .from('open_plays')
         .select('*, court:courts(*)')
-        .eq('club_id', RALLY_POINT_CLUB_ID)
+        .eq('club_id', requireActiveClubId())
         .order('start_at', { ascending: true })
       if (venueId) query = query.eq('venue_id', venueId)
       const { data, error } = await query
@@ -582,13 +594,13 @@ export const api = {
       const { data: signups, error: signupError } = await supabase!
         .from('open_play_signups')
         .select('*')
-        .eq('club_id', RALLY_POINT_CLUB_ID)
+        .eq('club_id', requireActiveClubId())
         .in('open_play_id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000'])
       if (signupError) throw signupError
       const { data: counts, error: countError } = await supabase!
         .from('open_play_seat_counts')
         .select('open_play_id, seats_taken')
-        .eq('club_id', RALLY_POINT_CLUB_ID)
+        .eq('club_id', requireActiveClubId())
         .in('open_play_id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000'])
       if (countError) throw countError
       const roster = await this.memberRoster().catch(() => [] as Member[])
@@ -621,7 +633,7 @@ export const api = {
     }) {
       if (isDemoMode) return demoStore.createOpenPlay(input)
       const { data: rpcData, error: rpcError } = await supabase!.rpc('create_open_play_session', {
-      p_club_id: RALLY_POINT_CLUB_ID,
+      p_club_id: requireActiveClubId(),
         p_venue_id: input.venue_id ?? null,
         p_court_id: input.court_id ?? null,
         p_title: input.title,
@@ -722,21 +734,26 @@ export const api = {
       return blocks.sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at))
     },
 
-    async publicDaySchedule(dateYmd: string, venueId?: string): Promise<ScheduleBlock[]> {
+    /**
+     * Public board data. A TV link names its club, which is sent on this request
+     * only, so an anonymous board tab never changes the signed-in club.
+     */
+    async publicDaySchedule(dateYmd: string, venueId?: string, clubId?: string | null): Promise<ScheduleBlock[]> {
       if (isDemoMode) {
-        return (await this.daySchedule(dateYmd, venueId)).map((block) => ({
+        return demoStore.daySchedule(dateYmd, venueId, clubId).map((block) => ({
           ...block,
           title: block.kind === 'open_play' ? 'Open play' : block.kind === 'booking' ? 'Reserved' : 'In use',
           subtitle: block.status,
           amount: undefined,
         }))
       }
+      const club = clubId ?? getActiveClubId()
       let query = supabase!
         .from('public_schedule')
         .select('id, venue_id, venue_name, court_id, court_name, title, kind, start_at, end_at, status, subtitle')
-        .eq('club_id', RALLY_POINT_CLUB_ID)
         .gte('start_at', localRangeISO(dateYmd, 0, 1).start_at)
         .lt('start_at', localRangeISO(dateYmd, 24, 1).start_at)
+      if (club) query = query.eq('club_id', club).setHeader(CLUB_HEADER, club)
       if (venueId) query = query.eq('venue_id', venueId)
       const { data, error } = await query
       if (error) throw error
@@ -765,48 +782,170 @@ export const api = {
       return data as { checkin: CheckIn; member: Member }
     },
 
-    async branches(): Promise<Branch[]> {
-      if (isDemoMode) return demoStore.listBranches()
-      const { data, error } = await supabase!.from('branches').select('*').order('name')
+    // ---- Club membership and access (club list ignores the active club) ----
+
+    async myClubs(userId: string): Promise<MyClub[]> {
+      if (isDemoMode) return demoStore.myClubs(userId)
+      const { data, error } = await supabase!.rpc('list_my_clubs')
       if (error) throw error
-      return (data ?? []) as Branch[]
+      return ((data ?? []) as MyClub[]).map((club) => ({ club_id: club.club_id, slug: club.slug, name: club.name, role: club.role }))
     },
 
-    async createBranch(input: Omit<Branch, 'id' | 'created_at'>): Promise<Branch> {
-      if (isDemoMode) return demoStore.createBranch(input)
-      const { data, error } = await supabase!.from('branches').insert(input).select().single()
+    async platformAccess(userId: string): Promise<'superadmin' | null> {
+      if (isDemoMode) return demoStore.platformAccess(userId)
+      const { data, error } = await supabase!.rpc('get_platform_access')
       if (error) throw error
-      return data as Branch
+      return data === 'superadmin' ? 'superadmin' : null
     },
 
-    async updateBranchStatus(id: string, status: 'active' | 'suspended'): Promise<Branch> {
-      if (isDemoMode) return demoStore.updateBranchStatus(id, status)
-      const { data, error } = await supabase!.from('branches').update({ status }).eq('id', id).select().single()
+    async publicClub(slug: string): Promise<PublicClub | null> {
+      if (isDemoMode) return demoStore.publicClub(slug)
+      const { data, error } = await supabase!.rpc('get_public_club', { p_slug: slug })
       if (error) throw error
-      return data as Branch
+      const row = Array.isArray(data) ? data[0] : data
+      return row ? { id: row.id, slug: row.slug, name: row.name } : null
     },
 
-    async commissions(): Promise<PlatformCommission[]> {
-      if (isDemoMode) return demoStore.listCommissions()
-      const { data, error } = await supabase!.from('platform_commissions').select('*').order('created_at', { ascending: false })
+    async joinClub(userId: string, slug: string): Promise<string> {
+      if (isDemoMode) return demoStore.joinClub(userId, slug)
+      const { data, error } = await supabase!.rpc('join_club', { p_slug: slug })
       if (error) throw error
-      return (data ?? []) as PlatformCommission[]
+      return data as string
     },
 
-    async superadminStats(): Promise<SuperadminStats> {
-      if (isDemoMode) return demoStore.superadminStats()
-      const [commissions, branches] = await Promise.all([
-        this.commissions(),
-        this.branches(),
-      ])
-      const totalGross = commissions.reduce((acc, c) => acc + Number(c.gross_amount), 0)
-      const totalCommissions = commissions.reduce((acc, c) => acc + Number(c.commission_amount), 0)
-      const activeBranches = branches.filter((b) => b.status === 'active').length
-      return {
-        totalGrossVolume: totalGross,
-        totalCommissionsEarned: totalCommissions,
-        activeBranchesCount: activeBranches,
-        totalBookingsCount: commissions.length,
-      }
+    // ---- Platform superadmin (every call is checked and audited in the database) ----
+
+    async platformClubs(): Promise<PlatformClub[]> {
+      if (isDemoMode) return demoStore.platformClubs()
+      const { data, error } = await supabase!.rpc('platform_list_clubs')
+      if (error) throw error
+      return ((data ?? []) as PlatformClub[]).map(normalizePlatformClub)
+    },
+
+    async platformLedger(clubId?: string | null, limit = 200): Promise<PlatformCommission[]> {
+      if (isDemoMode) return demoStore.platformLedger(clubId ?? null, limit)
+      const { data, error } = await supabase!.rpc('platform_commission_ledger', { p_club_id: clubId ?? null, p_limit: limit })
+      if (error) throw error
+      return ((data ?? []) as PlatformCommission[]).map(normalizeCommission)
+    },
+
+    async platformClubAdmins(clubId: string): Promise<PlatformClubAdmin[]> {
+      if (isDemoMode) return demoStore.platformClubAdmins(clubId)
+      const { data, error } = await supabase!.rpc('platform_club_admins', { p_club_id: clubId })
+      if (error) throw error
+      return (data ?? []) as PlatformClubAdmin[]
+    },
+
+    async platformRecentActions(limit = 50): Promise<PlatformAction[]> {
+      if (isDemoMode) return demoStore.platformRecentActions(limit)
+      const { data, error } = await supabase!.rpc('platform_recent_actions', { p_limit: limit })
+      if (error) throw error
+      return (data ?? []) as PlatformAction[]
+    },
+
+    async provisionClub(input: ProvisionClubInput): Promise<string> {
+      if (isDemoMode) return demoStore.provisionClub(input)
+      const { data, error } = await supabase!.rpc('platform_provision_club', {
+        p_name: input.name,
+        p_slug: input.slug,
+        p_city: input.city,
+        p_address: input.address,
+        p_contact_email: input.contact_email,
+        p_contact_phone: input.contact_phone,
+        p_commission_rate: input.commission_rate,
+        p_court_count: input.court_count,
+      })
+      if (error) throw error
+      return data as string
+    },
+
+    async setClubStatus(clubId: string, status: ClubStatus): Promise<void> {
+      if (isDemoMode) return demoStore.setClubStatus(clubId, status)
+      const { error } = await supabase!.rpc('platform_set_club_status', { p_club_id: clubId, p_status: status })
+      if (error) throw error
+    },
+
+    async setCommissionRate(clubId: string, rate: number): Promise<void> {
+      if (isDemoMode) return demoStore.setCommissionRate(clubId, rate)
+      const { error } = await supabase!.rpc('platform_set_commission_rate', { p_club_id: clubId, p_rate: rate })
+      if (error) throw error
+    },
+
+    async assignClubAdmin(clubId: string, email: string): Promise<string> {
+      if (isDemoMode) return demoStore.assignClubAdmin(clubId, email)
+      const { data, error } = await supabase!.rpc('platform_assign_club_admin', { p_club_id: clubId, p_email: email })
+      if (error) throw error
+      return data as string
+    },
+
+    async revokeClubAdmin(clubId: string, userId: string): Promise<void> {
+      if (isDemoMode) return demoStore.revokeClubAdmin(clubId, userId)
+      const { error } = await supabase!.rpc('platform_revoke_club_admin', { p_club_id: clubId, p_user_id: userId })
+      if (error) throw error
+    },
+
+    // ---- Support sessions: time-limited, read-only, logged views of one club ----
+
+    async startSupportSession(clubId: string, reason: string, minutes: number): Promise<string> {
+      if (isDemoMode) return demoStore.startSupportSession(clubId, reason, minutes)
+      const { data, error } = await supabase!.rpc('platform_start_support_session', { p_club_id: clubId, p_reason: reason, p_minutes: minutes })
+      if (error) throw error
+      return data as string
+    },
+
+    async endSupportSession(sessionId: string): Promise<void> {
+      if (isDemoMode) return demoStore.endSupportSession(sessionId)
+      const { error } = await supabase!.rpc('platform_end_support_session', { p_session_id: sessionId })
+      if (error) throw error
+    },
+
+    async mySupportSessions(): Promise<SupportSession[]> {
+      if (isDemoMode) return demoStore.mySupportSessions()
+      const { data, error } = await supabase!.rpc('platform_my_support_sessions')
+      if (error) throw error
+      return (data ?? []) as SupportSession[]
+    },
+
+    async supportSnapshot(sessionId: string): Promise<SupportSnapshot> {
+      if (isDemoMode) return demoStore.supportSnapshot(sessionId)
+      const { data, error } = await supabase!.rpc('platform_support_snapshot', { p_session_id: sessionId })
+      if (error) throw error
+      return data as SupportSnapshot
     },
   }
+
+/** Postgres numerics can arrive as strings; the portal works with numbers. */
+function normalizePlatformClub(club: PlatformClub): PlatformClub {
+  return {
+    ...club,
+    commission_rate: Number(club.commission_rate),
+    venue_count: Number(club.venue_count),
+    court_count: Number(club.court_count),
+    member_count: Number(club.member_count),
+    admin_count: Number(club.admin_count),
+    gross_amount: Number(club.gross_amount),
+    commission_amount: Number(club.commission_amount),
+    club_net_amount: Number(club.club_net_amount),
+    entry_count: Number(club.entry_count),
+  }
+}
+
+function normalizeCommission(row: PlatformCommission): PlatformCommission {
+  return {
+    ...row,
+    gross_amount: Number(row.gross_amount),
+    commission_rate: Number(row.commission_rate),
+    commission_amount: Number(row.commission_amount),
+    club_net_amount: Number(row.club_net_amount),
+  }
+}
+
+/** Platform-wide totals, added up from the per-club figures the server returns. */
+export function summarizePlatform(clubs: PlatformClub[]): SuperadminStats {
+  return {
+    totalGrossVolume: clubs.reduce((sum, club) => sum + club.gross_amount, 0),
+    totalCommissionsEarned: clubs.reduce((sum, club) => sum + club.commission_amount, 0),
+    activeClubsCount: clubs.filter((club) => club.status === 'active').length,
+    totalEntriesCount: clubs.reduce((sum, club) => sum + club.entry_count, 0),
+  }
+}

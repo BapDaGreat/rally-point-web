@@ -1,14 +1,17 @@
 import type { Booking, BookingStatus, CourtDayAvailability, CourtSession, PaymentMethod } from '../../types'
 import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, hourLabel, localRangeISO } from '../../types'
 import { makePaymentRef } from '../payments'
+import { activeClubId } from './access'
 import { hydrateBooking, isSlotFree, todayISO, uid } from './common'
+import { recordTransaction } from './commissions'
 import { load, save } from './persistence'
 
 export const bookingOperations = {
   availability(dateYmd: string, venueId?: string): CourtDayAvailability[] {
     const db = load()
+    const clubId = activeClubId(db)
     const now = new Date()
-    return db.courts.filter((court) => !venueId || court.venue_id === venueId).map((court) => {
+    return db.courts.filter((court) => court.club_id === clubId && (!venueId || court.venue_id === venueId)).map((court) => {
       const slots = []
       for (let h = CLUB_OPEN_HOUR; h < CLUB_CLOSE_HOUR; h++) {
         const { start_at, end_at } = localRangeISO(dateYmd, h, 1)
@@ -30,12 +33,15 @@ export const bookingOperations = {
     user_id: string
   }): Booking {
     const db = load()
-    const court = db.courts.find((c) => c.id === opts.court_id)
+    const clubId = activeClubId(db)
+    const court = db.courts.find((c) => c.id === opts.court_id && c.club_id === clubId)
     if (!court) throw new Error('Court not found')
     if (opts.venue_id && court.venue_id !== opts.venue_id) throw new Error('Court is outside the selected venue')
     if (court.status === 'maintenance') throw new Error('Court under maintenance')
     if (opts.hours < 1 || opts.hours > 3) throw new Error('Book 1–3 hours')
     if (opts.startHour + opts.hours > CLUB_CLOSE_HOUR) throw new Error('Outside club hours')
+    const member = db.members.find((m) => m.id === opts.member_id)
+    if (member && member.club_id !== court.club_id) throw new Error('Member belongs to another club')
 
     const { start_at, end_at } = localRangeISO(opts.dateYmd, opts.startHour, opts.hours)
     if (new Date(start_at).getTime() < Date.now() - 5 * 60000) {
@@ -68,7 +74,8 @@ export const bookingOperations = {
   },
   confirmBookingPayment(opts: { booking_id: string; method: PaymentMethod; user_id: string }): Booking {
     const db = load()
-    const b = db.bookings.find((x) => x.id === opts.booking_id)
+    const clubId = activeClubId(db)
+    const b = db.bookings.find((x) => x.id === opts.booking_id && x.club_id === clubId)
     if (!b) throw new Error('Booking not found')
     if (b.status !== 'pending_payment') throw new Error('Booking is not awaiting payment')
     if (!isSlotFree(db, { courtId: b.court_id, start_at: b.start_at, end_at: b.end_at, ignoreBookingId: b.id })) {
@@ -78,18 +85,15 @@ export const bookingOperations = {
     }
 
     const court = db.courts.find((c) => c.id === b.court_id)
-    const branch = db.branches.find((item) => item.id === court?.branch_id) ?? db.branches[0]
     const ref = makePaymentRef(opts.method)
     b.status = 'confirmed'
-    b.branch_id = branch?.id ?? null
     b.payment_method = opts.method
     b.payment_ref = ref
 
     const session: CourtSession = {
       id: uid('ses'),
-      club_id: court?.club_id,
-      venue_id: court?.venue_id,
-      branch_id: branch?.id ?? null,
+      club_id: b.club_id,
+      venue_id: b.venue_id,
       court_id: b.court_id,
       member_id: b.member_id,
       start_at: b.start_at,
@@ -106,39 +110,22 @@ export const bookingOperations = {
     const minsUntil = (new Date(b.start_at).getTime() - Date.now()) / 60000
     if (minsUntil <= 60 && court) court.status = 'occupied'
 
-    db.transactions.unshift({
+    // The charge is recorded, not collected: payments are simulated in the demo.
+    recordTransaction(db, {
       id: uid('tx'),
-      club_id: court?.club_id,
-      venue_id: court?.venue_id ?? null,
-      branch_id: branch?.id ?? null,
-      verification_status: 'unverified',
+      club_id: b.club_id,
+      venue_id: b.venue_id ?? null,
       member_id: b.member_id,
       amount: b.amount,
       type: 'booking',
       description: `${court?.name ?? 'Court'} booking · ${opts.method.toUpperCase()} · ${ref}`,
       created_at: todayISO(),
       created_by: opts.user_id,
-    })
-    if (branch) {
-      const commissionAmount = Math.round((b.amount * branch.commission_rate / 100) * 100) / 100
-      db.commissions.unshift({
-        id: uid('commission'),
-        branch_id: branch.id,
-        branch_name: branch.name,
-        booking_id: b.id,
-        description: `${court?.name ?? 'Court'} booking commission (${branch.commission_rate}%)`,
-        gross_amount: b.amount,
-        commission_rate: branch.commission_rate,
-        commission_amount: commissionAmount,
-        branch_net_amount: Math.round((b.amount - commissionAmount) * 100) / 100,
-        status: 'settled',
-        created_at: todayISO(),
-      })
-    }
+    }, 'first')
     db.notifications.unshift({
       id: uid('n'),
-      club_id: court?.club_id,
-      venue_id: court?.venue_id ?? null,
+      club_id: b.club_id,
+      venue_id: b.venue_id ?? null,
       user_id: opts.user_id,
       title: 'Booking confirmed',
       body: `${court?.name ?? 'Court'} · ${new Date(b.start_at).toLocaleString()} · Ref ${ref}. Show at desk.`,
@@ -149,8 +136,8 @@ export const bookingOperations = {
     const fire = new Date(new Date(b.start_at).getTime() - 60 * 60000)
     db.reminders.push({
       id: uid('rm'),
-      club_id: court?.club_id,
-      venue_id: court?.venue_id ?? null,
+      club_id: b.club_id,
+      venue_id: b.venue_id ?? null,
       user_id: opts.user_id,
       kind: 'booking_reminder',
       title: 'Court in 1 hour',
@@ -164,7 +151,8 @@ export const bookingOperations = {
   },
   cancelBooking(bookingId: string, userId: string) {
     const db = load()
-    const b = db.bookings.find((x) => x.id === bookingId)
+    const clubId = activeClubId(db)
+    const b = db.bookings.find((x) => x.id === bookingId && x.club_id === clubId)
     if (!b) throw new Error('Booking not found')
     if (b.status === 'cancelled' || b.status === 'completed') return
     b.status = 'cancelled' as BookingStatus
@@ -174,6 +162,8 @@ export const bookingOperations = {
     }
     db.notifications.unshift({
       id: uid('n'),
+      club_id: b.club_id,
+      venue_id: b.venue_id ?? null,
       user_id: userId,
       title: 'Booking cancelled',
       body: 'Your court booking was cancelled.',
@@ -184,15 +174,17 @@ export const bookingOperations = {
   },
   myBookings(memberId: string, venueId?: string) {
     const db = load()
+    const clubId = activeClubId(db)
     return db.bookings
-      .filter((b) => b.member_id === memberId && (!venueId || b.venue_id === venueId))
+      .filter((b) => b.club_id === clubId && b.member_id === memberId && (!venueId || b.venue_id === venueId))
       .sort((a, b) => +new Date(b.start_at) - +new Date(a.start_at))
       .map((b) => hydrateBooking(db, b))
   },
   allBookings(venueId?: string) {
     const db = load()
+    const clubId = activeClubId(db)
     return db.bookings
-      .filter((booking) => !venueId || booking.venue_id === venueId)
+      .filter((booking) => booking.club_id === clubId && (!venueId || booking.venue_id === venueId))
       .slice()
       .sort((a, b) => +new Date(b.start_at) - +new Date(a.start_at))
       .map((b) => hydrateBooking(db, b))

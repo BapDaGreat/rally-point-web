@@ -129,22 +129,27 @@ select extensions.is(
   'Admin response and status are saved together'
 );
 
+-- Notifications are private to their owner, so count them as the staff member.
+set local request.jwt.claim.sub = '11111111-1111-4111-8111-111111111111';
 select extensions.is(
   (select count(*)::integer from public.notifications where user_id = '11111111-1111-4111-8111-111111111111' and title = 'Inquiry update'),
   1,
   'Admin update creates a staff notification'
 );
+set local request.jwt.claim.sub = '33333333-3333-4333-8333-333333333333';
 
 select extensions.lives_ok(
   $$select * from public.admin_update_support_inquiry('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'resolved', null)$$,
   'Admin can later change status without sending another reply'
 );
 
+set local request.jwt.claim.sub = '11111111-1111-4111-8111-111111111111';
 select extensions.is(
   (select count(*)::integer from public.notifications where user_id = '11111111-1111-4111-8111-111111111111' and title = 'Inquiry update'),
   2,
   'a later status change also creates a staff notification'
 );
+set local request.jwt.claim.sub = '33333333-3333-4333-8333-333333333333';
 
 select extensions.throws_ok(
   $$select * from public.admin_update_support_inquiry('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'resolved', 'A second reply')$$,

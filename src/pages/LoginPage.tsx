@@ -11,9 +11,11 @@ import {
   UserRound,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import type { Role } from '../types'
+import type { PublicClub, Role } from '../types'
 import { RallyPointLogo } from '../components/RallyPointLogo'
 import { helpFaqs } from '../lib/helpContent'
+import { homeFor } from '../lib/roleHome'
+import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
 
 const demos: { role: Role; email: string; password: string; label: string }[] = [
   {
@@ -45,13 +47,6 @@ const demos: { role: Role; email: string; password: string; label: string }[] = 
 const HERO_VIDEO = `${import.meta.env.BASE_URL}media/pickleball-hero.mp4`
 const HERO_POSTER = `${import.meta.env.BASE_URL}media/pickleball-poster.jpg`
 
-function homeFor(role: Role) {
-  if (role === 'superadmin') return '/superadmin'
-  if (role === 'admin') return '/admin'
-  if (role === 'staff') return '/staff'
-  return '/member'
-}
-
 type Mode = 'login' | 'join' | 'reset'
 
 function authenticationErrorMessage(mode: Mode, error: unknown) {
@@ -67,7 +62,8 @@ function authenticationErrorMessage(mode: Mode, error: unknown) {
 
   if (
     /^Password must be at least \d+ characters$/i.test(message) ||
-    /^Please enter your name$/i.test(message)
+    /^Please enter your name$/i.test(message) ||
+    /^This club link is not valid/i.test(message)
   ) {
     return message
   }
@@ -81,10 +77,11 @@ function authenticationErrorMessage(mode: Mode, error: unknown) {
     : 'Unable to create an account. Please check your details or try again.'
 }
 
-export default function LoginPage() {
+/** With `joinClub` (from a club's join link) the page signs up into that club. */
+export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) {
   const { user, loading, signIn, signUpMember, resetPassword, demo } = useAuth()
   const nav = useNavigate()
-  const [mode, setMode] = useState<Mode>('login')
+  const [mode, setMode] = useState<Mode>(joinClub ? 'join' : 'login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [passwordVisible, setPasswordVisible] = useState(false)
@@ -108,6 +105,7 @@ export default function LoginPage() {
           password,
           full_name: fullName,
           phone: phone || undefined,
+          clubSlug: joinClub?.slug,
         })
         nav(homeFor(profile.role), { replace: true })
       } else if (mode === 'reset') {
@@ -115,7 +113,8 @@ export default function LoginPage() {
         setResetSuccess(true)
       } else {
         const profile = await signIn(email, password)
-        nav(homeFor(profile.role), { replace: true })
+        // From a join link, existing players come back to confirm joining the club.
+        nav(joinClub ? `/join/${joinClub.slug}` : homeFor(profile.role), { replace: true })
       }
     } catch (err) {
       setError(authenticationErrorMessage(mode, err))
@@ -162,11 +161,16 @@ export default function LoginPage() {
           </div>
 
           <div className="mb-5 flex justify-center lg:justify-start">
-            <RallyPointLogo
-              variant="color"
-              className="h-28 sm:h-36 w-auto max-w-[min(100%,320px)] object-contain drop-shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
-              title="Rally Point Gensan"
-            />
+            {/* The logo artwork says "Gensan"; other clubs' join links show their own name instead. */}
+            {joinClub && joinClub.slug !== DEFAULT_CLUB_SLUG ? (
+              <p className="text-3xl sm:text-4xl font-extrabold text-white drop-shadow-lg">{joinClub.name}</p>
+            ) : (
+              <RallyPointLogo
+                variant="color"
+                className="h-28 sm:h-36 w-auto max-w-[min(100%,320px)] object-contain drop-shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
+                title="Rally Point"
+              />
+            )}
           </div>
 
           <h1 className="sr-only">Rally Point</h1>
@@ -224,7 +228,7 @@ export default function LoginPage() {
             <div className="mb-4">
               <p className="text-sm font-bold text-slate-500">
                 {mode === 'join'
-                  ? 'New player'
+                  ? joinClub ? `Joining ${joinClub.name}` : 'New player'
                   : mode === 'reset'
                   ? 'Forgot your password?'
                   : 'Welcome back'}
@@ -243,6 +247,8 @@ export default function LoginPage() {
                     : 'For players only. View availability, open play, and your QR pass.'
                   : mode === 'reset'
                   ? 'Enter your email and we’ll send a password reset link.'
+                  : joinClub
+                  ? `Already have an account? Log in, then confirm joining ${joinClub.name}.`
                   : 'Members, staff, and admin all use this log-in.'}
               </p>
             </div>

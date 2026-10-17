@@ -1,10 +1,14 @@
 import type { InquiryCategory, InquiryStatus, SupportInquiry } from '../../types'
-import { DEMO_CLUB_ID } from '../tenant'
+import { activeClubId, clubRoleFor } from './access'
 import { todayISO, uid } from './common'
+import type { DemoDB } from './model'
 import { load, save } from './persistence'
 
-function currentActor(db: ReturnType<typeof load>) {
-  return db.profiles.find((profile) => profile.id === db.sessionUserId)
+/** The signed-in person and their role in the active club (never profiles.role). */
+function currentActor(db: DemoDB) {
+  const profile = db.profiles.find((row) => row.id === db.sessionUserId)
+  const clubId = activeClubId(db)
+  return { profile, clubId, role: profile ? clubRoleFor(db, profile.id, clubId) : null }
 }
 
 export const inquiryOperations = {
@@ -15,8 +19,8 @@ export const inquiryOperations = {
     message: string
   }): SupportInquiry {
     const db = load()
-    const actor = currentActor(db)
-    if (!actor || actor.id !== input.user_id || !['staff', 'admin'].includes(actor.role)) {
+    const { profile, clubId, role } = currentActor(db)
+    if (!profile || profile.id !== input.user_id || (role !== 'staff' && role !== 'admin')) {
       throw new Error('Only staff and admins can submit inquiries for their own account')
     }
     const subject = input.subject.trim()
@@ -27,8 +31,8 @@ export const inquiryOperations = {
     }
     const inquiry: SupportInquiry = {
       id: uid('inq'),
-      club_id: DEMO_CLUB_ID,
-      user_id: actor.id,
+      club_id: clubId,
+      user_id: profile.id,
       category: input.category,
       subject,
       message,
@@ -41,30 +45,30 @@ export const inquiryOperations = {
   },
   inquiriesForUser(userId: string): SupportInquiry[] {
     const db = load()
-    const actor = currentActor(db)
-    if (!actor || actor.role !== 'staff' || actor.id !== userId) {
+    const { profile, clubId, role } = currentActor(db)
+    if (!profile || role !== 'staff' || profile.id !== userId) {
       throw new Error('Staff can only view their own inquiries')
     }
     return db.inquiries
-      .filter((inquiry) => inquiry.club_id === DEMO_CLUB_ID && inquiry.user_id === userId)
+      .filter((inquiry) => inquiry.club_id === clubId && inquiry.user_id === userId)
       .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
-      .map((inquiry) => ({ ...inquiry, sender: db.profiles.find((profile) => profile.id === inquiry.user_id) }))
+      .map((inquiry) => ({ ...inquiry, sender: db.profiles.find((row) => row.id === inquiry.user_id) }))
   },
   allInquiries(): SupportInquiry[] {
     const db = load()
-    const actor = currentActor(db)
-    if (!actor || actor.role !== 'admin') throw new Error('Only admins can view all inquiries')
+    const { profile, clubId, role } = currentActor(db)
+    if (!profile || role !== 'admin') throw new Error('Only admins can view all inquiries')
     return db.inquiries
-      .filter((inquiry) => inquiry.club_id === DEMO_CLUB_ID)
+      .filter((inquiry) => inquiry.club_id === clubId)
       .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
-      .map((inquiry) => ({ ...inquiry, sender: db.profiles.find((profile) => profile.id === inquiry.user_id) }))
+      .map((inquiry) => ({ ...inquiry, sender: db.profiles.find((row) => row.id === inquiry.user_id) }))
   },
   respondToInquiry(input: { id: string; status: InquiryStatus; response?: string }): SupportInquiry {
     const db = load()
-    const actor = currentActor(db)
-    if (!actor || actor.role !== 'admin') throw new Error('Only admins can update inquiries')
+    const { profile, clubId, role } = currentActor(db)
+    if (!profile || role !== 'admin') throw new Error('Only admins can update inquiries')
     if (!['open', 'in_progress', 'resolved'].includes(input.status)) throw new Error('Invalid inquiry status')
-    const inquiry = db.inquiries.find((row) => row.id === input.id && row.club_id === DEMO_CLUB_ID)
+    const inquiry = db.inquiries.find((row) => row.id === input.id && row.club_id === clubId)
     if (!inquiry) throw new Error('Inquiry not found')
     const response = input.response?.trim()
     if (response && inquiry.responded_at) throw new Error('This inquiry already has an Admin response')
@@ -74,7 +78,7 @@ export const inquiryOperations = {
     inquiry.status = input.status
     if (response) {
       inquiry.response = response
-      inquiry.responded_by = actor.id
+      inquiry.responded_by = profile.id
       inquiry.responded_at = todayISO()
     }
     const statusLabel = input.status.replace('_', ' ')

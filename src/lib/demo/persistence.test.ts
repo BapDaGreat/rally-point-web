@@ -50,14 +50,50 @@ describe('demo persistence normalization', () => {
     })
     demoStore.set(db)
     expect(demoStore.get().walkins.at(-1)?.id).toBe('roundtrip')
-    expect(JSON.parse(localStorage.getItem('rally_point_demo_v3')!)).not.toHaveProperty('passwords')
+    expect(JSON.parse(localStorage.getItem('rally_point_demo_v4')!)).not.toHaveProperty('passwords')
 
     localStorage.setItem('rally_point_demo_v1', 'legacy')
     localStorage.setItem('rally_point_demo_v2', 'legacy')
+    localStorage.setItem('rally_point_demo_v3', 'legacy')
     demoStore.reset()
     expect(demoStore.get().walkins).toEqual([])
     expect(localStorage.getItem('rally_point_demo_v1')).toBeNull()
     expect(localStorage.getItem('rally_point_demo_v2')).toBeNull()
+    expect(localStorage.getItem('rally_point_demo_v3')).toBeNull()
+  })
+
+  it('drops branch-era data and turns legacy roles into trusted club and platform roles', () => {
+    const stored = {
+      ...demoStore.get(),
+      clubs: [{ id: 'club_rally_point', slug: 'rally-point-gensan', name: 'Rally Point Gensan', default_timezone: 'Asia/Manila', is_active: true }],
+      clubAccounts: undefined,
+      clubRoles: undefined,
+      platformRoles: undefined,
+      auditLog: undefined,
+      branches: [{ id: 'branch_gensan', name: 'Rally Point Gensan' }],
+      commissions: [{ id: 'old', branch_id: 'branch_gensan', status: 'settled' }],
+    } as unknown as DemoDB & { branches?: unknown }
+
+    const normalized = normalizeStored(stored, () => true)
+
+    expect(normalized.repaired).toBe(true)
+    expect(normalized.db).not.toHaveProperty('branches')
+    expect(normalized.db.commissions).toEqual([])
+    expect(normalized.db.auditLog).toEqual([])
+    expect(normalized.db.clubAccounts).toEqual([
+      expect.objectContaining({ club_id: 'club_rally_point', status: 'active', commission_rate: 5 }),
+    ])
+    expect(normalized.db.clubRoles).toEqual(expect.arrayContaining([
+      { club_id: 'club_rally_point', user_id: 'user_admin', role: 'admin', is_active: true },
+      { club_id: 'club_rally_point', user_id: 'user_staff', role: 'staff', is_active: true },
+    ]))
+    expect(normalized.db.platformRoles).toEqual([{ user_id: 'user_superadmin', role: 'superadmin' }])
+  })
+
+  it('leaves freshly seeded data alone once its defaults are filled in', () => {
+    const first = normalizeStored(demoStore.get(), () => true)
+    const second = normalizeStored(first.db, () => true)
+    expect(second.repaired).toBe(false)
   })
 
   it('preserves inquiries created before club ownership was added', () => {

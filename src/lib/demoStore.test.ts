@@ -41,10 +41,17 @@ describe('demoStore account and catalog behavior', () => {
 
   it('loads the seeded catalog and supports login/logout', () => {
     const db = demoStore.get()
-    expect(db.profiles).toHaveLength(4)
+    expect(db.profiles).toHaveLength(5)
+    expect(db.clubs.map((club) => club.slug)).toEqual(['rally-point-gensan', 'rally-point-davao'])
     expect(demoStore.members()).toHaveLength(40)
     expect(demoStore.courts()).toHaveLength(4)
-    expect(demoStore.users().map((user) => user.role)).toEqual(['superadmin', 'admin', 'staff', 'member'])
+    expect(demoStore.users().map((user) => user.email)).toEqual([
+      'superadmin@rallypoint.local',
+      'admin@rallypoint.local',
+      'staff@rallypoint.local',
+      'member@rallypoint.local',
+      'davao.admin@rallypoint.local',
+    ])
     expect(demoStore.currentUser()).toBeNull()
 
     expect(demoStore.login(' MEMBER@RALLYPOINT.LOCAL ', 'member123').role).toBe('member')
@@ -469,7 +476,7 @@ describe('demoStore staff and member operations', () => {
 describe('demoStore storage migration behavior', () => {
   it('repairs malformed legacy storage and preserves safe defaults', () => {
     localStorage.clear()
-    localStorage.setItem('rally_point_demo_v3', JSON.stringify({
+    localStorage.setItem('rally_point_demo_v4', JSON.stringify({
       profiles: [{ id: 'user_member', email: 'member@rallypoint.local', full_name: 'Mia', role: 'member', created_at: new Date().toISOString() }],
       members: [{ id: 'mem_1', member_code: 'RP-1', full_name: 'Mia', membership_type: 'basic', status: 'active', join_date: '2026-01-01', expiry_date: '2026-12-31', created_at: new Date().toISOString() }],
       courts: [],
@@ -488,6 +495,6 @@ describe('demoStore storage migration behavior', () => {
     expect(db.reminders).toEqual([])
     expect(db.members[0].qr_token).toBe('QR_RP1')
     expect(db.sessionUserId).toBe('user_member')
-    expect(localStorage.getItem('rally_point_demo_v3')).not.toContain('passwords')
+    expect(localStorage.getItem('rally_point_demo_v4')).not.toContain('passwords')
   })
 })

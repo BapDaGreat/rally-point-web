@@ -1,16 +1,22 @@
 import type { ScheduleBlock } from '../../types'
 import { localRangeISO } from '../../types'
+import { activeClubId } from './access'
 import { todayISO, uid } from './common'
 import { load, save } from './persistence'
 
 export const scheduleOperations = {
-  daySchedule(dateYmd: string, venueId?: string): ScheduleBlock[] {
+  /**
+   * One club's day schedule. A public TV board passes its club explicitly so an
+   * anonymous tab never changes the app-wide active club.
+   */
+  daySchedule(dateYmd: string, venueId?: string, clubId?: string | null): ScheduleBlock[] {
     const db = load()
+    const club = clubId ?? activeClubId(db)
     const dayStart = localRangeISO(dateYmd, 0, 1).start_at
     const dayEnd = localRangeISO(dateYmd, 23, 1).end_at
     const blocks: ScheduleBlock[] = []
     for (const s of db.sessions) {
-      if (s.status === 'cancelled' || s.status === 'completed' || (venueId && s.venue_id !== venueId)) continue
+      if (s.club_id !== club || s.status === 'cancelled' || s.status === 'completed' || (venueId && s.venue_id !== venueId)) continue
       if (!(new Date(s.start_at) < new Date(dayEnd) && new Date(s.end_at) > new Date(dayStart))) continue
       const court = db.courts.find((c) => c.id === s.court_id)
       const venue = db.venues.find((candidate) => candidate.id === s.venue_id)
@@ -31,7 +37,7 @@ export const scheduleOperations = {
       })
     }
     for (const b of db.bookings) {
-      if (b.status !== 'confirmed' || (venueId && b.venue_id !== venueId)) continue
+      if (b.club_id !== club || b.status !== 'confirmed' || (venueId && b.venue_id !== venueId)) continue
       if (b.session_id) continue // already as session
       if (!(new Date(b.start_at) < new Date(dayEnd) && new Date(b.end_at) > new Date(dayStart))) continue
       const court = db.courts.find((c) => c.id === b.court_id)
@@ -53,7 +59,7 @@ export const scheduleOperations = {
       })
     }
     for (const op of db.openPlays) {
-      if (op.status === 'cancelled' || (venueId && op.venue_id !== venueId)) continue
+      if (op.club_id !== club || op.status === 'cancelled' || (venueId && op.venue_id !== venueId)) continue
       if (!(new Date(op.start_at) < new Date(dayEnd) && new Date(op.end_at) > new Date(dayStart))) continue
       const court = op.court_id ? db.courts.find((c) => c.id === op.court_id) : null
       const venue = db.venues.find((candidate) => candidate.id === op.venue_id)
@@ -85,6 +91,8 @@ export const scheduleOperations = {
       r.sent_at = todayISO()
       db.notifications.unshift({
         id: uid('n'),
+        club_id: r.club_id,
+        venue_id: r.venue_id ?? null,
         user_id: r.user_id,
         title: r.title,
         body: r.body,

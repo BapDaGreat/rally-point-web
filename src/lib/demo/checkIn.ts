@@ -1,11 +1,13 @@
 import type { CheckIn, Member } from '../../types'
+import { activeClubId } from './access'
 import { todayISO, uid } from './common'
 import { load, save } from './persistence'
 
 export const checkInOperations = {
   ensureMemberQr(memberId: string) {
     const db = load()
-    const m = db.members.find((x) => x.id === memberId)
+    const clubId = activeClubId(db)
+    const m = db.members.find((x) => x.id === memberId && x.club_id === clubId)
     if (!m) throw new Error('Member not found')
     if (!m.qr_token) {
       m.qr_token = `QR_${m.member_code.replace(/[^A-Z0-9]/gi, '')}_${Math.random().toString(36).slice(2, 6).toUpperCase()}`
@@ -15,14 +17,17 @@ export const checkInOperations = {
   },
   checkInByQr(payload: string, staffId?: string, venueId?: string) {
     const db = load()
+    const clubId = activeClubId(db)
+    // Member codes are unique only within a club, so lookups stay inside the active club.
+    const clubMembers = db.members.filter((m) => m.club_id === clubId)
     const parts = payload.trim().split('|')
     let member: Member | undefined
     if (parts[0] === 'RP1' && parts.length >= 3) {
-      member = db.members.find((m) => m.member_code === parts[1] && m.qr_token === parts[2])
-      if (!member) member = db.members.find((m) => m.member_code === parts[1])
+      member = clubMembers.find((m) => m.member_code === parts[1] && m.qr_token === parts[2])
+      if (!member) member = clubMembers.find((m) => m.member_code === parts[1])
     } else {
       const code = payload.trim().toUpperCase()
-      member = db.members.find((m) => m.member_code.toUpperCase() === code || m.qr_token === payload.trim())
+      member = clubMembers.find((m) => m.member_code.toUpperCase() === code || m.qr_token === payload.trim())
     }
     if (!member) throw new Error('QR not recognized')
     if (member.status !== 'active') throw new Error('Membership not active')
@@ -41,11 +46,12 @@ export const checkInOperations = {
   },
   checkIn(memberId: string, staffId?: string, note?: string, venueId?: string) {
     const db = load()
-    const member = db.members.find((m) => m.id === memberId)
+    const clubId = activeClubId(db)
+    const member = db.members.find((m) => m.id === memberId && m.club_id === clubId)
     if (!member) throw new Error('Member not found')
     const row: CheckIn = {
       id: uid('ci'),
-      club_id: member?.club_id,
+      club_id: member.club_id,
       venue_id: venueId,
       member_id: memberId,
       checked_in_at: todayISO(),
@@ -58,9 +64,13 @@ export const checkInOperations = {
   },
   recentCheckins(venueId?: string) {
     const db = load()
-    return db.checkins.filter((checkin) => !venueId || checkin.venue_id === venueId).slice(0, 30).map((c) => ({
-      ...c,
-      member: db.members.find((m) => m.id === c.member_id),
-    }))
+    const clubId = activeClubId(db)
+    return db.checkins
+      .filter((checkin) => checkin.club_id === clubId && (!venueId || checkin.venue_id === venueId))
+      .slice(0, 30)
+      .map((c) => ({
+        ...c,
+        member: db.members.find((m) => m.id === c.member_id),
+      }))
   },
 }

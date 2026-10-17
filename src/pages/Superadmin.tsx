@@ -1,128 +1,126 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import {
-  Building2,
-  Coins,
-  DollarSign,
-  Plus,
-  RefreshCw,
-  TrendingUp,
-  Users,
-  ShieldCheck,
-  CheckCircle,
-  XCircle,
-} from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Building2, Coins, LifeBuoy, Plus, RefreshCw, TrendingUp, Users } from 'lucide-react'
 import { AppHeader, AppShell, LoadingBlock, SignOutButton } from '../components/Shell'
-import { api } from '../lib/api'
-import type { Branch, PlatformCommission, SuperadminStats } from '../types'
-import { fmtDateTime, peso } from '../types'
+import { api, summarizePlatform } from '../lib/api'
+import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
+import type {
+  ClubStatus,
+  PlatformAction,
+  PlatformClub,
+  PlatformClubAdmin,
+  PlatformCommission,
+  ProvisionClubInput,
+  SupportSession,
+  SupportSnapshot,
+} from '../types'
+import { fmtDateTime, fmtTime, peso } from '../types'
 
-type SuperadminTab = 'overview' | 'branches' | 'commissions'
+export type SuperadminSection = 'overview' | 'clubs' | 'ledger'
 
-export function SuperadminPage() {
-  const [tab, setTab] = useState<SuperadminTab>('overview')
-  const [stats, setStats] = useState<SuperadminStats | null>(null)
-  const [branches, setBranches] = useState<Branch[]>([])
-  const [commissions, setCommissions] = useState<PlatformCommission[]>([])
+type Notice = { tone: 'ok' | 'error'; text: string } | null
+
+const statusLabel: Record<ClubStatus, string> = {
+  provisioning: 'In setup',
+  active: 'Active',
+  suspended: 'Suspended',
+}
+
+const statusStyle: Record<ClubStatus, string> = {
+  provisioning: 'bg-amber-100 text-amber-900',
+  active: 'bg-emerald-100 text-emerald-900',
+  suspended: 'bg-slate-200 text-slate-800',
+}
+
+const sectionTitle: Record<SuperadminSection, string> = {
+  overview: 'Platform overview',
+  clubs: 'Clubs',
+  ledger: 'Commission ledger',
+}
+
+function errorText(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
+function joinLink(slug: string) {
+  return `#/join/${slug}`
+}
+
+/**
+ * The platform superadmin portal. Every action goes through audited platform
+ * functions; this page never reads a club's member or booking records.
+ */
+export function SuperadminPage({ section = 'overview' }: { section?: SuperadminSection }) {
+  const [clubs, setClubs] = useState<PlatformClub[]>([])
+  const [ledger, setLedger] = useState<PlatformCommission[]>([])
+  const [actions, setActions] = useState<PlatformAction[]>([])
+  const [supportSessions, setSupportSessions] = useState<SupportSession[]>([])
+  const [ledgerClub, setLedgerClub] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [showNewBranchModal, setShowNewBranchModal] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
+  const [notice, setNotice] = useState<Notice>(null)
+  const [showSetup, setShowSetup] = useState(false)
 
-  // New branch form state
-  const [name, setName] = useState('')
-  const [slug, setSlug] = useState('')
-  const [city, setCity] = useState('')
-  const [address, setAddress] = useState('')
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
-  const [commissionRate, setCommissionRate] = useState(5.0)
-  const [commissionType, setCommissionType] = useState<'percentage' | 'fixed'>('percentage')
-  const [savingBranch, setSavingBranch] = useState(false)
-
-  const loadData = useCallback(async () => {
+  const load = useCallback(async () => {
     try {
-      const [s, b, c] = await Promise.all([
-        api.superadminStats(),
-        api.branches(),
-        api.commissions(),
+      const [clubRows, ledgerRows, actionRows, sessionRows] = await Promise.all([
+        api.platformClubs(),
+        api.platformLedger(ledgerClub || null, 200),
+        api.platformRecentActions(20),
+        api.mySupportSessions(),
       ])
-      setStats(s)
-      setBranches(b)
-      setCommissions(c)
-    } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to load platform data')
+      setClubs(clubRows)
+      setLedger(ledgerRows)
+      setActions(actionRows)
+      setSupportSessions(sessionRows)
+    } catch (error) {
+      setNotice({ tone: 'error', text: errorText(error, 'Could not load platform information.') })
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [])
+  }, [ledgerClub])
 
   useEffect(() => {
-    void loadData()
-  }, [loadData])
+    void load()
+  }, [load])
 
-  async function handleRefresh() {
-    setRefreshing(true)
-    await loadData()
-  }
-
-  async function handleCreateBranch(e: FormEvent) {
-    e.preventDefault()
-    if (!name.trim() || !slug.trim()) return
-    setSavingBranch(true)
+  /**
+   * Runs one platform action, then reloads so every figure reflects it.
+   * Resolves to null when it worked, or to the error text. Dialogs pass
+   * `inline` and show the error themselves, because they cover the page notice.
+   */
+  async function run(action: () => Promise<unknown>, success: string, { inline = false } = {}) {
+    setNotice(null)
     try {
-      await api.createBranch({
-        name: name.trim(),
-        slug: slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-'),
-        city: city.trim(),
-        address: address.trim(),
-        email: email.trim() || null,
-        phone: phone.trim() || null,
-        commission_rate: Number(commissionRate) || 5.0,
-        commission_type: commissionType,
-        status: 'active',
-      })
-      setShowNewBranchModal(false)
-      setName('')
-      setSlug('')
-      setCity('')
-      setAddress('')
-      setEmail('')
-      setPhone('')
-      setToast(`Branch "${name}" created successfully!`)
-      await loadData()
-    } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Could not create branch')
-    } finally {
-      setSavingBranch(false)
-    }
-  }
-
-  async function handleToggleBranchStatus(branch: Branch) {
-    const nextStatus = branch.status === 'active' ? 'suspended' : 'active'
-    try {
-      await api.updateBranchStatus(branch.id, nextStatus)
-      setToast(`Branch "${branch.name}" is now ${nextStatus}.`)
-      await loadData()
-    } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to update branch')
+      await action()
+      setNotice({ tone: 'ok', text: success })
+      await load()
+      return null
+    } catch (error) {
+      const text = errorText(error, 'That did not work. Please try again.')
+      if (!inline) setNotice({ tone: 'error', text })
+      return text
     }
   }
 
   return (
     <AppShell role="superadmin">
       <AppHeader
-        title="Platform Superadmin"
-        subtitle="Multi-branch SaaS governance & commission engine"
+        title={sectionTitle[section]}
+        subtitle="Rally Point platform"
         right={
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="control-feedback inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-300 px-3 text-caption font-semibold text-brand-800"
-              onClick={() => void handleRefresh()}
+              className="btn-secondary min-h-12"
+              onClick={() => {
+                setRefreshing(true)
+                void load()
+              }}
               disabled={refreshing}
+              aria-busy={refreshing}
             >
-              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} aria-hidden />
+              <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} aria-hidden />
               Refresh
             </button>
             <SignOutButton />
@@ -130,413 +128,819 @@ export function SuperadminPage() {
         }
       />
 
-      <main className="safe-bottom px-4 pt-4 space-y-4">
-        {/* Navigation Tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto pb-1" role="tablist">
-          {[
-            { id: 'overview' as const, label: 'Overview & KPIs', icon: TrendingUp },
-            { id: 'branches' as const, label: `Branches (${branches.length})`, icon: Building2 },
-            { id: 'commissions' as const, label: `Commissions (${commissions.length})`, icon: Coins },
-          ].map((item) => {
-            const Icon = item.icon
-            const active = tab === item.id
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setTab(item.id)}
-                className={`control-feedback inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-subtitle font-bold transition ${
-                  active
-                    ? 'bg-brand-800 text-white shadow-sm'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                }`}
-              >
-                <Icon size={18} aria-hidden />
-                {item.label}
-              </button>
-            )
-          })}
-        </div>
+      <main className="safe-bottom app-content-rail space-y-4 px-4 pt-4">
+        {notice ? (
+          <p
+            role={notice.tone === 'error' ? 'alert' : 'status'}
+            className={`rounded-2xl p-4 text-base font-semibold ${
+              notice.tone === 'error' ? 'bg-red-50 text-red-800' : 'bg-emerald-50 text-emerald-900'
+            }`}
+          >
+            {notice.text}
+          </p>
+        ) : null}
 
         {loading ? (
           <LoadingBlock />
+        ) : section === 'overview' ? (
+          <Overview clubs={clubs} actions={actions} />
+        ) : section === 'clubs' ? (
+          <ClubDirectory
+            clubs={clubs}
+            openSession={supportSessions.find((session) => session.is_open) ?? null}
+            onSetUp={() => setShowSetup(true)}
+            run={run}
+          />
         ) : (
-          <>
-            {/* TAB: OVERVIEW */}
-            {tab === 'overview' ? (
-              <div className="space-y-4">
-                {/* Global KPI Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <div className="stat-card">
-                    <div className="flex items-center justify-between text-teal-100">
-                      <span className="text-caption font-bold uppercase tracking-wider">Superadmin Cut</span>
-                      <Coins size={20} />
-                    </div>
-                    <p className="text-3xl font-extrabold mt-2 text-white">
-                      {peso(stats?.totalCommissionsEarned ?? 0)}
-                    </p>
-                    <p className="text-caption text-teal-100 mt-1">Platform commissions collected</p>
-                  </div>
-
-                  <div className="card p-4">
-                    <div className="flex items-center justify-between text-slate-400">
-                      <span className="text-caption font-bold uppercase tracking-wider">Gross Booking Volume</span>
-                      <DollarSign size={20} className="text-brand-700" />
-                    </div>
-                    <p className="text-3xl font-extrabold mt-2 text-slate-900">
-                      {peso(stats?.totalGrossVolume ?? 0)}
-                    </p>
-                    <p className="text-caption text-slate-500 mt-1">Total revenue across all branches</p>
-                  </div>
-
-                  <div className="card p-4">
-                    <div className="flex items-center justify-between text-slate-400">
-                      <span className="text-caption font-bold uppercase tracking-wider">Active Branches</span>
-                      <Building2 size={20} className="text-brand-700" />
-                    </div>
-                    <p className="text-3xl font-extrabold mt-2 text-slate-900">
-                      {stats?.activeBranchesCount ?? 0}
-                    </p>
-                    <p className="text-caption text-slate-500 mt-1">Live club locations</p>
-                  </div>
-
-                  <div className="card p-4">
-                    <div className="flex items-center justify-between text-slate-400">
-                      <span className="text-caption font-bold uppercase tracking-wider">Total Bookings</span>
-                      <Users size={20} className="text-brand-700" />
-                    </div>
-                    <p className="text-3xl font-extrabold mt-2 text-slate-900">
-                      {stats?.totalBookingsCount ?? 0}
-                    </p>
-                    <p className="text-caption text-slate-500 mt-1">Court sessions processed</p>
-                  </div>
-                </div>
-
-                {/* Quick Branch Breakdown */}
-                <section className="card p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h2 className="text-title font-bold text-slate-900">Branch Performance</h2>
-                      <p className="text-body text-slate-600 mt-0.5">Overview of active franchise branches</p>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn-primary text-xs px-3"
-                      onClick={() => setShowNewBranchModal(true)}
-                    >
-                      <Plus size={16} aria-hidden /> New branch
-                    </button>
-                  </div>
-                  <div className="divide-y divide-slate-100">
-                    {branches.map((b) => {
-                      const branchComms = commissions.filter((c) => c.branch_id === b.id)
-                      const branchGross = branchComms.reduce((acc, c) => acc + c.gross_amount, 0)
-                      const branchCut = branchComms.reduce((acc, c) => acc + c.commission_amount, 0)
-
-                      return (
-                        <div key={b.id} className="py-3 flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="text-subtitle font-bold text-slate-900">{b.name}</p>
-                              <span
-                                className={`pill ${b.status === 'active' ? 'pill-ok' : 'pill-warn'}`}
-                              >
-                                {b.status}
-                              </span>
-                            </div>
-                            <p className="text-caption text-slate-500 mt-0.5">
-                              {b.city} · Slug: <code className="text-brand-800 font-bold">{b.slug}</code> · Cut: {b.commission_rate}%
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-body font-bold text-slate-900">{peso(branchGross)} gross</p>
-                            <p className="text-caption font-semibold text-teal-700 mt-0.5">
-                              +{peso(branchCut)} commission
-                            </p>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </section>
-              </div>
-            ) : null}
-
-            {/* TAB: BRANCHES */}
-            {tab === 'branches' ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-title font-bold text-slate-900">Branch Directory</h2>
-                    <p className="text-body text-slate-600 mt-0.5">Manage club branches and customize commission percentages</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    onClick={() => setShowNewBranchModal(true)}
-                  >
-                    <Plus size={18} aria-hidden /> Add new branch
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {branches.map((b) => (
-                    <article key={b.id} className="card p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-title font-extrabold text-slate-900">{b.name}</h3>
-                            <span className={`pill ${b.status === 'active' ? 'pill-ok' : 'pill-warn'}`}>
-                              {b.status}
-                            </span>
-                          </div>
-                          <p className="text-caption text-slate-500 mt-1">{b.address}</p>
-                        </div>
-                        <span className="pill pill-brand font-mono font-bold">
-                          {b.commission_rate}% cut
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-caption pt-2 border-t border-slate-100 text-slate-600">
-                        <div>
-                          <span className="font-semibold text-slate-700">Subdomain/Slug:</span>
-                          <p className="font-mono text-brand-800 font-bold">{b.slug}.rallypoint.ph</p>
-                        </div>
-                        <div>
-                          <span className="font-semibold text-slate-700">Contact Email:</span>
-                          <p className="truncate">{b.email ?? 'Not set'}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                        <button
-                          type="button"
-                          className="control-feedback inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-caption font-bold text-slate-700"
-                          onClick={() => void handleToggleBranchStatus(b)}
-                        >
-                          {b.status === 'active' ? (
-                            <>
-                              <XCircle size={14} className="text-red-600" /> Suspend branch
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle size={14} className="text-teal-600" /> Activate branch
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {/* TAB: COMMISSIONS LEDGER */}
-            {tab === 'commissions' ? (
-              <section className="card p-4 space-y-3">
-                <div>
-                  <h2 className="text-title font-bold text-slate-900">Platform Commission Ledger</h2>
-                  <p className="text-body text-slate-600 mt-0.5">
-                    Live log of platform cuts automatically collected from branch bookings
-                  </p>
-                </div>
-
-                {commissions.length === 0 ? (
-                  <p className="text-body text-slate-500 py-4">No commissions recorded yet.</p>
-                ) : (
-                  <div className="divide-y divide-slate-100">
-                    {commissions.map((c) => (
-                      <div key={c.id} className="py-3 flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="text-subtitle font-bold text-slate-900">{c.branch_name}</p>
-                            <span className="pill pill-brand text-[10px]">{c.commission_rate}% fee</span>
-                            <span className="pill pill-ok text-[10px] capitalize">{c.status}</span>
-                          </div>
-                          <p className="text-caption text-slate-600 mt-0.5">{c.description}</p>
-                          <p className="text-[11px] text-slate-400 mt-0.5">{fmtDateTime(c.created_at)}</p>
-                        </div>
-
-                        <div className="text-right">
-                          <p className="text-title font-extrabold text-teal-700">
-                            +{peso(c.commission_amount)}
-                          </p>
-                          <p className="text-caption text-slate-500 mt-0.5">
-                            Gross: {peso(c.gross_amount)} · Branch Net: {peso(c.branch_net_amount)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-            ) : null}
-          </>
+          <Ledger clubs={clubs} rows={ledger} clubFilter={ledgerClub} onFilter={setLedgerClub} />
         )}
+      </main>
 
-        {/* MODAL: PROVISION NEW BRANCH */}
-        {showNewBranchModal ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-            <div className="card w-full max-w-lg p-6 space-y-4 shadow-xl">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="text-title font-extrabold text-slate-900 flex items-center gap-2">
-                    <ShieldCheck className="text-brand-700" size={22} /> Provision New Branch
-                  </h3>
-                  <p className="text-body text-slate-600 mt-0.5">
-                    Set up a new club location with its own website and commission rate.
-                  </p>
-                </div>
+      {showSetup ? (
+        <SetUpClubDialog
+          onClose={() => setShowSetup(false)}
+          onSubmit={async (input) => {
+            const error = await run(
+              () => api.provisionClub(input),
+              `${input.name} is set up. Assign an admin, then activate it.`,
+              { inline: true },
+            )
+            if (!error) setShowSetup(false)
+            return error
+          }}
+        />
+      ) : null}
+    </AppShell>
+  )
+}
+
+function RecordedNote() {
+  return (
+    <p className="text-body text-slate-600">
+      Figures come from charges the clubs recorded. Payments are still simulated, so this is not collected money.
+    </p>
+  )
+}
+
+function Overview({ clubs, actions }: { clubs: PlatformClub[]; actions: PlatformAction[] }) {
+  const stats = summarizePlatform(clubs)
+  const cards: { label: string; value: string; icon: typeof Coins }[] = [
+    { label: 'Commission recorded', value: peso(stats.totalCommissionsEarned), icon: Coins },
+    { label: 'Court revenue recorded', value: peso(stats.totalGrossVolume), icon: TrendingUp },
+    { label: 'Active clubs', value: String(stats.activeClubsCount), icon: Building2 },
+    { label: 'Ledger entries', value: String(stats.totalEntriesCount), icon: Users },
+  ]
+  return (
+    <div className="space-y-4">
+      <section aria-label="Platform totals" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {cards.map(({ label, value, icon: Icon }) => (
+          <div key={label} className="card p-4">
+            <Icon size={22} className="text-brand-700" aria-hidden />
+            <p className="mt-2 text-body font-semibold text-slate-600">{label}</p>
+            <p className="text-heading-2 font-bold text-slate-900">{value}</p>
+          </div>
+        ))}
+      </section>
+      <RecordedNote />
+
+      <section className="card p-4" aria-labelledby="club-figures">
+        <h2 id="club-figures" className="text-subtitle font-bold text-slate-900">
+          Clubs at a glance
+        </h2>
+        <ul className="mt-3 divide-y divide-slate-100">
+          {clubs.map((club) => (
+            <li key={club.club_id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+              <div>
+                <p className="text-base font-bold text-slate-900">{club.name}</p>
+                <StatusBadge status={club.status} />
+              </div>
+              <div className="text-right text-body text-slate-700">
+                <p>Court revenue {peso(club.gross_amount)}</p>
+                <p className="font-semibold">Commission {peso(club.commission_amount)}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="card p-4" aria-labelledby="recent-actions">
+        <h2 id="recent-actions" className="text-subtitle font-bold text-slate-900">
+          Recent platform actions
+        </h2>
+        {actions.length === 0 ? (
+          <p className="mt-2 text-body text-slate-600">No platform actions yet.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-slate-100">
+            {actions.map((action) => (
+              <li key={action.id} className="py-2.5 text-body text-slate-700">
+                <span className="font-semibold text-slate-900">{describeAction(action)}</span>
+                <span className="block text-caption text-slate-500">
+                  {action.actor_email ?? 'System'} · {fmtDateTime(action.created_at)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function describeAction(action: PlatformAction) {
+  const club = action.club_name ?? 'a club'
+  const to = typeof action.details.to === 'string' || typeof action.details.to === 'number' ? String(action.details.to) : ''
+  switch (action.action) {
+    case 'club.provision':
+      return `Set up ${club}`
+    case 'club.status':
+      return `${club} is now ${statusLabel[to as ClubStatus] ?? to}`
+    case 'club.commission_rate':
+      return `${club} commission set to ${to}%`
+    case 'club.admin_assign':
+      return `Added an admin to ${club}`
+    case 'club.admin_revoke':
+      return `Removed an admin from ${club}`
+    case 'support.start':
+      return `Opened a support view of ${club}`
+    case 'support.read':
+      return `Looked at ${club} in a support view`
+    case 'support.end':
+      return `Closed a support view of ${club}`
+    case 'platform_role.insert':
+      return 'Granted platform access'
+    case 'platform_role.delete':
+      return 'Removed platform access'
+    default:
+      return action.action
+  }
+}
+
+function StatusBadge({ status }: { status: ClubStatus }) {
+  return (
+    <span className={`inline-block rounded-full px-2.5 py-0.5 text-caption font-bold ${statusStyle[status]}`}>
+      {statusLabel[status]}
+    </span>
+  )
+}
+
+type Run = (action: () => Promise<unknown>, success: string, options?: { inline?: boolean }) => Promise<string | null>
+
+function ClubDirectory({
+  clubs,
+  openSession,
+  onSetUp,
+  run,
+}: {
+  clubs: PlatformClub[]
+  openSession: SupportSession | null
+  onSetUp: () => void
+  run: Run
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-body text-slate-600">
+          New clubs start in setup and stay hidden from players until you activate them.
+        </p>
+        <button type="button" className="btn-primary min-h-12" onClick={onSetUp}>
+          <Plus size={18} aria-hidden /> Set up a club
+        </button>
+      </div>
+      {clubs.map((club) => (
+        <ClubCard
+          key={club.club_id}
+          club={club}
+          supportSession={openSession?.club_id === club.club_id ? openSession : null}
+          run={run}
+        />
+      ))}
+    </div>
+  )
+}
+
+function ClubCard({ club, supportSession, run }: { club: PlatformClub; supportSession: SupportSession | null; run: Run }) {
+  const [showSupport, setShowSupport] = useState(false)
+  const [rate, setRate] = useState(String(club.commission_rate))
+  const [adminEmail, setAdminEmail] = useState('')
+  const [admins, setAdmins] = useState<PlatformClubAdmin[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const isDefault = club.slug === DEFAULT_CLUB_SLUG
+
+  const loadAdmins = useCallback(async () => {
+    try {
+      setAdmins(await api.platformClubAdmins(club.club_id))
+    } catch {
+      setAdmins([])
+    }
+  }, [club.club_id])
+
+  async function act(action: () => Promise<unknown>, success: string) {
+    setBusy(true)
+    const ok = (await run(action, success)) === null
+    setBusy(false)
+    if (ok && admins !== null) await loadAdmins()
+    return ok
+  }
+
+  const statusActions: { label: string; next: ClubStatus }[] =
+    club.status === 'active'
+      ? isDefault
+        ? []
+        : [{ label: 'Suspend', next: 'suspended' }]
+      : [{ label: club.status === 'provisioning' ? 'Activate' : 'Reactivate', next: 'active' }]
+
+  return (
+    <article className="card space-y-4 p-4" aria-labelledby={`club-${club.club_id}`}>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id={`club-${club.club_id}`} className="text-subtitle font-bold text-slate-900">
+            {club.name}
+          </h2>
+          <StatusBadge status={club.status} />
+          {isDefault ? <span className="ml-2 text-caption text-slate-600">Default sign-up club</span> : null}
+          <p className="mt-1 text-body text-slate-600">
+            Join link: <span className="font-mono text-slate-800">{joinLink(club.slug)}</span>
+          </p>
+          {club.city || club.contact_email ? (
+            <p className="text-body text-slate-600">
+              {[club.city, club.contact_email, club.contact_phone].filter(Boolean).join(' · ')}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {statusActions.map(({ label, next }) => (
+            <button
+              key={label}
+              type="button"
+              className={next === 'suspended' ? 'btn-secondary min-h-12' : 'btn-primary min-h-12'}
+              disabled={busy}
+              onClick={() => void act(() => api.setClubStatus(club.club_id, next), `${club.name} is now ${statusLabel[next].toLowerCase()}.`)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <dl className="grid grid-cols-2 gap-2 text-body sm:grid-cols-4">
+        <Figure label="Venues" value={club.venue_count} />
+        <Figure label="Courts" value={club.court_count} />
+        <Figure label="Members" value={club.member_count} />
+        <Figure label="Admins" value={club.admin_count} />
+      </dl>
+
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(event: FormEvent) => {
+          event.preventDefault()
+          void act(() => api.setCommissionRate(club.club_id, Number(rate)), `${club.name} commission set to ${Number(rate)}%.`)
+        }}
+      >
+        <label className="block">
+          <span className="label">Commission (%)</span>
+          <input
+            className="input min-h-12 w-32"
+            type="number"
+            min={0}
+            max={100}
+            step="0.01"
+            value={rate}
+            onChange={(event) => setRate(event.target.value)}
+            required
+          />
+        </label>
+        <button type="submit" className="btn-secondary min-h-12" disabled={busy}>
+          Save rate
+        </button>
+      </form>
+
+      <section aria-label={`${club.name} admins`} className="space-y-3">
+        {admins === null ? (
+          <button type="button" className="btn-secondary min-h-12" onClick={() => void loadAdmins()}>
+            Show admins
+          </button>
+        ) : admins.length === 0 ? (
+          <p className="text-body text-slate-600">No admins yet.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+            {admins.map((admin) => (
+              <li key={admin.user_id} className="flex flex-wrap items-center justify-between gap-2 p-3">
+                <span className="text-body text-slate-800">
+                  <span className="font-semibold">{admin.full_name}</span> · {admin.email}
+                </span>
                 <button
                   type="button"
-                  className="text-slate-400 hover:text-slate-600 p-1"
-                  onClick={() => setShowNewBranchModal(false)}
+                  className="btn-secondary min-h-12"
+                  disabled={busy}
+                  onClick={() => void act(() => api.revokeClubAdmin(club.club_id, admin.user_id), `${admin.full_name} is no longer an admin of ${club.name}.`)}
                 >
-                  ✕
+                  Remove
                 </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={async (event: FormEvent) => {
+            event.preventDefault()
+            const ok = await act(() => api.assignClubAdmin(club.club_id, adminEmail), `${adminEmail.trim()} is now an admin of ${club.name}.`)
+            if (ok) {
+              setAdminEmail('')
+              await loadAdmins()
+            }
+          }}
+        >
+          <label className="block min-w-[14rem] flex-1">
+            <span className="label">Add an admin by email</span>
+            <input
+              className="input min-h-12 w-full"
+              type="email"
+              autoComplete="off"
+              value={adminEmail}
+              onChange={(event) => setAdminEmail(event.target.value)}
+              placeholder="They must sign up first"
+              required
+            />
+          </label>
+          <button type="submit" className="btn-primary min-h-12" disabled={busy}>
+            Add admin
+          </button>
+        </form>
+      </section>
+
+      <section aria-label={`${club.name} support view`} className="border-t border-slate-100 pt-4" tabIndex={-1} data-return-focus>
+        {supportSession ? (
+          <SupportPanel
+            session={supportSession}
+            onEnd={() => run(() => api.endSupportSession(supportSession.id), `Support view of ${club.name} closed.`)}
+          />
+        ) : (
+          <button type="button" className="btn-secondary min-h-12" onClick={() => setShowSupport(true)}>
+            <LifeBuoy size={18} aria-hidden /> Open support view
+          </button>
+        )}
+      </section>
+
+      {showSupport ? (
+        <SupportDialog
+          clubName={club.name}
+          onClose={() => setShowSupport(false)}
+          onStart={async (reason, minutes) => {
+            const error = await run(
+              () => api.startSupportSession(club.club_id, reason, minutes),
+              `Support view of ${club.name} is open for ${minutes} minutes.`,
+              { inline: true },
+            )
+            if (!error) setShowSupport(false)
+            return error
+          }}
+        />
+      ) : null}
+    </article>
+  )
+}
+
+const focusableInDialog =
+  'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+
+/**
+ * Keyboard behaviour for the dialogs on this page: focus the first field, keep
+ * Tab inside the dialog, close on Escape, and hand focus back to the button
+ * that opened it. If that button is gone, focus moves to its nearest
+ * `data-return-focus` area instead.
+ */
+function useModal<T extends HTMLElement>(onClose: () => void) {
+  const dialog = useRef<HTMLDivElement>(null)
+  const firstField = useRef<T>(null)
+  const close = useRef(onClose)
+
+  useEffect(() => {
+    close.current = onClose
+  }, [onClose])
+
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const fallback = opener?.closest<HTMLElement>('[data-return-focus]') ?? null
+    firstField.current?.focus()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        close.current()
+        return
+      }
+      const box = dialog.current
+      if (event.key !== 'Tab' || !box) return
+      const items = [...box.querySelectorAll<HTMLElement>(focusableInDialog)]
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const inside = box.contains(document.activeElement)
+      if (event.shiftKey && (!inside || document.activeElement === first)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (!inside || document.activeElement === last)) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      if (opener?.isConnected) opener.focus()
+      else if (fallback?.isConnected) fallback.focus()
+    }
+  }, [])
+
+  return { dialog, firstField }
+}
+
+/** A dialog's own error line, scrolled into view because long dialogs scroll on phones. */
+function DialogError({ text }: { text: string | null }) {
+  const line = useRef<HTMLParagraphElement>(null)
+  useEffect(() => {
+    if (text) line.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [text])
+  if (!text) return null
+  return (
+    <p ref={line} role="alert" className="rounded-xl bg-red-50 p-3 text-base font-semibold text-red-800">
+      {text}
+    </p>
+  )
+}
+
+const supportDurations = [15, 30, 60, 120]
+
+/** Asks why a support view is needed and for how long before opening it. */
+function SupportDialog({
+  clubName,
+  onClose,
+  onStart,
+}: {
+  clubName: string
+  onClose: () => void
+  onStart: (reason: string, minutes: number) => Promise<string | null>
+}) {
+  const [reason, setReason] = useState('')
+  const [minutes, setMinutes] = useState(30)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const { dialog, firstField: reasonField } = useModal<HTMLTextAreaElement>(onClose)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+      <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="support-title" className="card w-full max-w-lg p-5">
+        <h2 id="support-title" className="text-heading-2 font-bold text-slate-900">
+          Support view of {clubName}
+        </h2>
+        <p className="mt-1 text-body text-slate-600">
+          Read-only, for a limited time. Every view is logged, and no member contact details are shown.
+        </p>
+        <form
+          className="mt-4 space-y-3"
+          onSubmit={async (event: FormEvent) => {
+            event.preventDefault()
+            setSaving(true)
+            setError(null)
+            setError(await onStart(reason, minutes))
+            setSaving(false)
+          }}
+        >
+          <label className="block">
+            <span className="label">Reason</span>
+            <textarea
+              ref={reasonField}
+              className="input min-h-24 w-full"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              minLength={10}
+              maxLength={500}
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="label">How long</span>
+            <select className="input min-h-12 w-full" value={minutes} onChange={(event) => setMinutes(Number(event.target.value))}>
+              {supportDurations.map((value) => (
+                <option key={value} value={value}>
+                  {value < 60 ? `${value} minutes` : value === 60 ? '1 hour' : '2 hours'}
+                </option>
+              ))}
+            </select>
+          </label>
+          <DialogError text={error} />
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
+            <button type="button" className="btn-secondary min-h-12" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary min-h-12" disabled={saving} aria-busy={saving}>
+              {saving ? 'Opening…' : 'Open support view'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+/** The read-only club snapshot shown while a support session is open. */
+function SupportPanel({ session, onEnd }: { session: SupportSession; onEnd: () => Promise<unknown> }) {
+  const [snapshot, setSnapshot] = useState<SupportSnapshot | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const look = useCallback(async () => {
+    setError(null)
+    try {
+      setSnapshot(await api.supportSnapshot(session.id))
+    } catch (err) {
+      setError(errorText(err, 'Could not load the support view.'))
+    }
+  }, [session.id])
+
+  useEffect(() => {
+    void look()
+  }, [look])
+
+  return (
+    <div className="space-y-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-base font-bold text-amber-950">Support view open until {fmtTime(session.expires_at)}</p>
+          <p className="text-body text-amber-900">Reason: {session.reason}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn-secondary min-h-12" onClick={() => void look()}>
+            Refresh
+          </button>
+          <button type="button" className="btn-primary min-h-12" onClick={() => void onEnd()}>
+            End support view
+          </button>
+        </div>
+      </div>
+      {error ? (
+        <p role="alert" className="text-base font-semibold text-red-800">
+          {error}
+        </p>
+      ) : null}
+      {snapshot ? (
+        <div className="space-y-3 text-body text-slate-800">
+          <p>
+            Members: {snapshot.members.total} ({snapshot.members.active} active, {snapshot.members.expired} expired) · Staff and
+            admins: {snapshot.staff_count}
+          </p>
+          <p>Venues: {snapshot.venues.map((venue) => `${venue.name} (${venue.courts} courts)`).join(', ') || 'None yet'}</p>
+          <div>
+            <h3 className="font-bold text-slate-900">Today</h3>
+            {snapshot.today.length === 0 ? (
+              <p>Nothing scheduled today.</p>
+            ) : (
+              <ul className="mt-1 space-y-1">
+                {snapshot.today.map((block) => (
+                  <li key={`${block.kind}-${block.court_name}-${block.start_at}`}>
+                    {fmtTime(block.start_at)}–{fmtTime(block.end_at)} · {block.court_name} · {block.kind.replace('_', ' ')} ({block.status})
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-900">Open inquiries</h3>
+            {snapshot.open_inquiries.length === 0 ? (
+              <p>No open inquiries.</p>
+            ) : (
+              <ul className="mt-1 space-y-1">
+                {snapshot.open_inquiries.map((inquiry) => (
+                  <li key={`${inquiry.created_at}-${inquiry.subject}`}>
+                    {inquiry.subject} · {inquiry.category} · {inquiry.status === 'in_progress' ? 'In progress' : 'Open'}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function Figure({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl bg-slate-50 p-3">
+      <dt className="text-caption font-semibold text-slate-600">{label}</dt>
+      <dd className="text-subtitle font-bold text-slate-900">{value}</dd>
+    </div>
+  )
+}
+
+function Ledger({
+  clubs,
+  rows,
+  clubFilter,
+  onFilter,
+}: {
+  clubs: PlatformClub[]
+  rows: PlatformCommission[]
+  clubFilter: string
+  onFilter: (clubId: string) => void
+}) {
+  return (
+    <div className="space-y-4">
+      <RecordedNote />
+      <label className="block max-w-xs">
+        <span className="label">Club</span>
+        <select className="input min-h-12 w-full" value={clubFilter} onChange={(event) => onFilter(event.target.value)}>
+          <option value="">All clubs</option>
+          {clubs.map((club) => (
+            <option key={club.club_id} value={club.club_id}>
+              {club.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {rows.length === 0 ? (
+        <p className="card p-4 text-body text-slate-600">No commission recorded yet.</p>
+      ) : (
+        <ul className="space-y-2">
+          {rows.map((row) => (
+            <li key={row.id} className="card flex flex-wrap items-start justify-between gap-3 p-4">
+              <div>
+                <p className="text-base font-bold text-slate-900">{row.club_name}</p>
+                <p className="text-body text-slate-700">{row.description}</p>
+                <p className="text-caption text-slate-500">
+                  {fmtDateTime(row.created_at)} · {row.commission_rate}% ·{' '}
+                  {row.verification_status === 'verified' ? 'Verified' : 'Recorded, not verified'}
+                </p>
               </div>
+              <div className="text-right text-body">
+                <p className="font-bold text-slate-900">Commission {peso(row.commission_amount)}</p>
+                <p className="text-slate-600">Charge {peso(row.gross_amount)}</p>
+                <p className="text-slate-600">Club keeps {peso(row.club_net_amount)}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 
-              <form onSubmit={(e) => void handleCreateBranch(e)} className="space-y-3">
-                <div>
-                  <label className="label" htmlFor="branch-name">Branch / Club Name</label>
-                  <input
-                    id="branch-name"
-                    className="input"
-                    value={name}
-                    onChange={(e) => {
-                      setName(e.target.value)
-                      if (!slug) {
-                        setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))
-                      }
-                    }}
-                    placeholder="e.g. Rally Point Cebu"
-                    required
-                  />
-                </div>
+const emptySetup: ProvisionClubInput = {
+  name: '',
+  slug: '',
+  city: '',
+  address: '',
+  contact_email: '',
+  contact_phone: '',
+  commission_rate: 5,
+  court_count: 2,
+}
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="label" htmlFor="branch-slug">URL Slug (Subdomain)</label>
-                    <input
-                      id="branch-slug"
-                      className="input"
-                      value={slug}
-                      onChange={(e) => setSlug(e.target.value)}
-                      placeholder="e.g. cebu"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="branch-city">City</label>
-                    <input
-                      id="branch-city"
-                      className="input"
-                      value={city}
-                      onChange={(e) => setCity(e.target.value)}
-                      placeholder="e.g. Cebu City"
-                      required
-                    />
-                  </div>
-                </div>
+function toLinkName(name: string) {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50)
+}
 
-                <div>
-                  <label className="label" htmlFor="branch-address">Full Address</label>
-                  <input
-                    id="branch-address"
-                    className="input"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    placeholder="e.g. North Reclamation Area, Cebu City"
-                    required
-                  />
-                </div>
+function SetUpClubDialog({
+  onClose,
+  onSubmit,
+}: {
+  onClose: () => void
+  onSubmit: (input: ProvisionClubInput) => Promise<string | null>
+}) {
+  const [form, setForm] = useState<ProvisionClubInput>(emptySetup)
+  const [linkTouched, setLinkTouched] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const { dialog, firstField } = useModal<HTMLInputElement>(onClose)
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="label" htmlFor="branch-comm-rate">Platform Commission</label>
-                    <div className="relative">
-                      <input
-                        id="branch-comm-rate"
-                        type="number"
-                        step="0.5"
-                        min="0"
-                        max="100"
-                        className="input"
-                        value={commissionRate}
-                        onChange={(e) => setCommissionRate(Number(e.target.value))}
-                        required
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
-                        %
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="branch-comm-type">Fee Type</label>
-                    <select
-                      id="branch-comm-type"
-                      className="input"
-                      value={commissionType}
-                      onChange={(e) => setCommissionType(e.target.value as 'percentage' | 'fixed')}
-                    >
-                      <option value="percentage">Percentage (%)</option>
-                      <option value="fixed">Flat fee (PHP)</option>
-                    </select>
-                  </div>
-                </div>
+  function update<K extends keyof ProvisionClubInput>(key: K, value: ProvisionClubInput[K]) {
+    setForm((current) => ({ ...current, [key]: value }))
+  }
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="label" htmlFor="branch-email">Branch Email</label>
-                    <input
-                      id="branch-email"
-                      type="email"
-                      className="input"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="admin@branch.com"
-                    />
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="branch-phone">Branch Phone</label>
-                    <input
-                      id="branch-phone"
-                      className="input"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="+63 917 555 0000"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => setShowNewBranchModal(false)}
-                    disabled={savingBranch}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn-primary"
-                    disabled={savingBranch}
-                  >
-                    {savingBranch ? 'Provisioning…' : 'Create Branch'}
-                  </button>
-                </div>
-              </form>
-            </div>
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+      <div
+        ref={dialog}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="setup-club-title"
+        className="card max-h-[90dvh] w-full max-w-lg overflow-y-auto p-5"
+      >
+        <h2 id="setup-club-title" className="text-heading-2 font-bold text-slate-900">
+          Set up a club
+        </h2>
+        <p className="mt-1 text-body text-slate-600">
+          It starts in setup with one venue and its courts. Add an admin, then activate it.
+        </p>
+        <form
+          className="mt-4 space-y-3"
+          onSubmit={async (event: FormEvent) => {
+            event.preventDefault()
+            setSaving(true)
+            setError(null)
+            setError(await onSubmit({ ...form, slug: form.slug || toLinkName(form.name) }))
+            setSaving(false)
+          }}
+        >
+          <Field label="Club name">
+            <input
+              ref={firstField}
+              className="input min-h-12 w-full"
+              value={form.name}
+              onChange={(event) => {
+                update('name', event.target.value)
+                if (!linkTouched) update('slug', toLinkName(event.target.value))
+              }}
+              required
+            />
+          </Field>
+          <Field label="Link name" hint={`Players join at ${joinLink(form.slug || 'link-name')}`}>
+            <input
+              className="input min-h-12 w-full"
+              value={form.slug}
+              onChange={(event) => {
+                setLinkTouched(true)
+                update('slug', event.target.value.toLowerCase())
+              }}
+              pattern="[a-z0-9][a-z0-9-]{1,48}[a-z0-9]"
+              title="3 to 50 lowercase letters, numbers or dashes"
+              required
+            />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="City">
+              <input className="input min-h-12 w-full" value={form.city} onChange={(event) => update('city', event.target.value)} />
+            </Field>
+            <Field label="Address">
+              <input className="input min-h-12 w-full" value={form.address} onChange={(event) => update('address', event.target.value)} />
+            </Field>
+            <Field label="Contact email">
+              <input
+                className="input min-h-12 w-full"
+                type="email"
+                value={form.contact_email}
+                onChange={(event) => update('contact_email', event.target.value)}
+              />
+            </Field>
+            <Field label="Contact phone">
+              <input
+                className="input min-h-12 w-full"
+                type="tel"
+                value={form.contact_phone}
+                onChange={(event) => update('contact_phone', event.target.value)}
+              />
+            </Field>
+            <Field label="Commission (%)">
+              <input
+                className="input min-h-12 w-full"
+                type="number"
+                min={0}
+                max={100}
+                step="0.01"
+                value={form.commission_rate}
+                onChange={(event) => update('commission_rate', Number(event.target.value))}
+                required
+              />
+            </Field>
+            <Field label="Courts">
+              <input
+                className="input min-h-12 w-full"
+                type="number"
+                min={1}
+                max={12}
+                value={form.court_count}
+                onChange={(event) => update('court_count', Number(event.target.value))}
+                required
+              />
+            </Field>
           </div>
-        ) : null}
-
-        {toast ? (
-          <div className="toast" role="status">
-            {toast}
+          <DialogError text={error} />
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
+            <button type="button" className="btn-secondary min-h-12" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary min-h-12" disabled={saving} aria-busy={saving}>
+              {saving ? 'Setting up…' : 'Set up club'}
+            </button>
           </div>
-        ) : null}
-      </main>
-    </AppShell>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  // The hint sits outside the label so the field's accessible name stays short.
+  return (
+    <div>
+      <label className="block">
+        <span className="label">{label}</span>
+        {children}
+      </label>
+      {hint ? <p className="mt-1 text-caption text-slate-500">{hint}</p> : null}
+    </div>
   )
 }

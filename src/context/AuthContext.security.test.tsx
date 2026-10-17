@@ -2,15 +2,22 @@ import { useState } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Profile } from '../types'
+import type { MyClub, Profile, PublicClub } from '../types'
+import { getActiveClubId, setActiveClubId } from '../lib/clubContext'
 import { useAuth } from './AuthContext'
 import { AuthProvider } from './AuthProvider'
+
+const gensanMember: MyClub = { club_id: 'club-gensan', slug: 'rally-point-gensan', name: 'Rally Point Gensan', role: 'member' }
 
 const authState = vi.hoisted(() => ({
   profileResult: { data: null, error: null } as {
     data: Profile | null
     error: Error | null
   },
+  // Trusted access records returned by list_my_clubs / get_platform_access.
+  clubs: [] as MyClub[],
+  platform: null as string | null,
+  publicClub: null as PublicClub | null,
   sessionUser: {
     id: 'auth-user-1',
     email: 'member@example.com',
@@ -24,6 +31,12 @@ const authState = vi.hoisted(() => ({
 const unsubscribe = vi.hoisted(() => vi.fn())
 
 const supabaseMock = vi.hoisted(() => ({
+  rpc: vi.fn(async (name: string) => {
+    if (name === 'list_my_clubs') return { data: authState.clubs, error: null }
+    if (name === 'get_platform_access') return { data: authState.platform, error: null }
+    if (name === 'get_public_club') return { data: authState.publicClub ? [authState.publicClub] : [], error: null }
+    return { data: null, error: null }
+  }),
   from: vi.fn(() => ({
     select: vi.fn(() => ({
       eq: vi.fn(() => ({
@@ -107,6 +120,41 @@ function AuthActionProbe() {
   )
 }
 
+function ClubProbe() {
+  const { loading, activeClub, clubs, switchClub } = useAuth()
+  if (loading) return <p>Loading auth</p>
+  return (
+    <>
+      <p>{activeClub ? `${activeClub.name} as ${activeClub.role}` : 'No club'}</p>
+      {clubs.filter((club) => club.club_id !== activeClub?.club_id).map((club) => (
+        <button key={club.club_id} type="button" onClick={() => switchClub(club.club_id)}>
+          Switch to {club.name}
+        </button>
+      ))}
+    </>
+  )
+}
+
+function JoinLinkProbe() {
+  const { signUpMember } = useAuth()
+  const [message, setMessage] = useState('')
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          void signUpMember({ email: 'link@example.com', password: 'test-only-passphrase', full_name: 'New Member', clubSlug: 'rally-point-davao' })
+            .then(() => setMessage('Joined rally-point-davao'))
+            .catch((error: Error) => setMessage(error.message))
+        }}
+      >
+        Join through link
+      </button>
+      <p>{message}</p>
+    </>
+  )
+}
+
 function AuthValidationProbe() {
   const { signUpMember } = useAuth()
   const [message, setMessage] = useState('')
@@ -125,6 +173,11 @@ function AuthValidationProbe() {
 describe('AuthProvider trusted role boundary', () => {
   beforeEach(() => {
     authState.profileResult = { data: null, error: null }
+    authState.clubs = [gensanMember]
+    authState.platform = null
+    authState.publicClub = null
+    setActiveClubId(null)
+    localStorage.clear()
     vi.clearAllMocks()
     supabaseMock.auth.signInWithPassword.mockResolvedValue({
       data: { user: authState.sessionUser },
@@ -302,12 +355,13 @@ describe('AuthProvider trusted role boundary', () => {
     expect(await screen.findByText('No user returned')).toBeInTheDocument()
   })
 
-  it('rejects public signup if the database profile is privileged', async () => {
+  it('rejects public signup if trusted records give the new account a staff role', async () => {
     const user = userEvent.setup()
     authState.profileResult = { data: {
       id: authState.sessionUser.id, email: authState.sessionUser.email, full_name: 'Not a Member',
-      role: 'admin', created_at: '2026-08-03T00:00:00.000Z',
+      role: 'member', created_at: '2026-08-03T00:00:00.000Z',
     }, error: null }
+    authState.clubs = [{ ...gensanMember, role: 'admin' }]
     render(<AuthProvider><AuthActionProbe /></AuthProvider>)
     await user.click(screen.getByRole('button', { name: 'Join' }))
 
@@ -325,6 +379,84 @@ describe('AuthProvider trusted role boundary', () => {
     expect(await screen.findByText('Signup unavailable')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Join' }))
     expect(await screen.findByText('Sign-up failed')).toBeInTheDocument()
+  })
+
+  it('ignores profiles.role and takes the role from trusted club records', async () => {
+    authState.profileResult = { data: {
+      id: authState.sessionUser.id, email: authState.sessionUser.email, full_name: 'Says Admin',
+      role: 'admin', created_at: '2026-08-03T00:00:00.000Z',
+    }, error: null }
+    render(<AuthProvider><AuthProbe /></AuthProvider>)
+    expect(await screen.findByText('Role: member')).toBeInTheDocument()
+  })
+
+  it('signs out when the person belongs to no active club', async () => {
+    authState.profileResult = { data: {
+      id: authState.sessionUser.id, email: authState.sessionUser.email, full_name: 'No Club',
+      role: 'member', created_at: '2026-08-03T00:00:00.000Z',
+    }, error: null }
+    authState.clubs = []
+    render(<AuthProvider><AuthProbe /></AuthProvider>)
+    expect(await screen.findByText('No authorized profile')).toBeInTheDocument()
+    expect(supabaseMock.auth.signOut).toHaveBeenCalled()
+    expect(getActiveClubId()).toBeNull()
+  })
+
+  it('gives a platform account the superadmin role and no club context', async () => {
+    authState.profileResult = { data: {
+      id: authState.sessionUser.id, email: authState.sessionUser.email, full_name: 'Platform Person',
+      role: 'member', created_at: '2026-08-03T00:00:00.000Z',
+    }, error: null }
+    authState.platform = 'superadmin'
+    render(<AuthProvider><AuthProbe /></AuthProvider>)
+    expect(await screen.findByText('Role: superadmin')).toBeInTheDocument()
+    expect(getActiveClubId()).toBeNull()
+  })
+
+  it('starts in the default club, then remembers a switch to another club', async () => {
+    authState.profileResult = { data: {
+      id: authState.sessionUser.id, email: authState.sessionUser.email, full_name: 'Two Clubs',
+      role: 'member', created_at: '2026-08-03T00:00:00.000Z',
+    }, error: null }
+    // Listed by name, so the other club comes first; the default club should still win.
+    authState.clubs = [
+      { club_id: 'club-davao', slug: 'rally-point-davao', name: 'Rally Point Davao', role: 'admin' },
+      gensanMember,
+    ]
+    const user = userEvent.setup()
+    render(<AuthProvider><ClubProbe /></AuthProvider>)
+    expect(await screen.findByText('Rally Point Gensan as member')).toBeInTheDocument()
+    expect(getActiveClubId()).toBe('club-gensan')
+
+    await user.click(screen.getByRole('button', { name: 'Switch to Rally Point Davao' }))
+    expect(await screen.findByText('Rally Point Davao as admin')).toBeInTheDocument()
+    expect(getActiveClubId()).toBe('club-davao')
+    expect(localStorage.getItem(`rally_point_last_club:${authState.sessionUser.id}`)).toBe('club-davao')
+  })
+
+  it('sends the club link with a join-link signup, and refuses an invalid link before signing up', async () => {
+    authState.profileResult = { data: {
+      id: authState.sessionUser.id, email: authState.sessionUser.email, full_name: 'New Member',
+      role: 'member', created_at: '2026-08-03T00:00:00.000Z',
+    }, error: null }
+    authState.publicClub = { id: 'club-davao', slug: 'rally-point-davao', name: 'Rally Point Davao' }
+    authState.clubs = [{ club_id: 'club-davao', slug: 'rally-point-davao', name: 'Rally Point Davao', role: 'member' }]
+    const user = userEvent.setup()
+    render(<AuthProvider><JoinLinkProbe /></AuthProvider>)
+
+    await user.click(screen.getByRole('button', { name: 'Join through link' }))
+    expect(await screen.findByText('Joined rally-point-davao')).toBeInTheDocument()
+    expect(supabaseMock.auth.signUp.mock.calls[0][0].options.data).toEqual({
+      full_name: 'New Member',
+      phone: null,
+      club_slug: 'rally-point-davao',
+    })
+
+    authState.publicClub = null
+    supabaseMock.auth.signUp.mockClear()
+    await user.click(screen.getByRole('button', { name: 'Join through link' }))
+    expect(await screen.findByText('This club link is not valid. Ask the club for a new link.')).toBeInTheDocument()
+    expect(supabaseMock.auth.signUp).not.toHaveBeenCalled()
   })
 
   it('normalizes reset email and reports reset failures', async () => {

@@ -55,52 +55,146 @@ export interface Profile {
   role: Role
   phone?: string | null
   avatar_url?: string | null
-  branch_id?: string | null
   created_at: string
   venue_ids?: string[]
 }
 
-export interface Branch {
-  id: string
-  name: string
+export type ClubRole = Exclude<Role, 'superadmin'>
+
+/** A club the signed-in person can act in, resolved from trusted access records. */
+export interface MyClub {
+  club_id: string
   slug: string
-  city: string
-  address: string
-  phone?: string | null
-  email?: string | null
+  name: string
+  role: ClubRole
+}
+
+/** The only club fields shown before sign-in (join links, public TV board). */
+export type PublicClub = Pick<Club, 'id' | 'slug' | 'name'>
+
+export type ClubStatus = 'provisioning' | 'active' | 'suspended'
+
+/** Trusted staff assignment within one club. */
+export interface ClubStaffRole {
+  club_id: string
+  user_id: string
+  role: 'staff' | 'admin'
+  is_active: boolean
+}
+
+/** Platform-owned commercial terms for a club. Club admins may read their own. */
+export interface ClubAccount {
+  club_id: string
+  status: ClubStatus
   commission_rate: number
-  commission_type: 'percentage' | 'fixed'
-  status: 'active' | 'suspended'
+  city: string | null
+  address: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** A club as the platform superadmin sees it: terms and totals, never member details. */
+export interface PlatformClub {
+  club_id: string
+  slug: string
+  name: string
+  status: ClubStatus
+  commission_rate: number
+  city: string | null
+  address: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  venue_count: number
+  court_count: number
+  member_count: number
+  admin_count: number
+  gross_amount: number
+  commission_amount: number
+  club_net_amount: number
+  entry_count: number
   created_at: string
 }
 
+/** Commission recorded from a court-time charge. Charges are recorded, not collected, today. */
 export interface PlatformCommission {
   id: string
-  branch_id: string
-  branch_name: string
-  booking_id?: string | null
-  transaction_id?: string | null
+  club_id: string
+  club_name: string
+  venue_id: string | null
+  transaction_id: string
   description: string
   gross_amount: number
   commission_rate: number
   commission_amount: number
-  branch_net_amount: number
-  status: 'settled' | 'pending'
+  club_net_amount: number
+  verification_status: 'unverified' | 'verified'
   created_at: string
+}
+
+/** An active admin of a club, as listed for the platform superadmin. */
+export interface PlatformClubAdmin {
+  user_id: string
+  email: string
+  full_name: string
+}
+
+export interface PlatformAction {
+  id: string
+  actor_email: string | null
+  action: string
+  club_id: string | null
+  club_name: string | null
+  details: Record<string, unknown>
+  created_at: string
+}
+
+/** A superadmin's time-limited, read-only support view of one club. */
+export interface SupportSession {
+  id: string
+  club_id: string
+  club_name: string
+  reason: string
+  started_at: string
+  expires_at: string
+  ended_at: string | null
+  is_open: boolean
+}
+
+/** What a support session shows: settings, counts and today's activity, never member details. */
+export interface SupportSnapshot {
+  session: { id: string; club_id: string; reason: string; started_at: string; expires_at: string }
+  club: { id: string; name: string; slug: string; is_active: boolean; status: ClubStatus | null }
+  venues: { id: string; name: string; is_active: boolean; courts: number }[]
+  members: { total: number; active: number; expired: number }
+  staff_count: number
+  today: { kind: 'session' | 'booking' | 'open_play'; court_name: string; venue_name: string; start_at: string; end_at: string; status: string }[]
+  open_inquiries: { category: string; subject: string; status: string; created_at: string }[]
+}
+
+export interface ProvisionClubInput {
+  name: string
+  slug: string
+  city: string
+  address: string
+  contact_email: string
+  contact_phone: string
+  commission_rate: number
+  court_count: number
 }
 
 export interface SuperadminStats {
   totalGrossVolume: number
   totalCommissionsEarned: number
-  activeBranchesCount: number
-  totalBookingsCount: number
+  activeClubsCount: number
+  totalEntriesCount: number
 }
 
 export interface Member {
   id: string
   club_id?: string
   user_id?: string | null
-  branch_id?: string | null
   member_code: string
   full_name: string
   email?: string | null
@@ -116,7 +210,6 @@ export interface Member {
 
 export interface Court {
   id: string
-  branch_id?: string | null
   club_id?: string
   venue_id?: string
   name: string
@@ -133,7 +226,6 @@ export interface CourtSessionPlayer {
 
 export interface CourtSession {
   id: string
-  branch_id?: string | null
   club_id?: string
   venue_id?: string
   court_id: string
@@ -153,7 +245,6 @@ export interface CourtSession {
 
 export interface Booking {
   id: string
-  branch_id?: string | null
   club_id?: string
   venue_id?: string
   court_id: string
@@ -205,7 +296,6 @@ export interface CheckIn {
 
 export interface Transaction {
   id: string
-  branch_id?: string | null
   club_id?: string
   venue_id?: string | null
   verification_status?: 'unverified' | 'verified'
@@ -231,7 +321,6 @@ export interface Notification {
 
 export interface SupportInquiry {
   id: string
-  branch_id?: string | null
   club_id: string
   user_id: string
   category: InquiryCategory

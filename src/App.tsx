@@ -30,13 +30,8 @@ import { useEffect } from 'react'
 import { api } from './lib/api'
 import { HelpPage } from './pages/HelpPage'
 import { SuperadminPage } from './pages/Superadmin'
-
-function homeFor(role: Role) {
-  if (role === 'superadmin') return '/superadmin'
-  if (role === 'admin') return '/admin'
-  if (role === 'staff') return '/staff'
-  return '/member'
-}
+import { JoinClubPage } from './pages/JoinClub'
+import { homeFor } from './lib/roleHome'
 
 function Protected({ roles }: { roles?: Role[] }) {
   const { user, loading } = useAuth()
@@ -60,11 +55,24 @@ function Protected({ roles }: { roles?: Role[] }) {
 export default function App() {
   return (
     <AuthProvider>
-      <Routes>
+      <AppRoutes />
+    </AuthProvider>
+  )
+}
+
+function AppRoutes() {
+  const { activeClub } = useAuth()
+  // Switching clubs remounts the screens, so replies still in flight for the
+  // previous club are dropped instead of showing up in the new one.
+  return (
+      <Routes key={activeClub?.club_id ?? 'no-club'}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<RootRedirect />} />
-        {/* Public TV board — open on club screens */}
+        {/* Club join links: sign up, or join while signed in */}
+        <Route path="/join/:slug" element={<JoinClubPage />} />
+        {/* Public TV board — open on club screens. Without a club link it shows Rally Point Gensan. */}
         <Route path="/board/tv" element={<TvBoard />} />
+        <Route path="/board/tv/:slug" element={<TvBoard />} />
 
         <Route element={<Protected roles={['member', 'admin']} />}>
           <Route path="/member" element={<MemberHome />} />
@@ -89,7 +97,8 @@ export default function App() {
           <Route path="/staff/help" element={<HelpPage />} />
         </Route>
 
-        <Route element={<Protected roles={['admin', 'superadmin']} />}>
+        {/* Club admin screens. Platform superadmins have their own portal, not club access. */}
+        <Route element={<Protected roles={['admin']} />}>
           <Route path="/admin" element={<AdminHome />} />
           <Route path="/admin/members" element={<AdminMembers />} />
           <Route path="/admin/members/new" element={<AdminMemberForm />} />
@@ -105,12 +114,13 @@ export default function App() {
         </Route>
 
         <Route element={<Protected roles={['superadmin']} />}>
-          <Route path="/superadmin" element={<SuperadminPage />} />
+          <Route path="/superadmin" element={<SuperadminPage section="overview" />} />
+          <Route path="/superadmin/clubs" element={<SuperadminPage section="clubs" />} />
+          <Route path="/superadmin/ledger" element={<SuperadminPage section="ledger" />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </AuthProvider>
   )
 }
 

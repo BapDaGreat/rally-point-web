@@ -1,15 +1,20 @@
 import type { CourtSession } from '../../types'
+import { activeClubId } from './access'
 import { todayISO, uid } from './common'
+import { recordTransaction } from './commissions'
 import { load, save } from './persistence'
 
 export const staffOperations = {
   courts(venueId?: string) {
-    return load().courts.filter((court) => !venueId || court.venue_id === venueId)
+    const db = load()
+    const clubId = activeClubId(db)
+    return db.courts.filter((court) => court.club_id === clubId && (!venueId || court.venue_id === venueId))
   },
   sessionsPlaying(venueId?: string) {
     const db = load()
+    const clubId = activeClubId(db)
     return db.sessions
-      .filter((s) => (s.status === 'playing' || s.status === 'scheduled') && (!venueId || s.venue_id === venueId))
+      .filter((s) => s.club_id === clubId && (s.status === 'playing' || s.status === 'scheduled') && (!venueId || s.venue_id === venueId))
       .map((s) => {
         const players = s.players?.length
           ? s.players
@@ -35,15 +40,18 @@ export const staffOperations = {
     created_by?: string
   }) {
     const db = load()
-    const court = db.courts.find((c) => c.id === opts.court_id)
+    const clubId = activeClubId(db)
+    const court = db.courts.find((c) => c.id === opts.court_id && c.club_id === clubId)
     if (!court) throw new Error('Court not found')
     if (court.status === 'maintenance') throw new Error('Court under maintenance')
     if (opts.venue_id && court.venue_id !== opts.venue_id) throw new Error('Court is outside the selected venue')
+    const member = opts.member_id ? db.members.find((m) => m.id === opts.member_id) : undefined
+    if (member && member.club_id !== court.club_id) throw new Error('Member belongs to another club')
     const start = new Date()
     const end = new Date(start.getTime() + opts.hours * 3600000)
     const amount = court.hourly_rate * opts.hours
     const players = [
-      opts.member_id ? { id: opts.member_id, full_name: db.members.find((m) => m.id === opts.member_id)?.full_name ?? 'Member', member_id: opts.member_id } : null,
+      opts.member_id ? { id: opts.member_id, full_name: member?.full_name ?? 'Member', member_id: opts.member_id } : null,
       opts.guest_name ? { id: uid('guest'), full_name: opts.guest_name, guest_name: opts.guest_name } : null,
     ].filter(Boolean) as Array<{ id: string; full_name: string; member_id?: string | null; guest_name?: string | null }>
 
@@ -63,7 +71,7 @@ export const staffOperations = {
     }
     db.sessions.push(session)
     court.status = 'occupied'
-    db.transactions.push({
+    recordTransaction(db, {
       id: uid('tx'),
       club_id: court.club_id,
       venue_id: court.venue_id,
@@ -79,9 +87,10 @@ export const staffOperations = {
   },
   addMemberToSession(sessionId: string, memberId: string, staffId?: string) {
     const db = load()
-    const session = db.sessions.find((x) => x.id === sessionId)
+    const clubId = activeClubId(db)
+    const session = db.sessions.find((x) => x.id === sessionId && x.club_id === clubId)
     if (!session) throw new Error('Session not found')
-    const member = db.members.find((m) => m.id === memberId)
+    const member = db.members.find((m) => m.id === memberId && m.club_id === session.club_id)
     if (!member) throw new Error('Member not found')
 
     const players = session.players ?? []
@@ -96,14 +105,17 @@ export const staffOperations = {
   },
   extendSession(sessionId: string, hours: number, created_by?: string) {
     const db = load()
-    const s = db.sessions.find((x) => x.id === sessionId)
+    const clubId = activeClubId(db)
+    const s = db.sessions.find((x) => x.id === sessionId && x.club_id === clubId)
     if (!s) throw new Error('Session not found')
     const court = db.courts.find((c) => c.id === s.court_id)
     const add = (court?.hourly_rate ?? 500) * hours
     s.end_at = new Date(new Date(s.end_at).getTime() + hours * 3600000).toISOString()
     s.amount += add
-    db.transactions.push({
+    recordTransaction(db, {
       id: uid('tx'),
+      club_id: s.club_id,
+      venue_id: s.venue_id ?? null,
       member_id: s.member_id ?? null,
       amount: add,
       type: 'extension',
@@ -116,7 +128,8 @@ export const staffOperations = {
   },
   endSession(sessionId: string) {
     const db = load()
-    const s = db.sessions.find((x) => x.id === sessionId)
+    const clubId = activeClubId(db)
+    const s = db.sessions.find((x) => x.id === sessionId && x.club_id === clubId)
     if (!s) throw new Error('Session not found')
     s.status = 'completed'
     const court = db.courts.find((c) => c.id === s.court_id)
