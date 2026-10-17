@@ -2,7 +2,7 @@
 
 ## Product and source of truth
 
-Rally Point Gensan is a phone-first pickleball court rental and membership app for members, staff, and admins. Currency is PHP. Read `docs/ARCHITECTURE-ESSENTIALS.md` for the short implementation map, `docs/PRD.md` for current product scope and open release decisions, and `docs/ARCHITECTURE.md` for data flows. `CODEX.md` and `docs/CODEX-NAVIGATION-GUIDE.md` cover repo navigation and handoff.
+Rally Point is a phone-first pickleball court rental and membership app for members, staff, and club admins across several clubs (Rally Point Gensan is the default), plus a separate platform superadmin. Currency is PHP. Read `docs/ARCHITECTURE-ESSENTIALS.md` for the short implementation map, `docs/PRD.md` for current product scope and open release decisions, and `docs/ARCHITECTURE.md` for data flows. `docs/CODEX.md` and `docs/CODEX-NAVIGATION-GUIDE.md` cover repo navigation and handoff, and `CLAUDE.md` adds Claude Code tool rules and a dated summary of the current state. `docs/README.md` indexes shared documentation and local-only references.
 
 The client Figma UI/UX file and whiteboard are external design sources; they are not checked into this repo. Do not invent decisions from them.
 
@@ -14,8 +14,8 @@ Vite, React, TypeScript, Tailwind v4, React Router `HashRouter`, and Supabase. `
 
 - Keep the mobile shell at approximately 430px, with role-specific bottom navigation. Preserve the desktop sidebar and readable content rail.
 - Use plain English, large legible type, high contrast, familiar status words, and touch targets at least 48px (prefer 52–56px). Players span age groups.
-- Keep member, staff, and admin route boundaries intact. In live mode, rely on trusted `profiles` data and database RLS/grants; client guards alone do not authorize data access.
-- Public signup is member-only. Staff/admin accounts require trusted provisioning. Do not put authorization roles in user-editable signup metadata.
+- Keep member, staff, admin, and superadmin route boundaries intact. In live mode, authority comes from trusted club roles, memberships, platform roles, and database RLS/grants; client guards alone do not authorize data access. The club a request names (the `x-club-id` header) only selects context and never grants access.
+- Public signup is member-only; a join link may name the club. Staff, admin, and platform accounts require trusted provisioning. Do not put authorization roles in user-editable signup metadata.
 - Never put service-role, payment-secret, or database passwords in frontend code or committed files. Use local environment variables and publishable browser keys only.
 - Treat checkout, membership renewal, reminders, QR verification, and public TV data as documented in `docs/PRD.md`; do not present scaffold or simulated flows as production complete.
 - Do not apply migrations or change live data without an explicit task and a verified target. The dated authorization migration says local/staging verification first.

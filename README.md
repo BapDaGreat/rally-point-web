@@ -19,6 +19,8 @@ Vite · React · TypeScript · Tailwind v4 · HashRouter · Supabase (demo fallb
 
 Help/FAQ, Admin inquiry inbox, Staff inquiry updates, migration prerequisites, and verification notes are documented in [Help and Inquiry Workflow](./docs/HELP-AND-INQUIRY-WORKFLOW.md).
 
+For developer guidance, feature documentation, and handoff references, start with the [documentation index](./docs/README.md).
+
 ## Quick start (demo)
 ```bash
 cd Rally-Point-web

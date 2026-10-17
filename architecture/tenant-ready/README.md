@@ -1,6 +1,6 @@
 # Rally Point Club — tenant-ready architecture
 
-Status: proposed target design, not deployed. The six editable frames are on the **Architecture - Tenant-Ready** page of the existing [Figma UI/UX file](https://www.figma.com/design/ZjkjLoqiy7UyV6u3ph5mBt/UI-UX?node-id=640-852&p=f). `index.html` is a local review sheet. Run `node architecture/tenant-ready/generate.mjs` to regenerate it and the six SVG panels.
+Status: proposed target design, not deployed. Update 2026-10-17: most of the later platform phase now exists in code and local tests. That covers several active clubs, request-scoped club context, a platform superadmin on `platform_roles`, club accounts, an audit log, and a commission ledger. A first version of scoped support sessions exists too: one club, a reason, an expiry of up to two hours, read-only, with every open, read and close audited. It is not deployed, and club CRM cases remain future work. The six editable frames are on the **Architecture - Tenant-Ready** page of the existing [Figma UI/UX file](https://www.figma.com/design/ZjkjLoqiy7UyV6u3ph5mBt/UI-UX?node-id=640-852&p=f). `index.html` is a local review sheet. Run `node architecture/tenant-ready/generate.mjs` to regenerate it and the six SVG panels.
 
 ## Decision and phase boundary
 

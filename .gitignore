@@ -16,6 +16,8 @@ coverage
 
 # Local project documentation and planning artifacts
 docs/*
+!docs/README.md
+!docs/CODEX.md
 !docs/HELP-AND-INQUIRY-WORKFLOW.md
 
 # Editor directories and files
@@ -32,3 +34,8 @@ docs/*
 .env.*
 !.env.example
 admin-credentials.local.txt
+
+# Claude Code personal files
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/worktrees/

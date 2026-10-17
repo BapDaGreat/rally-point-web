@@ -1,6 +1,8 @@
 # Codex Guide — Rally Point
 
-Read `AGENTS.md` first. For a fast map use `docs/ARCHITECTURE-ESSENTIALS.md`; for details use `docs/ARCHITECTURE.md`; for product scope use `docs/PRD.md`. The repo ownership and PR diff packet are in `docs/CODEX-NAVIGATION-GUIDE.md`.
+Read [AGENTS.md](../AGENTS.md) first. The [documentation index](README.md) separates shared guides from local-only reference material. For a fast map use `docs/ARCHITECTURE-ESSENTIALS.md`; for details use `docs/ARCHITECTURE.md`; for product scope use `docs/PRD.md`. The repo ownership and PR diff packet are in `docs/CODEX-NAVIGATION-GUIDE.md`.
+
+Run commands from the repository root. Code paths and backticked file paths in this guide are relative to that root, not to `docs/`.
 
 ## Start locally
 
