@@ -1,4 +1,5 @@
-// Fresh logical backup of staging before the club platform release.
+// Fresh logical backup of staging before a release (see `releases` in club-platform-staging.mjs).
+// Usage: node scripts/run-staging-backup-capture.mjs --release <id> --verify-local|--capture
 // Read-only on staging: SELECTs inside read-only transactions, and supabase db dump.
 // It never restores, migrates, deploys or prints rows. One-shot: a used folder is never reused.
 import assert from 'node:assert/strict'
@@ -7,13 +8,14 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 import { evaluateChecks } from './club-platform-checks.mjs'
-import { activitySql, childEnv, dockerExe, expectedStagingVersions, fingerprintMarker, identitySql, parseJsonOutput,
+import { activitySql, childEnv, dockerExe, fingerprintMarker, identitySql, parseJsonOutput, parseReleaseArgs,
   project, readOnlyJson, readPassword, root, runChild, sequenceSql, sha, snapshotNames, stagingPsql, stagingTarget,
   supabaseCli } from './club-platform-staging.mjs'
 
-const directory = join(root, 'docs/release-private/staging-backup-20261017-r1')
-const verificationFiles = ['schema_fingerprint.sql', 'tenant_grant_snapshot.sql', 'backup_content_inventory.sql',
-  'restore_catalog_snapshot.sql', 'club_platform_preflight.sql', 'staging_privacy_readonly_preflight.sql',
+let release = null
+let directory = null
+const verificationFiles = () => ['schema_fingerprint.sql', 'tenant_grant_snapshot.sql', 'backup_content_inventory.sql',
+  'restore_catalog_snapshot.sql', release.stateCheck.file, 'staging_privacy_readonly_preflight.sql',
   'backup_application_acls.sql']
 const verification = name => readFileSync(join(root, 'supabase/verification', name), 'utf8').replace(/^﻿/, '')
 const snapshotSql = () => ({
@@ -22,7 +24,8 @@ const snapshotSql = () => ({
   inventory: verification('backup_content_inventory.sql'),
   catalog: verification('restore_catalog_snapshot.sql'),
   sequences: sequenceSql,
-  preflight: verification('club_platform_preflight.sql'),
+  // The release's state check: what staging must look like before the release.
+  preflight: verification(release.stateCheck.file),
   privacy: verification('staging_privacy_readonly_preflight.sql'),
 })
 const dumpJobs = [['roles.sql', ['--role-only']], ['schema.sql', []], ['data.sql', ['--data-only', '--use-copy']],
@@ -83,36 +86,37 @@ function dump(name, flags) {
 }
 
 async function main() {
-  assert.ok(process.argv.length === 3 && ['--verify-local', '--capture'].includes(process.argv[2]),
-    'Use --verify-local or --capture')
+  const { release: chosen, mode } = parseReleaseArgs(process.argv.slice(2), ['--verify-local', '--capture'])
+  release = chosen
+  directory = join(root, release.dirs.capture)
   const target = stagingTarget()
   assert.ok(existsSync(dockerExe), 'Pinned Docker Desktop client not found')
   const version = runChild(supabaseCli, ['--version'])
   assert.equal(version.status, 0, 'Pinned Supabase CLI not runnable')
   assert.equal(version.stdout.trim(), '2.110.0', 'Unexpected Supabase CLI version')
-  for (const name of verificationFiles) verification(name)
+  for (const name of verificationFiles()) verification(name)
   assert.ok(!existsSync(directory), 'This capture folder was already used; captures are one-shot')
-  if (process.argv[2] === '--verify-local') {
-    console.log(JSON.stringify({ result: 'LOCAL_READY_CAPTURE_PENDING', project, pooler: target.host,
-      expectedVersions: expectedStagingVersions.length, stagingContacted: false }))
+  if (mode === '--verify-local') {
+    console.log(JSON.stringify({ result: 'LOCAL_READY_CAPTURE_PENDING', release: release.id, project, pooler: target.host,
+      expectedVersions: release.baseVersions.length, stagingContacted: false }))
     return
   }
 
   password = readPassword()
   mkdirSync(directory, { recursive: true })
   started = true
-  save('ATTEMPT.json', { kind: 'staging-logical-backup-capture', project, pooler: target.host, startedAt,
+  save('ATTEMPT.json', { kind: 'staging-logical-backup-capture', release: release.id, project, pooler: target.host, startedAt,
     captureScriptSha256: sha(readFileSync(fileURLToPath(import.meta.url))), cliVersion: '2.110.0', stagingWrites: false })
 
   const [identity] = query(target, 'identity', identitySql)
   assert.equal(identity.database, 'postgres', 'Unexpected staging database')
   assert.equal(identity.version, '17.6', 'Unexpected staging PostgreSQL version')
-  assert.deepEqual(identity.versions, [...expectedStagingVersions], 'Staging migration history changed: STOP')
+  assert.deepEqual(identity.versions, [...release.baseVersions], 'Staging migration history changed: STOP')
   save('target.json', { project, pooler: target.host, database: identity.database, serverVersion: identity.version,
     versions: identity.versions, observedAt: new Date().toISOString() })
 
   const before = snapshot(target, 'before')
-  evaluateChecks(before.preflight, 'preflight')
+  evaluateChecks(before.preflight, release.stateCheck.kind)
   assert.ok(before.privacy.length === 16 && before.privacy.every(row => Number(row.issue_count) === 0),
     'Staging data integrity preflight failed: STOP')
   for (const table of ['buckets', 'objects']) {
@@ -159,11 +163,12 @@ async function main() {
   const finalActivity = activity(target, 'final')
   assert.ok(isDeepStrictEqual(finalActivity.writes, baseline.writes), 'Final staging write counters changed: STOP')
 
-  for (const name of verificationFiles) copyFileSync(join(root, 'supabase/verification', name), join(directory, name))
+  for (const name of verificationFiles()) copyFileSync(join(root, 'supabase/verification', name), join(directory, name))
   const endedAt = new Date().toISOString()
   const files = readdirSync(directory).filter(name => !name.endsWith('.private.txt') && name !== 'ATTEMPT.json').sort()
     .map(file => ({ file, bytes: readFileSync(join(directory, file)).length, sha256: sha(readFileSync(join(directory, file))) }))
-  save('capture_manifest.json', { result: 'CAPTURE_PASS_RESTORE_PENDING', project, startedAt, endedAt,
+  save('capture_manifest.json', { result: 'CAPTURE_PASS_RESTORE_PENDING', release: release.id, stateCheck: release.stateCheck,
+    project, startedAt, endedAt,
     serverVersion: identity.version, cliVersion: '2.110.0', files, publicFingerprint: fingerprintMarker(before.fingerprint),
     tables: before.inventory.length, versions: identity.versions, activeClientsObserved: 0, writeCounterChanges: 0,
     storageObjects: 0, captureScriptSha256: sha(readFileSync(fileURLToPath(import.meta.url))),

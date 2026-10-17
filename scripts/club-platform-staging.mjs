@@ -1,5 +1,5 @@
-// Shared, guarded plumbing for the club platform staging run: the staging
-// target, the owner's password file, psql through the local Supabase
+// Shared, guarded plumbing for staging releases: the release definitions, the
+// staging target, the owner's password file, psql through the local Supabase
 // container, read-only JSON queries, and the backup and approval checks.
 // The password is passed only to child processes as an environment variable;
 // it is never written, logged, or included in errors.
@@ -28,6 +28,119 @@ export const approvedManifestSha256 = '70a9287ddc74937e12fa83e99d856e0be6595070a
 export const expectedStagingVersions = Object.freeze(['001', '002', '003', '004', '20260803125450',
   '20260805094557', '20260921090000', '20260921110828', '20260922011918', '20260922163027',
   '20260922163830', '20260922164128', '20260923053440', '20260925174111'])
+
+// Releases the capture, restore and apply scripts can run, each with its own
+// one-shot evidence folders. The club platform release (applied 2026-10-17)
+// is complete; it ran the versions of those scripts in commit b79f264.
+
+// Applied 2026-10-17 and kept for the record. Its manifest pins files that later
+// releases changed and staging has moved past its baseline, so its gates now refuse it.
+export const advisorFixesRelease = Object.freeze({
+  id: 'advisor-fixes-20261017',
+  title: 'Supabase advisor fixes',
+  baseVersions: Object.freeze([...expectedStagingVersions, '20260921111105', '20260927105500', '20260928170000',
+    '20261017090000', '20261017090100', '20261017090200', '20261017090300'].sort()),
+  migrations: Object.freeze(['20261017160000_supabase_advisor_fixes.sql']),
+  // The SQL that runs and the code that runs it. Approval pins all of these bytes.
+  files: Object.freeze(['supabase/migrations/20261017160000_supabase_advisor_fixes.sql',
+    'supabase/verification/supabase_advisor_postflight.sql', 'supabase/verification/club_platform_postflight.sql',
+    'supabase/verification/two_club_isolation.sql', 'supabase/verification/schema_fingerprint.sql',
+    'supabase/verification/backup_content_inventory.sql', 'supabase/verification/reservation_write_pause_readonly.sql',
+    'supabase/verification/staging_privacy_readonly_preflight.sql', 'scripts/run-staging-release-apply.mjs',
+    'scripts/club-platform-staging.mjs', 'scripts/club-platform-checks.mjs', 'scripts/restore-catalog-checks.mjs',
+    'scripts/restore-data-checks.mjs']),
+  stateCheck: Object.freeze({ file: 'club_platform_postflight.sql', kind: 'postflight' }),
+  postChecks: Object.freeze([
+    Object.freeze({ file: 'supabase_advisor_postflight.sql', kind: 'advisor', ignore: Object.freeze([]) }),
+    // The club postflight insists on exactly 21 migrations; this release adds the 22nd.
+    Object.freeze({ file: 'club_platform_postflight.sql', kind: 'postflight', ignore: Object.freeze(['ledger_has_every_migration']) }),
+  ]),
+  isolation: Object.freeze({ file: 'two_club_isolation.sql', plan: 55 }),
+  dirs: Object.freeze({
+    capture: 'docs/release-private/staging-backup-20261017-r2',
+    restore: 'docs/release-private/staging-backup-restore-20261017-r2',
+    dryRun: 'docs/release-private/advisor-fixes-staging-dryrun-20261017-r1',
+    apply: 'docs/release-private/advisor-fixes-staging-apply-20261017-r1',
+  }),
+  databases: Object.freeze({ restore: 'rally_staging_backup_20261017_r2_restore', dryRun: 'rally_staging_backup_20261017_r2_dryrun' }),
+})
+
+export const advisorFollowupRelease = Object.freeze({
+  id: 'advisor-followup-20261017',
+  title: 'Supabase advisor follow-up',
+  baseVersions: Object.freeze([...advisorFixesRelease.baseVersions, '20261017160000']),
+  migrations: Object.freeze(['20261017170000_supabase_advisor_followup.sql']),
+  // The SQL that runs and the code that runs it. Approval pins all of these bytes.
+  files: Object.freeze(['supabase/migrations/20261017170000_supabase_advisor_followup.sql',
+    'supabase/verification/supabase_advisor_followup_postflight.sql', 'supabase/verification/supabase_advisor_postflight.sql',
+    'supabase/verification/club_platform_postflight.sql', 'supabase/verification/two_club_isolation.sql',
+    'supabase/verification/schema_fingerprint.sql', 'supabase/verification/backup_content_inventory.sql',
+    'supabase/verification/reservation_write_pause_readonly.sql', 'supabase/verification/staging_privacy_readonly_preflight.sql',
+    'scripts/run-staging-release-apply.mjs', 'scripts/club-platform-staging.mjs', 'scripts/club-platform-checks.mjs',
+    'scripts/restore-catalog-checks.mjs', 'scripts/restore-data-checks.mjs']),
+  stateCheck: Object.freeze({ file: 'supabase_advisor_postflight.sql', kind: 'advisor' }),
+  postChecks: Object.freeze([
+    Object.freeze({ file: 'supabase_advisor_followup_postflight.sql', kind: 'advisorFollowup', ignore: Object.freeze([]) }),
+    // Written for 22 migrations with the schedule board still a definer view; this release changes both.
+    Object.freeze({ file: 'supabase_advisor_postflight.sql', kind: 'advisor',
+      ignore: Object.freeze(['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']) }),
+    Object.freeze({ file: 'club_platform_postflight.sql', kind: 'postflight', ignore: Object.freeze(['ledger_has_every_migration']) }),
+  ]),
+  isolation: Object.freeze({ file: 'two_club_isolation.sql', plan: 55 }),
+  dirs: Object.freeze({
+    capture: 'docs/release-private/staging-backup-20261017-r3',
+    restore: 'docs/release-private/staging-backup-restore-20261017-r3',
+    // r1 stopped: hosted staging lets service_role read the views; the migration now keeps that.
+    dryRun: 'docs/release-private/advisor-followup-staging-dryrun-20261017-r2',
+    apply: 'docs/release-private/advisor-followup-staging-apply-20261017-r1',
+  }),
+  databases: Object.freeze({ restore: 'rally_staging_backup_20261017_r3_restore', dryRun: 'rally_staging_backup_20261017_r3_dryrun2' }),
+})
+export const releases = Object.freeze({ [advisorFixesRelease.id]: advisorFixesRelease,
+  [advisorFollowupRelease.id]: advisorFollowupRelease })
+
+export function getRelease(id) {
+  assert.ok(Object.hasOwn(releases, id ?? ''), `Unknown release: ${id}. Known: ${Object.keys(releases).join(', ')}`)
+  return releases[id]
+}
+
+/** Every release script takes exactly: --release <id> <mode>. */
+export function parseReleaseArgs(argv, modes) {
+  assert.ok(argv.length === 3 && argv[0] === '--release' && modes.includes(argv[2]),
+    `Use --release <id> with one of ${modes.join(', ')}`)
+  return { release: getRelease(argv[1]), mode: argv[2] }
+}
+
+// Check files every release uses, besides its own state, post and isolation checks.
+export const releaseCheckFiles = Object.freeze(['schema_fingerprint.sql', 'backup_content_inventory.sql',
+  'reservation_write_pause_readonly.sql', 'staging_privacy_readonly_preflight.sql'])
+
+/**
+ * The reviewed bytes of a release: its definition and every listed file with its
+ * SHA-256. Owner approval (staging-release-approvals.mjs) pins the returned sha256.
+ * Callers use the returned contents, never a second read, so what was hashed is what runs.
+ */
+export function releaseManifest(release, baseDir = root) {
+  const migrationVersions = release.migrations.map(name => {
+    const match = /^(\d{14})_[a-z0-9_]+\.sql$/.exec(name)
+    assert.ok(match, `Unexpected migration name: ${name}`)
+    return match[1]
+  })
+  assert.ok(migrationVersions.every(version => version > release.baseVersions.at(-1)), 'A release migration predates the staging baseline')
+  assert.deepEqual([...release.baseVersions], [...new Set(release.baseVersions)].sort(), 'Base versions must be sorted and unique')
+  const checks = [...releaseCheckFiles, release.stateCheck.file, ...release.postChecks.map(check => check.file), release.isolation.file]
+  const needed = [...release.migrations.map(name => `supabase/migrations/${name}`), ...checks.map(name => `supabase/verification/${name}`)]
+  for (const path of needed) assert.ok(release.files.includes(path), `Release file not listed: ${path}`)
+  assert.equal(new Set(release.files.map(path => path.split('/').at(-1))).size, release.files.length, 'Release file names must be unique')
+
+  const contents = new Map(release.files.map(path => [path, readFileSync(join(baseDir, path))]))
+  const isolation = contents.get(`supabase/verification/${release.isolation.file}`).toString('utf8')
+  assert.ok(isolation.includes(`select extensions.plan(${release.isolation.plan});`), 'Isolation test plan changed; review required')
+  assert.ok(/\nrollback;\s*$/.test(isolation), 'Isolation test must end with rollback')
+  const manifest = { kind: 'staging-release-manifest-v1', definition: release,
+    files: [...contents].map(([path, bytes]) => ({ path, sha256: sha(bytes) })) }
+  return { manifest, sha256: sha(Buffer.from(JSON.stringify(manifest))), contents }
+}
 
 export const captureFiles = Object.freeze(['roles.sql', 'schema.sql', 'data.sql', 'managed_schema.sql',
   'managed_data.sql', 'history_schema.sql', 'history_data.sql', 'managed_before_app.sql',
@@ -187,11 +300,11 @@ export function fingerprintMarker(rows) {
 }
 
 /** Checks a capture manifest; never reads or returns captured row values. */
-export function validateCaptureManifest(manifest) {
+export function validateCaptureManifest(manifest, versions = expectedStagingVersions) {
   assert.ok(manifest && typeof manifest === 'object', 'Missing capture manifest')
   assert.equal(manifest.result, 'CAPTURE_PASS_RESTORE_PENDING', 'Capture is not complete')
   assert.equal(manifest.project, project, 'Wrong capture project')
-  assert.deepEqual(manifest.versions, [...expectedStagingVersions], 'Capture migration history differs from the staging baseline')
+  assert.deepEqual(manifest.versions, [...versions], 'Capture migration history differs from the staging baseline')
   assert.match(String(manifest.publicFingerprint), /^[a-f0-9]{32}$/, 'Capture fingerprint missing')
   assert.equal(manifest.storageObjects, 0, 'Storage objects need a separate backup')
   assert.equal(manifest.activeClientsObserved, 0, 'An active client was observed during capture')
@@ -212,8 +325,8 @@ export function validateCaptureManifest(manifest) {
   return { files: names.size, tables: manifest.tables, versions: manifest.versions.length }
 }
 
-export function verifyCaptureFiles(manifest, readBytes) {
-  validateCaptureManifest(manifest)
+export function verifyCaptureFiles(manifest, readBytes, versions = expectedStagingVersions) {
+  validateCaptureManifest(manifest, versions)
   for (const entry of manifest.files) {
     const bytes = readBytes(entry.file)
     assert.ok(Buffer.isBuffer(bytes) && bytes.length === entry.bytes && sha(bytes) === entry.sha256,
@@ -236,12 +349,12 @@ export function restoreTransactionSql(read, dataFiles, catalogObjects) {
 }
 
 /** Loads and fully verifies a capture folder: hashes, unchanged snapshots and table coverage. */
-export function loadCapture(directory) {
+export function loadCapture(directory, versions = expectedStagingVersions) {
   const read = name => readFileSync(join(directory, name), 'utf8').replace(/^﻿/, '')
   const json = name => JSON.parse(read(name))
   const manifestBytes = readFileSync(join(directory, 'capture_manifest.json'))
   const manifest = JSON.parse(manifestBytes.toString('utf8'))
-  verifyCaptureFiles(manifest, name => readFileSync(join(directory, name)))
+  verifyCaptureFiles(manifest, name => readFileSync(join(directory, name)), versions)
   for (const name of snapshotNames) {
     assert.ok(isDeepStrictEqual(json(`before_${name}.json`), json(`after_${name}.json`)), `Staging changed during capture: ${name}`)
   }
@@ -283,16 +396,18 @@ export function localRows(database, sql, role = 'supabase_admin') {
  * The apply gate: the package must be the approved one, and the backup must be
  * a fresh capture of exactly the state staging is in now, restored and verified.
  */
-export function verifyApplyGate({ manifestSha256, capture, captureManifestSha256, restore, dryRun, liveMarker, liveVersions, now = Date.now(), maxAgeHours = 12 }) {
-  assert.equal(manifestSha256, approvedManifestSha256, 'This is not the approved release package')
-  validateCaptureManifest(capture)
+export function verifyApplyGate({ manifestSha256, capture, captureManifestSha256, restore, dryRun, liveMarker, liveVersions,
+  now = Date.now(), maxAgeHours = 12, expectedVersions = expectedStagingVersions, approvedSha = approvedManifestSha256 }) {
+  assert.match(String(approvedSha), /^[a-f0-9]{64}$/, 'This release has not been approved by the owner')
+  assert.equal(manifestSha256, approvedSha, 'This is not the approved release package')
+  validateCaptureManifest(capture, expectedVersions)
   assert.ok(now - Date.parse(capture.endedAt) <= maxAgeHours * 3600 * 1000, `The verified backup is older than ${maxAgeHours} hours`)
   assert.equal(restore?.result, 'PASS', 'The backup has not been restored and verified')
   assert.equal(restore.captureManifestSha256, captureManifestSha256, 'The verified restore is for a different capture')
   assert.equal(dryRun?.result, 'PASS', 'The dry run on the restored copy has not passed')
   assert.equal(dryRun.captureManifestSha256, captureManifestSha256, 'The dry run used a different capture')
-  assert.equal(dryRun.manifestSha256, approvedManifestSha256, 'The dry run used a different package')
-  assert.deepEqual(liveVersions, [...expectedStagingVersions], 'Staging migration history changed since the capture')
+  assert.equal(dryRun.manifestSha256, approvedSha, 'The dry run used a different package')
+  assert.deepEqual(liveVersions, [...expectedVersions], 'Staging migration history changed since the capture')
   assert.equal(liveMarker, capture.publicFingerprint, 'Staging schema changed since the capture')
   return { captureAgeMinutes: Math.round((now - Date.parse(capture.endedAt)) / 60000) }
 }

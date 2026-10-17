@@ -50,6 +50,18 @@ export const postflightChecks = Object.freeze([
   'support_inquiries_present', 'default_club_active', 'platform_superadmins', 'club_count',
 ])
 
+export const advisorChecks = Object.freeze([
+  'ledger_has_advisor_fix', 'foreign_keys_indexed', 'btree_gist_outside_public', 'policies_read_caller_once',
+  'venues_single_select_policy', 'row_security_tables_have_policies', 'only_schedule_board_is_definer_view',
+  'view_functions_signed_in_only', 'reservation_writes_still_paused', 'platform_tables_closed',
+])
+
+export const advisorFollowupChecks = Object.freeze([
+  'ledger_has_followup', 'foreign_keys_indexed_in_order', 'no_definer_views', 'schedule_board_reads_board_function',
+  'schedule_board_open_to_boards', 'board_schema_holds_only_the_schedule', 'view_readers_can_run_view_functions',
+  'private_schema_closed_to_anon', 'reservation_writes_still_paused', 'platform_tables_closed',
+])
+
 export const isolationCheckCount = 55
 
 const same = (actual, expected, message) => assert.ok(isDeepStrictEqual(actual, expected), message)
@@ -70,23 +82,28 @@ export function verifySuiteInventory(names) {
 }
 
 /**
- * Checks preflight or postflight rows: the names must match exactly and every
- * required row must pass. Information rows are returned, never judged.
+ * Checks preflight, postflight or advisor rows: the names must match exactly and
+ * every required row must pass, except names listed in `ignore` (a later release
+ * that legitimately changes them). Information rows are returned, never judged.
  */
-export function evaluateChecks(rows, kind) {
-  const expected = kind === 'preflight' ? preflightChecks : kind === 'postflight' ? postflightChecks : null
+export function evaluateChecks(rows, kind, { ignore = [] } = {}) {
+  const kinds = { preflight: preflightChecks, postflight: postflightChecks, advisor: advisorChecks,
+    advisorFollowup: advisorFollowupChecks }
+  const expected = Object.hasOwn(kinds, kind) ? kinds[kind] : null
   assert.ok(expected, 'Unknown check kind')
+  assert.ok(ignore.every(name => expected.includes(name)), `${kind}: unknown check in ignore list`)
   assert.ok(Array.isArray(rows), `${kind}: rows missing`)
   same(rows.map(row => row.check_name), [...expected], `${kind}: check list changed; review required`)
   for (const row of rows) {
     assert.equal(typeof row.required, 'boolean', `${kind}: ${row.check_name} has no required flag`)
     assert.equal(typeof row.ok, 'boolean', `${kind}: ${row.check_name} has no result`)
   }
-  const failed = rows.filter(row => row.required && !row.ok).map(row => row.check_name)
+  const failed = rows.filter(row => row.required && !row.ok && !ignore.includes(row.check_name)).map(row => row.check_name)
   assert.deepEqual(failed, [], `${kind} failed: ${failed.join(', ')}`)
   return {
     kind,
-    passed: rows.filter(row => row.required).length,
+    passed: rows.filter(row => row.required && !ignore.includes(row.check_name)).length,
+    ignored: [...ignore],
     information: Object.fromEntries(rows.filter(row => !row.required)
       .map(row => [row.check_name, { ok: row.ok, detail: row.detail }])),
   }

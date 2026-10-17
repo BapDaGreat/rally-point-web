@@ -1,0 +1,10 @@
+// Owner approvals for staging releases: release id -> the manifest SHA-256 the
+// owner approved (run-staging-release-apply.mjs --verify-local prints it).
+// null means not approved. This is the only release input the manifest does not
+// pin, so it holds nothing but these values.
+export const releaseApprovals = Object.freeze({
+  // Owner, 2026-10-17, after the dry run passed: "Approve and apply". Applied the same day.
+  'advisor-fixes-20261017': '323fad33293298bc12f7cd2bf2300502a17e13b3d981f965dc5c17a3574cb5d9',
+  // Owner, 2026-10-17, after the second dry run passed: "Approve and apply".
+  'advisor-followup-20261017': '611863752244ae494e21bf3fad63a97eee3d2b7cdc24fcd847436bb99f645ee0',
+})

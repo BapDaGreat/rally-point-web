@@ -1,17 +1,17 @@
-// Restores the fresh staging capture into one new local database and proves it
-// matches. Never contacts staging. One-shot: no retry, no reuse, no cleanup.
+// Restores a release's fresh staging capture into one new local database and proves
+// it matches. Never contacts staging. One-shot: no retry, no reuse, no cleanup.
+// Usage: node scripts/run-staging-backup-restore-verify.mjs --release <id> --verify-local|--execute-local
 import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 import { compareCatalog } from './restore-catalog-checks.mjs'
-import { keyedDifferences, loadCapture, localImage, localPsql, localRows, project, restoreCaptureInto, root,
-  sequenceSql, sha, snapshotKeys } from './club-platform-staging.mjs'
+import { keyedDifferences, loadCapture, localImage, localPsql, localRows, parseReleaseArgs, project, restoreCaptureInto,
+  root, sequenceSql, sha, snapshotKeys } from './club-platform-staging.mjs'
 
-const captureDirectory = join(root, 'docs/release-private/staging-backup-20261017-r1')
-const directory = join(root, 'docs/release-private/staging-backup-restore-20261017-r1')
-const scratch = 'rally_staging_backup_20261017_restore'
+let directory = null
+let scratch = null
 const phases = []
 const startedAt = new Date().toISOString()
 let started = false
@@ -32,11 +32,14 @@ function compare(name, expected, actual, key) {
 }
 
 async function main() {
-  assert.ok(process.argv.length === 3 && ['--verify-local', '--execute-local'].includes(process.argv[2]),
-    'Use --verify-local or --execute-local')
-  const capture = loadCapture(captureDirectory)
-  if (process.argv[2] === '--verify-local') {
-    console.log(JSON.stringify({ result: 'LOCAL_READY_RESTORE_PENDING', captureManifestSha256: capture.manifestSha256,
+  const { release, mode } = parseReleaseArgs(process.argv.slice(2), ['--verify-local', '--execute-local'])
+  directory = join(root, release.dirs.restore)
+  scratch = release.databases.restore
+  const capture = loadCapture(join(root, release.dirs.capture), release.baseVersions)
+  assert.equal(capture.manifest.release, release.id, 'The capture was made for a different release')
+  assert.ok(isDeepStrictEqual(capture.manifest.stateCheck, { ...release.stateCheck }), 'The capture used a different state check')
+  if (mode === '--verify-local') {
+    console.log(JSON.stringify({ result: 'LOCAL_READY_RESTORE_PENDING', release: release.id, captureManifestSha256: capture.manifestSha256,
       files: capture.manifest.files.length, tables: capture.inventory.length, dataFiles: capture.dataFiles,
       databaseConnected: false, stagingContacted: false }))
     return
@@ -44,7 +47,7 @@ async function main() {
   assert.ok(!existsSync(directory), 'This restore folder was already used; restores are one-shot')
   mkdirSync(directory, { recursive: true })
   started = true
-  save('ATTEMPT.json', { kind: 'disposable-local-restore', database: scratch, captureManifestSha256: capture.manifestSha256,
+  save('ATTEMPT.json', { kind: 'disposable-local-restore', release: release.id, database: scratch, captureManifestSha256: capture.manifestSha256,
     restoreScriptSha256: sha(readFileSync(fileURLToPath(import.meta.url))), startedAt, stagingContacted: false })
 
   restoreCaptureInto(capture, scratch)
@@ -63,7 +66,7 @@ async function main() {
   record({ phase: 'effective_grants_history', versions: capture.manifest.versions.length, differences: 0 })
   compare('sequences', capture.json('before_sequences.json'), localRows(scratch, sequenceSql), snapshotKeys.sequences)
   compare('integrity_preflight', capture.json('before_privacy.json'), localRows(scratch, sql('staging_privacy_readonly_preflight.sql')), snapshotKeys.privacy)
-  compare('club_preflight', capture.json('before_preflight.json'), localRows(scratch, sql('club_platform_preflight.sql')), snapshotKeys.preflight)
+  compare('state_check', capture.json('before_preflight.json'), localRows(scratch, sql(release.stateCheck.file)), snapshotKeys.preflight)
 
   const roles = localPsql(scratch, `BEGIN;\n${sql('roles.sql')}\nROLLBACK;`, { role: 'supabase_admin', allowed: [scratch] })
   assert.equal(roles.status, 0, 'The captured role script does not run')
@@ -81,7 +84,7 @@ async function main() {
   record({ phase: 'signup', role: 'member', clubMemberships: 1, staffRoles: 0, transaction: 'rolled back' })
   compare('post_probe_contents', capture.inventory, localRows(scratch, sql('backup_content_inventory.sql')), snapshotKeys.inventory)
 
-  save('result.json', { result: 'PASS', project, database: scratch, startedAt, endedAt: new Date().toISOString(),
+  save('result.json', { result: 'PASS', release: release.id, project, database: scratch, startedAt, endedAt: new Date().toISOString(),
     captureManifestSha256: capture.manifestSha256, restoreScriptSha256: sha(readFileSync(fileURLToPath(import.meta.url))),
     image: localImage, phases, stagingContacted: false, stagingChanged: false,
     limitations: ['Logical database recovery only; hosted Auth, API and Storage services are not exercised.',

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 const load = () => import('../scripts/club-platform-staging.mjs')
@@ -28,6 +28,30 @@ async function goodCapture() {
   return { result: 'CAPTURE_PASS_RESTORE_PENDING', project: 'iclrvvsiwypxlwrwgqia', versions: [...expectedStagingVersions],
     publicFingerprint: 'b'.repeat(32), storageObjects: 0, activeClientsObserved: 0, writeCounterChanges: 0,
     stagingWritesAuthorized: false, startedAt: '2026-10-17T10:00:00Z', endedAt: '2026-10-17T10:05:00Z', tables: 54, files }
+}
+
+// A small release on disk: one migration, its checks and the four shared check files.
+function releaseFixture() {
+  const dir = tempDir()
+  const files: Record<string, string> = {
+    'supabase/migrations/20261101000000_example.sql': 'create index if not exists example_idx on public.example (id);\n',
+    'supabase/verification/state.sql': 'select 1 as check_name;\n',
+    'supabase/verification/post.sql': 'select 2 as check_name;\n',
+    'supabase/verification/isolation.sql': 'begin;\nselect extensions.plan(3);\nrollback;\n',
+    'supabase/verification/schema_fingerprint.sql': 'select 1;\n',
+    'supabase/verification/backup_content_inventory.sql': 'select 1;\n',
+    'supabase/verification/reservation_write_pause_readonly.sql': 'select 1;\n',
+    'supabase/verification/staging_privacy_readonly_preflight.sql': 'select 1;\n',
+  }
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true })
+    writeFileSync(join(dir, path), text)
+  }
+  const release = { id: 'example', baseVersions: ['001', '20261017160000'], migrations: ['20261101000000_example.sql'],
+    files: Object.keys(files), stateCheck: { file: 'state.sql', kind: 'postflight' },
+    postChecks: [{ file: 'post.sql', kind: 'advisor', ignore: [] as string[] }], isolation: { file: 'isolation.sql', plan: 3 },
+    dirs: {}, databases: {} }
+  return { dir, release }
 }
 
 describe('staging target and secrets', () => {
@@ -140,5 +164,96 @@ describe('backup and approval gates', () => {
     expect(() => verifyApplyGate({ ...good, dryRun: { ...good.dryRun, manifestSha256: 'f'.repeat(64) } })).toThrow('different package')
     expect(() => verifyApplyGate({ ...good, liveMarker: '0'.repeat(32) })).toThrow('Staging schema changed')
     expect(() => verifyApplyGate({ ...good, liveVersions: [...expectedStagingVersions, '20260921111105'] })).toThrow('history changed')
+  })
+
+  it('opens a release gate only with an owner approval and that release\'s staging baseline', async () => {
+    const { advisorFixesRelease, validateCaptureManifest, verifyApplyGate } = await load()
+    const capture = { ...(await goodCapture()), versions: [...advisorFixesRelease.baseVersions] }
+    expect(() => validateCaptureManifest(capture)).toThrow('migration history')
+    expect(validateCaptureManifest(capture, advisorFixesRelease.baseVersions).versions).toBe(21)
+    const manifestSha256 = '1'.repeat(64)
+    const captureManifestSha256 = 'c'.repeat(64)
+    const gate = { manifestSha256, capture, captureManifestSha256, restore: { result: 'PASS', captureManifestSha256 },
+      dryRun: { result: 'PASS', captureManifestSha256, manifestSha256 }, liveMarker: capture.publicFingerprint,
+      liveVersions: [...advisorFixesRelease.baseVersions], expectedVersions: advisorFixesRelease.baseVersions,
+      now: Date.parse('2026-10-17T11:05:00Z') }
+    expect(() => verifyApplyGate({ ...gate, approvedSha: null })).toThrow('not been approved')
+    expect(() => verifyApplyGate(gate)).toThrow('not the approved release package')
+    expect(verifyApplyGate({ ...gate, approvedSha: manifestSha256 })).toEqual({ captureAgeMinutes: 60 })
+    expect(() => verifyApplyGate({ ...gate, approvedSha: manifestSha256,
+      liveVersions: [...advisorFixesRelease.baseVersions, '20261017160000'] })).toThrow('history changed')
+  })
+})
+
+describe('staging releases', () => {
+  it('takes exactly --release <id> <mode> and knows only defined releases', async () => {
+    const { advisorFixesRelease, parseReleaseArgs } = await load()
+    const modes = ['--verify-local', '--capture']
+    expect(parseReleaseArgs(['--release', 'advisor-fixes-20261017', '--capture'], modes)).toEqual({ release: advisorFixesRelease, mode: '--capture' })
+    expect(() => parseReleaseArgs(['--capture'], modes)).toThrow('Use --release')
+    expect(() => parseReleaseArgs(['--release', 'advisor-fixes-20261017', '--apply-staging'], modes)).toThrow('Use --release')
+    expect(() => parseReleaseArgs(['--release', 'advisor-fixes-20261017', '--capture', '--force'], modes)).toThrow('Use --release')
+    expect(() => parseReleaseArgs(['--release', 'club-platform-20261017', '--capture'], modes)).toThrow('Unknown release')
+  })
+
+  it('defines the advisor release on the 21-migration staging state, with an approval slot', async () => {
+    const { advisorFixesRelease, releaseManifest, releases } = await load()
+    const { releaseApprovals } = await import('../scripts/staging-release-approvals.mjs')
+    expect(Object.keys(releaseApprovals).sort()).toEqual(Object.keys(releases).sort())
+    expect(advisorFixesRelease.baseVersions).toHaveLength(21)
+    expect(advisorFixesRelease.baseVersions.at(-1)).toBe('20261017090300')
+    expect(advisorFixesRelease.migrations).toEqual(['20261017160000_supabase_advisor_fixes.sql'])
+    expect(advisorFixesRelease.postChecks.flatMap((check: { ignore: string[] }) => check.ignore)).toEqual(['ledger_has_every_migration'])
+    const { manifest, sha256, contents } = releaseManifest(advisorFixesRelease)
+    expect(sha256).toMatch(/^[a-f0-9]{64}$/)
+    expect(manifest.files.map((file: { path: string }) => file.path)).toEqual([...advisorFixesRelease.files])
+    expect(manifest.files.map((file: { path: string }) => file.path)).toContain('scripts/run-staging-release-apply.mjs')
+    expect(contents.get('supabase/migrations/20261017160000_supabase_advisor_fixes.sql')?.toString('utf8'))
+      .toContain('alter extension btree_gist set schema extensions;')
+  })
+
+  it('builds the follow-up on the 22-migration state and checks it against the earlier checks it changes', async () => {
+    const { advisorFixesRelease, advisorFollowupRelease, releaseManifest } = await load()
+    expect(advisorFollowupRelease.baseVersions).toEqual([...advisorFixesRelease.baseVersions, '20261017160000'])
+    expect(advisorFollowupRelease.migrations).toEqual(['20261017170000_supabase_advisor_followup.sql'])
+    expect(advisorFollowupRelease.stateCheck).toEqual({ file: 'supabase_advisor_postflight.sql', kind: 'advisor' })
+    expect(advisorFollowupRelease.postChecks.map((check: { kind: string, ignore: string[] }) => [check.kind, [...check.ignore]])).toEqual([
+      ['advisorFollowup', []],
+      ['advisor', ['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']],
+      ['postflight', ['ledger_has_every_migration']],
+    ])
+    const folders = [...Object.values(advisorFixesRelease.dirs), ...Object.values(advisorFixesRelease.databases)]
+    expect([...Object.values(advisorFollowupRelease.dirs), ...Object.values(advisorFollowupRelease.databases)]
+      .filter(name => folders.includes(name))).toEqual([])
+    const { contents } = releaseManifest(advisorFollowupRelease)
+    expect(contents.get('supabase/migrations/20261017170000_supabase_advisor_followup.sql')?.toString('utf8'))
+      .toContain('create or replace view public.public_schedule with (security_barrier = true, security_invoker = true)')
+  })
+
+  it('hashes the release definition and every file, and returns the bytes it hashed', async () => {
+    const { releaseManifest } = await load()
+    const { dir, release } = releaseFixture()
+    const first = releaseManifest(release, dir)
+    expect(first.manifest.files).toHaveLength(8)
+    expect(first.contents.get('supabase/verification/isolation.sql')?.toString('utf8')).toContain('plan(3)')
+    expect(releaseManifest(release, dir).sha256).toBe(first.sha256)
+    const looserChecks = { ...release, postChecks: [{ file: 'post.sql', kind: 'advisor', ignore: ['foreign_keys_indexed'] }] }
+    expect(releaseManifest(looserChecks, dir).sha256).not.toBe(first.sha256)
+    writeFileSync(join(dir, 'supabase/verification/post.sql'), 'select 3 as check_name;\n')
+    expect(releaseManifest(release, dir).sha256).not.toBe(first.sha256)
+  })
+
+  it('refuses an incomplete or inconsistent release before anything runs', async () => {
+    const { releaseManifest } = await load()
+    const { dir, release } = releaseFixture()
+    expect(() => releaseManifest({ ...release, files: release.files.filter(path => !path.endsWith('/post.sql')) }, dir))
+      .toThrow('Release file not listed: supabase/verification/post.sql')
+    expect(() => releaseManifest({ ...release, migrations: ['20260101000000_old.sql'] }, dir)).toThrow('predates')
+    expect(() => releaseManifest({ ...release, migrations: ['example.sql'] }, dir)).toThrow('Unexpected migration name')
+    expect(() => releaseManifest({ ...release, baseVersions: ['20261017160000', '001'] }, dir)).toThrow('sorted and unique')
+    expect(() => releaseManifest({ ...release, files: [...release.files, 'other/state.sql'] }, dir)).toThrow('names must be unique')
+    expect(() => releaseManifest({ ...release, isolation: { file: 'isolation.sql', plan: 4 } }, dir)).toThrow('plan changed')
+    writeFileSync(join(dir, 'supabase/verification/isolation.sql'), 'begin;\nselect extensions.plan(3);\ncommit;\n')
+    expect(() => releaseManifest(release, dir)).toThrow('must end with rollback')
   })
 })

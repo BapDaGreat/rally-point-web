@@ -19,6 +19,13 @@ vi.mock('node:fs', async importOriginal => {
 const parents: string[] = []
 const loadPackage = () => import('../scripts/club-platform-package.mjs')
 const loadChecks = () => import('../scripts/club-platform-checks.mjs')
+// The package was frozen and applied on 2026-10-17; later migrations and suites
+// belong to later releases, so these tests list only what it reviewed.
+const useReviewedInventory = async () => {
+  const { packageMigrations, sqlSuites, stagingMigrations } = await loadChecks()
+  listing.migrations = [...stagingMigrations, ...packageMigrations]
+  listing.suites = [...sqlSuites]
+}
 const tempParent = () => {
   const parent = mkdtempSync(join(resolve('.'), 'docs/release-private/club-platform-package-test-'))
   parents.push(parent)
@@ -38,6 +45,7 @@ describe.sequential('club platform release package', () => {
   it('freezes staging order, the seven-migration package, all suites and the checks without a database', async () => {
     const { prepareClubPlatformPackage, verifyClubPlatformPackage } = await loadPackage()
     const { packageMigrations, stagingMigrations } = await loadChecks()
+    await useReviewedInventory()
     const directory = join(tempParent(), 'frozen')
     const result = prepareClubPlatformPackage(directory)
     expect(result).toMatchObject({ migrationCount: 21, packageMigrations: 7, sqlSuiteCount: 14, isolationChecks: 55,
@@ -67,12 +75,20 @@ describe.sequential('club platform release package', () => {
 
   it('rejects changed package files and output outside the private folder', async () => {
     const { prepareClubPlatformPackage, verifyClubPlatformPackage } = await loadPackage()
+    await useReviewedInventory()
     expect(() => prepareClubPlatformPackage(resolve('dist/club-platform'))).toThrow(/private/)
     const directory = join(tempParent(), 'frozen')
     prepareClubPlatformPackage(directory)
     writeFileSync(join(directory, 'checks/two_club_isolation.sql'), 'select true;')
     expect(() => verifyClubPlatformPackage(directory)).toThrow(/bytes differ/)
   }, 20000)
+
+  it('refuses the current repository, which has moved past the frozen package', async () => {
+    const { prepareClubPlatformPackage } = await loadPackage()
+    const directory = join(tempParent(), 'current-inventory')
+    expect(() => prepareClubPlatformPackage(directory)).toThrow('Unreviewed or missing migration')
+    expect(existsSync(directory)).toBe(false)
+  })
 
   it('refuses an unreviewed migration before writing anything', async () => {
     const { prepareClubPlatformPackage } = await loadPackage()
@@ -86,6 +102,7 @@ describe.sequential('club platform release package', () => {
   it('refuses a changed SQL suite inventory before writing anything', async () => {
     const { prepareClubPlatformPackage } = await loadPackage()
     const { sqlSuites } = await loadChecks()
+    await useReviewedInventory()
     listing.suites = sqlSuites.filter(name => name !== 'tenant_boundary.test.sql')
     const directory = join(tempParent(), 'rejected-suites')
     expect(() => prepareClubPlatformPackage(directory)).toThrow('SQL suite inventory changed; review required')
@@ -104,6 +121,33 @@ describe('club platform release rules', () => {
     expect(evaluateChecks(informational, 'preflight').information.auth_users_insertable.ok).toBe(false)
     expect(() => evaluateChecks(rows.slice(1), 'preflight')).toThrow('check list changed')
     expect(() => evaluateChecks(rows, 'sideflight')).toThrow('Unknown check kind')
+  })
+
+  it('judges the advisor checks and skips only named checks that a later release changes', async () => {
+    const { advisorChecks, evaluateChecks, postflightChecks } = await loadChecks()
+    const advisor = advisorChecks.map(name => ({ check_name: name, required: true, ok: true, detail: name }))
+    expect(evaluateChecks(advisor, 'advisor')).toEqual({ kind: 'advisor', passed: 10, ignored: [], information: {} })
+    const unindexed = advisor.map(row => row.check_name === 'foreign_keys_indexed' ? { ...row, ok: false } : row)
+    expect(() => evaluateChecks(unindexed, 'advisor')).toThrow('advisor failed: foreign_keys_indexed')
+
+    const post = postflightChecks.map(name => ({ check_name: name, required: !['platform_superadmins', 'club_count'].includes(name), ok: true, detail: name }))
+    const longerLedger = post.map(row => row.check_name === 'ledger_has_every_migration' ? { ...row, ok: false } : row)
+    expect(() => evaluateChecks(longerLedger, 'postflight')).toThrow('postflight failed: ledger_has_every_migration')
+    expect(evaluateChecks(longerLedger, 'postflight', { ignore: ['ledger_has_every_migration'] }))
+      .toMatchObject({ passed: 14, ignored: ['ledger_has_every_migration'] })
+    const alsoBroken = longerLedger.map(row => row.check_name === 'tenant_enforcement_applied' ? { ...row, ok: false } : row)
+    expect(() => evaluateChecks(alsoBroken, 'postflight', { ignore: ['ledger_has_every_migration'] }))
+      .toThrow('postflight failed: tenant_enforcement_applied')
+    expect(() => evaluateChecks(post, 'postflight', { ignore: ['no_such_check'] })).toThrow('unknown check in ignore list')
+  })
+
+  it('judges the follow-up checks and refuses kinds that are not check lists', async () => {
+    const { advisorFollowupChecks, evaluateChecks } = await loadChecks()
+    const rows = advisorFollowupChecks.map(name => ({ check_name: name, required: true, ok: true, detail: name }))
+    expect(evaluateChecks(rows, 'advisorFollowup')).toMatchObject({ kind: 'advisorFollowup', passed: 10 })
+    const openView = rows.map(row => row.check_name === 'no_definer_views' ? { ...row, ok: false } : row)
+    expect(() => evaluateChecks(openView, 'advisorFollowup')).toThrow('advisorFollowup failed: no_definer_views')
+    expect(() => evaluateChecks(rows, 'toString')).toThrow('Unknown check kind')
   })
 
   it('reads pgTAP through psql noise but fails on any failure, skip or gap', async () => {
