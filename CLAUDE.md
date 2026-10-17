@@ -59,7 +59,7 @@ Never edit, move, or regenerate anything under `docs/release-private/`. Those ar
   - **Isolation checked:** two-club isolation passed on staging (55 checks, rolled back) and over the live API.
   - **Clubs:** staging has two active clubs, Rally Point Gensan and the September `tenant-fixture-second-club`. No platform superadmin exists yet.
   - **Still paused:** the reservation-write pause holds. The frozen resume package no longer matches staging, so a resume needs a new package.
-  - **Published site:** the published staging site still runs the earlier build, which keeps working on the Gensan default. This branch's frontend is not published.
+  - **Published site:** since 2026-10-17, https://zylush.github.io/rally-point-web/ runs this branch's frontend: the staging build of `b3b1ca2`, published to `gh-pages` as `e3533ed`. It was smoke-tested locally and live (TV board and sign-in, staging API calls returning 200, no console errors).
   - **Production** is unchanged and stays one club.
   - **Details and evidence:** `docs/TENANT-READY-ROLLOUT.md`; evidence is under `docs/release-private/` (local only).
 - **Local SQL** runs through `npx supabase test db` (515 checks in 16 suites as of 2026-10-17). On the plain chain, `null_role_guards` and `tenant_boundary` fail where they call the nine paused RPCs; this predates the multi-club work. With those RPCs temporarily granted in the local database (as `scripts/run-reservation-resume-gate23-local.mjs` does), every suite passes.
@@ -70,7 +70,10 @@ Never edit, move, or regenerate anything under `docs/release-private/`. Those ar
 - **Supabase MCP.** Documentation search is fine. Anything that reaches a project, including read-only SQL, table listings, logs, and advisors, needs an explicit task and a confirmed project ref (staging is pinned in `vite.config.ts`). Release checks fingerprint the database and look for other connected clients, so even a read can spoil evidence. Never use `apply_migration` on staging or production. Migrations reach them only through reviewed release packages, one named migration at a time, never through a blanket `supabase db push` or `--include-all`.
   - On the owner's machine, a local-scope override (`claude mcp add --scope local`) pins the `supabase` server for this repo to staging in read-only mode.
   - That override lives in `~/.claude.json`, not in the repo, so other machines may still connect with write access. The rules above apply either way.
-- **Publishing.** `npm run deploy` (the legacy script) publishes `dist` to the `gh-pages` branch, which serves https://zylush.github.io/rally-point-web/, the recorded staging site. Never run it, `git push`, or make any third-party change without explicit approval.
+- **Publishing.** The `gh-pages` branch serves https://zylush.github.io/rally-point-web/, the recorded staging site. Never publish, `git push`, or make any third-party change without explicit approval.
+  - Don't use `npm run deploy` (the legacy script). It runs the plain build, which has no Supabase settings, so it would publish the browser demo.
+  - Build with `vite build --mode staging --outDir <folder>.local`, passing `VITE_SUPABASE_ANON_KEY` (the publishable key) in the environment, never in `.env.staging`. Then publish that folder with `npx --no-install gh-pages -d <folder>.local`.
+  - Keep the build out of `staging-artifact.local/`: the r9 tests read the September artifact stored there.
 - **Scripts.** Many `scripts/run-*.mjs` and `supabase/verification/*.mjs` files connect to local or hosted databases, and some write. Read the whole script and confirm its target before running it. `scripts/run-migration.mjs` applies only migration `001`.
 - **Browser checks.** Use the repo-local Playwright CLI (`npx --no-install playwright cli`) against `npm run dev`, and close the session afterwards. Do not use browser MCP tools (Playwright, Chrome DevTools) for this repo.
 - **CodeScene** is wired for Codex only (`.codex/config.toml`). Do not start a CodeScene login.
