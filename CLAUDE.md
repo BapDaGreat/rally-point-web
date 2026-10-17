@@ -66,7 +66,7 @@ Never edit, move, or regenerate anything under `docs/release-private/`. Those ar
 
 ## Hosted systems and connected tools
 
-- **Permission prompts.** `.claude/settings.json` makes Claude ask before Supabase write and SQL tools, any Supabase CLI command, `npm run deploy`, `gh-pages`, `git push`, and the database runner scripts. Approving one prompt is not release approval; the rules below still apply.
+- **Permission prompts.** On the owner's machine, `.claude/settings.json` makes Claude ask before Supabase write and SQL tools, any Supabase CLI command, `npm run deploy`, `gh-pages`, `git push`, and the database runner scripts. Since 2026-10-17, `.claude/` is git-ignored and that file is no longer in the repo, so other machines get these prompts only if they add their own. Approving one prompt is not release approval; the rules below still apply.
 - **Supabase MCP.** Documentation search is fine. Anything that reaches a project, including read-only SQL, table listings, logs, and advisors, needs an explicit task and a confirmed project ref (staging is pinned in `vite.config.ts`). Release checks fingerprint the database and look for other connected clients, so even a read can spoil evidence. Never use `apply_migration` on staging or production. Migrations reach them only through reviewed release packages, one named migration at a time, never through a blanket `supabase db push` or `--include-all`.
   - On the owner's machine, a local-scope override (`claude mcp add --scope local`) pins the `supabase` server for this repo to staging in read-only mode.
   - That override lives in `~/.claude.json`, not in the repo, so other machines may still connect with write access. The rules above apply either way.
