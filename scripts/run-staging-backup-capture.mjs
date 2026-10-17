@@ -1,0 +1,185 @@
+// Fresh logical backup of staging before the club platform release.
+// Read-only on staging: SELECTs inside read-only transactions, and supabase db dump.
+// It never restores, migrates, deploys or prints rows. One-shot: a used folder is never reused.
+import assert from 'node:assert/strict'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { isDeepStrictEqual } from 'node:util'
+import { evaluateChecks } from './club-platform-checks.mjs'
+import { activitySql, childEnv, dockerExe, expectedStagingVersions, fingerprintMarker, identitySql, parseJsonOutput,
+  project, readOnlyJson, readPassword, root, runChild, sequenceSql, sha, snapshotNames, stagingPsql, stagingTarget,
+  supabaseCli } from './club-platform-staging.mjs'
+
+const directory = join(root, 'docs/release-private/staging-backup-20261017-r1')
+const verificationFiles = ['schema_fingerprint.sql', 'tenant_grant_snapshot.sql', 'backup_content_inventory.sql',
+  'restore_catalog_snapshot.sql', 'club_platform_preflight.sql', 'staging_privacy_readonly_preflight.sql',
+  'backup_application_acls.sql']
+const verification = name => readFileSync(join(root, 'supabase/verification', name), 'utf8').replace(/^﻿/, '')
+const snapshotSql = () => ({
+  fingerprint: verification('schema_fingerprint.sql'),
+  grants: verification('tenant_grant_snapshot.sql'),
+  inventory: verification('backup_content_inventory.sql'),
+  catalog: verification('restore_catalog_snapshot.sql'),
+  sequences: sequenceSql,
+  preflight: verification('club_platform_preflight.sql'),
+  privacy: verification('staging_privacy_readonly_preflight.sql'),
+})
+const dumpJobs = [['roles.sql', ['--role-only']], ['schema.sql', []], ['data.sql', ['--data-only', '--use-copy']],
+  ['managed_schema.sql', ['--schema', 'auth,storage']], ['managed_data.sql', ['--schema', 'auth,storage', '--data-only', '--use-copy']],
+  ['history_schema.sql', ['--schema', 'supabase_migrations']],
+  ['history_data.sql', ['--schema', 'supabase_migrations', '--data-only', '--use-copy']]]
+const signupTrigger = /^CREATE OR REPLACE TRIGGER "on_auth_user_created" AFTER INSERT ON "auth"\."users" FOR EACH ROW EXECUTE FUNCTION "public"\."handle_new_user"\(\);$/gm
+
+let password = ''
+let started = false
+const phases = []
+const startedAt = new Date().toISOString()
+function save(name, value) {
+  assert.match(name, /^[a-zA-Z0-9_.-]+$/)
+  writeFileSync(join(directory, name), typeof value === 'string' ? value : JSON.stringify(value, null, 2) + '\n', { flag: 'wx' })
+}
+function record(value) {
+  phases.push({ ...value, at: new Date().toISOString() })
+  console.log(JSON.stringify(value))
+}
+function failed(name, result, message) {
+  save(`failure-${name}.private.txt`, String(result.stderr || result.error || 'No diagnostic').slice(0, 16384))
+  throw new Error(`${message}; diagnostic kept privately`)
+}
+
+function query(target, name, sql) {
+  const result = stagingPsql(target, password, readOnlyJson(sql))
+  if (result.status !== 0) failed(name, result, `Read-only query failed: ${name}`)
+  return parseJsonOutput(result.stdout, name)
+}
+
+function snapshot(target, prefix) {
+  const rows = {}
+  for (const [name, sql] of Object.entries(snapshotSql())) {
+    rows[name] = query(target, `${prefix}_${name}`, sql)
+    save(`${prefix}_${name}.json`, rows[name])
+  }
+  return rows
+}
+
+function activity(target, label) {
+  const [row] = query(target, `activity_${label}`, activitySql)
+  save(`activity_${label}.json`, row)
+  assert.equal(Number(row.other_active_clients), 0, `Another client was active during capture (${label}): STOP`)
+  return row
+}
+
+function dump(name, flags) {
+  const file = join(directory, name)
+  assert.ok(!existsSync(file), `Refusing to overwrite ${name}`)
+  const result = runChild(supabaseCli, ['db', 'dump', '--linked', '--file', file, ...flags],
+    { env: childEnv({ SUPABASE_DB_PASSWORD: password }), secret: password, timeout: 900000 })
+  if (result.status !== 0) failed(`dump-${name}`, result, `supabase db dump failed for ${name}`)
+  const bytes = readFileSync(file)
+  assert.ok(bytes.length > 100, `Empty dump: ${name}`)
+  assert.ok(!bytes.toString('utf8').includes(password), `Password found in ${name}: STOP`)
+  record({ phase: 'dumped', file: name, bytes: bytes.length })
+}
+
+async function main() {
+  assert.ok(process.argv.length === 3 && ['--verify-local', '--capture'].includes(process.argv[2]),
+    'Use --verify-local or --capture')
+  const target = stagingTarget()
+  assert.ok(existsSync(dockerExe), 'Pinned Docker Desktop client not found')
+  const version = runChild(supabaseCli, ['--version'])
+  assert.equal(version.status, 0, 'Pinned Supabase CLI not runnable')
+  assert.equal(version.stdout.trim(), '2.110.0', 'Unexpected Supabase CLI version')
+  for (const name of verificationFiles) verification(name)
+  assert.ok(!existsSync(directory), 'This capture folder was already used; captures are one-shot')
+  if (process.argv[2] === '--verify-local') {
+    console.log(JSON.stringify({ result: 'LOCAL_READY_CAPTURE_PENDING', project, pooler: target.host,
+      expectedVersions: expectedStagingVersions.length, stagingContacted: false }))
+    return
+  }
+
+  password = readPassword()
+  mkdirSync(directory, { recursive: true })
+  started = true
+  save('ATTEMPT.json', { kind: 'staging-logical-backup-capture', project, pooler: target.host, startedAt,
+    captureScriptSha256: sha(readFileSync(fileURLToPath(import.meta.url))), cliVersion: '2.110.0', stagingWrites: false })
+
+  const [identity] = query(target, 'identity', identitySql)
+  assert.equal(identity.database, 'postgres', 'Unexpected staging database')
+  assert.equal(identity.version, '17.6', 'Unexpected staging PostgreSQL version')
+  assert.deepEqual(identity.versions, [...expectedStagingVersions], 'Staging migration history changed: STOP')
+  save('target.json', { project, pooler: target.host, database: identity.database, serverVersion: identity.version,
+    versions: identity.versions, observedAt: new Date().toISOString() })
+
+  const before = snapshot(target, 'before')
+  evaluateChecks(before.preflight, 'preflight')
+  assert.ok(before.privacy.length === 16 && before.privacy.every(row => Number(row.issue_count) === 0),
+    'Staging data integrity preflight failed: STOP')
+  for (const table of ['buckets', 'objects']) {
+    const row = before.inventory.find(entry => entry.schema_name === 'storage' && entry.table_name === table)
+    assert.equal(Number(row?.row_count), 0, `Storage ${table} is not empty and would need a separate backup: STOP`)
+  }
+  const baseline = activity(target, 'before')
+  record({ phase: 'preflight', tables: before.inventory.length, fingerprint: fingerprintMarker(before.fingerprint),
+    versions: identity.versions.length, otherActiveClients: 0 })
+
+  const [acl] = query(target, 'application_acl_recovery', verification('backup_application_acls.sql'))
+  save('application_acl_recovery.json', [acl])
+  save('application_acl_recovery.generated.sql', acl.restore_sql + '\n')
+  const managedHistory = query(target, 'managed_migration_rows', `select 'auth.schema_migrations' as name,
+    coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text), '[]') as rows from auth.schema_migrations t
+    union all select 'storage.migrations', coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text), '[]')
+    from storage.migrations t`)
+  save('managed_migration_rows.json', managedHistory)
+
+  for (const [name, flags] of dumpJobs) {
+    dump(name, flags)
+    const sample = activity(target, `after_${name.replace('.sql', '')}`)
+    assert.ok(isDeepStrictEqual(sample.writes, baseline.writes), `Staging write counters changed during ${name}: STOP`)
+  }
+
+  // The CLI leaves out managed migration rows; supplement the freshly queried rows.
+  const data = readFileSync(join(directory, 'managed_data.sql'), 'utf8') + readFileSync(join(directory, 'data.sql'), 'utf8')
+  for (const { name } of managedHistory) {
+    const [schema, table] = name.split('.')
+    assert.ok(!data.includes(`COPY "${schema}"."${table}"`) && !data.includes(`COPY ${name}`), `Managed history already in dump: ${name}`)
+  }
+  save('managed_migration_data.sql', managedHistory.map(({ name, rows }) =>
+    `insert into ${name} select * from jsonb_populate_recordset(null::${name}, $fresh_history$${JSON.stringify(rows)}$fresh_history$::jsonb);`).join('\n') + '\n')
+  const managed = readFileSync(join(directory, 'managed_schema.sql'), 'utf8')
+  const triggers = [...managed.matchAll(signupTrigger)]
+  assert.equal(triggers.length, 1, 'Signup trigger capture mismatch')
+  save('managed_before_app.sql', managed.replace(signupTrigger, '-- Signup trigger restored after application function.'))
+  save('managed_after_app.sql', triggers[0][0] + '\n')
+
+  const after = snapshot(target, 'after')
+  for (const name of snapshotNames) {
+    assert.ok(isDeepStrictEqual(after[name], before[name]), `Staging changed during capture: ${name}; STOP`)
+  }
+  const finalActivity = activity(target, 'final')
+  assert.ok(isDeepStrictEqual(finalActivity.writes, baseline.writes), 'Final staging write counters changed: STOP')
+
+  for (const name of verificationFiles) copyFileSync(join(root, 'supabase/verification', name), join(directory, name))
+  const endedAt = new Date().toISOString()
+  const files = readdirSync(directory).filter(name => !name.endsWith('.private.txt') && name !== 'ATTEMPT.json').sort()
+    .map(file => ({ file, bytes: readFileSync(join(directory, file)).length, sha256: sha(readFileSync(join(directory, file))) }))
+  save('capture_manifest.json', { result: 'CAPTURE_PASS_RESTORE_PENDING', project, startedAt, endedAt,
+    serverVersion: identity.version, cliVersion: '2.110.0', files, publicFingerprint: fingerprintMarker(before.fingerprint),
+    tables: before.inventory.length, versions: identity.versions, activeClientsObserved: 0, writeCounterChanges: 0,
+    storageObjects: 0, captureScriptSha256: sha(readFileSync(fileURLToPath(import.meta.url))),
+    limitations: ['Managed service configuration and encryption root keys are not copied.',
+      'Private local capture is not off-machine backup retention.',
+      'Activity polling cannot prove the absence of every transient session; contents and write counters were unchanged.'],
+    stagingWritesAuthorized: false, phases })
+  console.log(JSON.stringify({ result: 'CAPTURE_PASS_RESTORE_PENDING', directory, files: files.length,
+    tables: before.inventory.length, fingerprint: fingerprintMarker(before.fingerprint) }))
+}
+
+main().catch(error => {
+  const reason = String(error?.message || error).replaceAll(password || '\0', '[redacted]').slice(0, 4096)
+  if (started && !existsSync(join(directory, 'STOP.json'))) {
+    save('STOP.json', { result: 'STOP', startedAt, stoppedAt: new Date().toISOString(), reason, phases, stagingWrites: false })
+  }
+  console.error(JSON.stringify({ result: started ? 'STOP' : 'LOCAL_PRECHECK_FAILED', reason }))
+  process.exitCode = 1
+})
