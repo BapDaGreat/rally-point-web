@@ -516,7 +516,8 @@ end;
 $$;
 
 -- Sets (or with a NULL path, clears) a coach's photo. Returns the replaced path, if any,
--- so the app can delete that file.
+-- so the app can delete that file. Setting the same path again replaces nothing, so it
+-- returns NULL: a repeated request must never hand back the file that is now in use.
 create or replace function public.admin_set_club_coach_photo(p_coach_id uuid, p_path text)
 returns text
 language plpgsql volatile security definer set search_path = ''
@@ -535,7 +536,7 @@ begin
     perform private.require_club_media(v_club, 'coaches', p_path);
   end if;
   update public.club_coaches c set photo_path = p_path, updated_at = now() where c.id = p_coach_id;
-  return v_old;
+  return case when v_old is distinct from p_path then v_old end;
 end;
 $$;
 
@@ -605,7 +606,8 @@ exception when check_violation then
 end;
 $$;
 
--- Sets (or with a NULL path, clears) a payment method's QR code. Returns the replaced path.
+-- Sets (or with a NULL path, clears) a payment method's QR code. Returns the replaced path,
+-- or NULL when the same path is set again (see admin_set_club_coach_photo).
 create or replace function public.admin_set_club_payment_qr(p_method_id uuid, p_path text)
 returns text
 language plpgsql volatile security definer set search_path = ''
@@ -624,7 +626,7 @@ begin
     perform private.require_club_media(v_club, 'payment', p_path);
   end if;
   update public.club_payment_methods m set qr_path = p_path, updated_at = now() where m.id = p_method_id;
-  return v_old;
+  return case when v_old is distinct from p_path then v_old end;
 end;
 $$;
 

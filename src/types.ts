@@ -416,6 +416,14 @@ export interface ClubGalleryPhoto {
   created_at: string
 }
 
+/**
+ * What happened to the old picture file after a club picture was replaced or removed.
+ * The bucket is public, so a file left behind still opens from its old link.
+ */
+export interface PictureCleanup {
+  fileLeftBehind: boolean
+}
+
 /** Everything on the admin Business profile screen, inactive items included. */
 export interface AdminClubProfile {
   profile: ClubProfileFields

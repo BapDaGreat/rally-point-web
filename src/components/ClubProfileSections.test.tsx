@@ -65,6 +65,13 @@ describe('club page profile sections', () => {
     expect(card.queryByRole('link', { name: /Website/ })).not.toBeInTheDocument()
   })
 
+  it('links only a plain email address, so a stored value cannot add mail fields', () => {
+    render(<ClubAboutCard clubName="Rally Point" profile={{ ...full, email: 'hello@rallypoint.ph?bcc=someone@example.com' }} index={0} />)
+    const card = within(screen.getByRole('region', { name: 'About Rally Point' }))
+    expect(card.queryByRole('link', { name: /Email/ })).not.toBeInTheDocument()
+    expect(card.getByRole('link', { name: /Facebook page/ })).toBeInTheDocument()
+  })
+
   it('lists add-ons and coaches with their prices', () => {
     render(
       <>

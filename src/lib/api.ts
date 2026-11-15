@@ -11,6 +11,7 @@ import type {
   ClubCoach,
   ClubCoachInput,
   ClubGalleryPhoto,
+  PictureCleanup,
   ClubPaymentMethod,
   ClubPaymentMethodInput,
   ClubProfileFields,
@@ -58,10 +59,28 @@ import { CLUB_HEADER, getActiveClubId, notifyClubUnavailable, requireActiveClubI
 import { PHOTO_BUCKET, photoUrl, shrinkPhoto, shrinkPhotoToDataUrl } from './photos'
 import { emptyClubProfile, normalizeProfile } from './clubProfile'
 
-/** Deletes a stored photo file. A file left behind is never shown, so a failure here is not fatal. */
-async function deletePhotoFile(path: string | null | undefined) {
-  if (!path) return
-  await supabase!.storage.from(PHOTO_BUCKET).remove([path]).catch(() => undefined)
+/**
+ * Deletes a stored photo file; returns false when it could not be deleted. Storage reports a
+ * failure in its result rather than by throwing, so both are checked. The bucket is public:
+ * a file left behind still opens from its old link, though nothing in the app points to it.
+ */
+async function deletePhotoFile(path: string | null | undefined): Promise<boolean> {
+  if (!path) return true
+  try {
+    const { error } = await supabase!.storage.from(PHOTO_BUCKET).remove([path])
+    return !error
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Deletes the club picture a save replaced or removed. `kept` is the path now in use, which is
+ * never deleted, even if the database hands it back.
+ */
+async function deleteReplacedPicture(old: unknown, kept: string | null = null): Promise<PictureCleanup> {
+  const path = typeof old === 'string' && old !== kept ? old : null
+  return { fileLeftBehind: !(await deletePhotoFile(path)) }
 }
 
 /** Uploads a prepared photo to `path`, never overwriting a file; returns the path. */
@@ -282,8 +301,13 @@ export const api = {
       ? await supabase!.from('venues').select('id, open_hour, close_hour').in('id', venueIds)
       : { data: [], error: null }
     if (venueError) throw venueError
-    const hoursFor = (id: string | null | undefined) =>
-      venueHours((venueRows ?? []).find((venue) => venue.id === id) as Pick<Venue, 'open_hour' | 'close_hour'> | undefined)
+    const venueById = new Map((venueRows ?? []).map((venue) => [venue.id as string, venue as Pick<Venue, 'open_hour' | 'close_hour'>]))
+    // A venue this account cannot read (closed, or not shared with it) offers no slots,
+    // rather than falling back to all day.
+    const hoursFor = (id: string | null | undefined) => {
+      const venue = id ? venueById.get(id) : undefined
+      return venue ? venueHours(venue) : { open: 0, close: 0 }
+    }
     const dayStart = localRangeISO(dateYmd, CLUB_OPEN_HOUR, 1).start_at
     const dayEnd = localRangeISO(dateYmd, CLUB_CLOSE_HOUR - 1, 1).end_at
     // Private booking/session rows are owner-only for members. The safe schedule
@@ -750,23 +774,26 @@ export const api = {
 
   /** Saves the whole profile. Empty fields are cleared. */
   async updateClubProfile(fields: ClubProfileFields): Promise<void> {
+    // Tidied here, because the database trims spaces only: a pasted line break would
+    // otherwise fail its link checks, or keep a blank box as if it were filled in.
+    const clean = normalizeProfile(fields)
     if (isDemoMode) {
-      demoStore.updateClubProfile(fields)
+      demoStore.updateClubProfile(clean)
       return
     }
     const { error } = await supabase!.rpc('admin_update_club_profile', {
-      p_about: fields.about,
-      p_phone: fields.phone,
-      p_email: fields.email,
-      p_facebook_url: fields.facebook_url,
-      p_messenger_url: fields.messenger_url,
-      p_instagram_url: fields.instagram_url,
-      p_website_url: fields.website_url,
-      p_amenities: fields.amenities,
-      p_payment_note: fields.payment_note,
-      p_house_rules: fields.house_rules,
-      p_cancellation_policy: fields.cancellation_policy,
-      p_terms: fields.terms,
+      p_about: clean.about,
+      p_phone: clean.phone,
+      p_email: clean.email,
+      p_facebook_url: clean.facebook_url,
+      p_messenger_url: clean.messenger_url,
+      p_instagram_url: clean.instagram_url,
+      p_website_url: clean.website_url,
+      p_amenities: clean.amenities,
+      p_payment_note: clean.payment_note,
+      p_house_rules: clean.house_rules,
+      p_cancellation_policy: clean.cancellation_policy,
+      p_terms: clean.terms,
     })
     if (error) throw error
   },
@@ -775,7 +802,7 @@ export const api = {
     if (isDemoMode) return demoStore.upsertClubAddon(input)
     const { data, error } = await supabase!.rpc('admin_upsert_club_addon', {
       p_addon_id: input.id ?? null,
-      p_name: input.name,
+      p_name: input.name.trim(),
       p_description: input.description,
       p_price: input.price,
       p_unit: input.unit,
@@ -795,7 +822,7 @@ export const api = {
     if (isDemoMode) return demoStore.upsertClubCoach(input)
     const { data, error } = await supabase!.rpc('admin_upsert_club_coach', {
       p_coach_id: input.id ?? null,
-      p_full_name: input.full_name,
+      p_full_name: input.full_name.trim(),
       p_headline: input.headline,
       p_bio: input.bio,
       p_hourly_rate: input.hourly_rate,
@@ -808,29 +835,35 @@ export const api = {
   },
 
   /** Sets a coach's photo, or removes it when `file` is null. */
-  async setClubCoachPhoto(coachId: string, file: File | null): Promise<void> {
-    if (isDemoMode) return demoStore.setClubCoachPhoto(coachId, file ? await shrinkPhotoToDataUrl(file) : null)
+  async setClubCoachPhoto(coachId: string, file: File | null): Promise<PictureCleanup> {
+    if (isDemoMode) {
+      demoStore.setClubCoachPhoto(coachId, file ? await shrinkPhotoToDataUrl(file) : null)
+      return { fileLeftBehind: false }
+    }
     const path = file ? await uploadClubPicture('coaches', file) : null
     const { data, error } = await supabase!.rpc('admin_set_club_coach_photo', { p_coach_id: coachId, p_path: path })
     if (error) {
       await deletePhotoFile(path)
       throw error
     }
-    await deletePhotoFile(data as string | null)
+    return deleteReplacedPicture(data, path)
   },
 
-  async removeClubCoach(coachId: string): Promise<void> {
-    if (isDemoMode) return demoStore.removeClubCoach(coachId)
+  async removeClubCoach(coachId: string): Promise<PictureCleanup> {
+    if (isDemoMode) {
+      demoStore.removeClubCoach(coachId)
+      return { fileLeftBehind: false }
+    }
     const { data, error } = await supabase!.rpc('admin_remove_club_coach', { p_coach_id: coachId })
     if (error) throw error
-    await deletePhotoFile(data as string | null)
+    return deleteReplacedPicture(data)
   },
 
   async upsertClubPaymentMethod(input: ClubPaymentMethodInput): Promise<ClubPaymentMethod> {
     if (isDemoMode) return demoStore.upsertClubPaymentMethod(input)
     const { data, error } = await supabase!.rpc('admin_upsert_club_payment_method', {
       p_method_id: input.id ?? null,
-      p_label: input.label,
+      p_label: input.label.trim(),
       p_account_name: input.account_name,
       p_account_number: input.account_number,
       p_is_active: input.is_active,
@@ -840,22 +873,28 @@ export const api = {
   },
 
   /** Sets a payment method's QR code picture, or removes it when `file` is null. */
-  async setClubPaymentQr(methodId: string, file: File | null): Promise<void> {
-    if (isDemoMode) return demoStore.setClubPaymentQr(methodId, file ? await shrinkPhotoToDataUrl(file) : null)
+  async setClubPaymentQr(methodId: string, file: File | null): Promise<PictureCleanup> {
+    if (isDemoMode) {
+      demoStore.setClubPaymentQr(methodId, file ? await shrinkPhotoToDataUrl(file) : null)
+      return { fileLeftBehind: false }
+    }
     const path = file ? await uploadClubPicture('payment', file) : null
     const { data, error } = await supabase!.rpc('admin_set_club_payment_qr', { p_method_id: methodId, p_path: path })
     if (error) {
       await deletePhotoFile(path)
       throw error
     }
-    await deletePhotoFile(data as string | null)
+    return deleteReplacedPicture(data, path)
   },
 
-  async removeClubPaymentMethod(methodId: string): Promise<void> {
-    if (isDemoMode) return demoStore.removeClubPaymentMethod(methodId)
+  async removeClubPaymentMethod(methodId: string): Promise<PictureCleanup> {
+    if (isDemoMode) {
+      demoStore.removeClubPaymentMethod(methodId)
+      return { fileLeftBehind: false }
+    }
     const { data, error } = await supabase!.rpc('admin_remove_club_payment_method', { p_method_id: methodId })
     if (error) throw error
-    await deletePhotoFile(data as string | null)
+    return deleteReplacedPicture(data)
   },
 
   /** Adds a photo to the club's gallery. The photo is shrunk in the browser first. */
@@ -870,11 +909,14 @@ export const api = {
     return toGalleryPhoto(data as StoredGalleryPhoto)
   },
 
-  async removeClubPhoto(photoId: string): Promise<void> {
-    if (isDemoMode) return demoStore.removeClubPhoto(photoId)
+  async removeClubPhoto(photoId: string): Promise<PictureCleanup> {
+    if (isDemoMode) {
+      demoStore.removeClubPhoto(photoId)
+      return { fileLeftBehind: false }
+    }
     const { data, error } = await supabase!.rpc('admin_remove_club_photo', { p_photo_id: photoId })
     if (error) throw error
-    await deletePhotoFile(data as string | null)
+    return deleteReplacedPicture(data)
   },
 
   async setStaffVenueGrant(userId: string, venueId: string, isActive: boolean): Promise<void> {

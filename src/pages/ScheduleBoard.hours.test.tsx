@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PublicClubDetail, ScheduleBlock } from '../types'
 import { localRangeISO, ymdLocal } from '../types'
 import { TvBoard } from './ScheduleBoard'
@@ -57,5 +57,33 @@ describe('schedule board with opening hours', () => {
     expect(grid).toHaveTextContent('Late booking')
     expect(grid).toHaveTextContent('11:00 PM')
     expect(grid).toHaveTextContent('Closed')
+  })
+
+  describe('after closing time', () => {
+    beforeEach(() => {
+      // 9:30 PM in the Philippines (UTC+8); only the date is faked, so timers still run.
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-11-15T13:30:00Z'))
+    })
+    afterEach(() => vi.useRealTimers())
+
+    it("shows today's whole day on the TV board instead of an empty grid", async () => {
+      const closesAtEight = { ...club, venues: club.venues.map((venue) => ({ ...venue, close_hour: 20 })) }
+      vi.mocked(api.publicClubDetail).mockResolvedValue(closesAtEight)
+      vi.mocked(api.publicDaySchedule).mockResolvedValue([])
+      const { container } = render(
+        <MemoryRouter initialEntries={['/board/tv/rally-point-gensan']}>
+          <Routes>
+            <Route path="/board/tv/:slug" element={<TvBoard />} />
+          </Routes>
+        </MemoryRouter>,
+      )
+      await screen.findAllByText('Court C')
+      const grid = container.querySelector('.min-w-\\[720px\\]')
+      if (!grid) throw new Error('Expected the time grid')
+      await waitFor(() => expect(grid).toHaveTextContent('6:00 AM'))
+      expect(grid).toHaveTextContent('7:00 PM')
+      expect(grid).not.toHaveTextContent('8:00 PM')
+    })
   })
 })

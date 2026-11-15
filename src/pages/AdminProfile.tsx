@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
 import { BackButton } from '../components/BackButton'
@@ -35,12 +35,25 @@ import type {
   ClubPaymentMethod,
   ClubPaymentMethodInput,
   ClubProfileFields,
+  PictureCleanup,
 } from '../types'
 import { peso } from '../types'
 import { PickPhotos } from './AdminPhotos'
 
-/** Runs one save; returns true when it worked, so a form can close. */
+/**
+ * Runs one save; returns true when it worked, so a form can close. When the action
+ * resolves to text, that text is added to the `done` message.
+ */
 type Run = (key: string, action: () => Promise<unknown>, done: string) => Promise<boolean>
+
+/** The message at the bottom of the screen. Problems are announced straight away. */
+type Notice = { text: string; tone: 'done' | 'problem' }
+
+const sentence = (text: string) => (/[.!?]$/.test(text) ? text : `${text}.`)
+
+/** A note for the admin when an old picture's file could not be deleted. */
+const fileNote = (cleanup: PictureCleanup) =>
+  cleanup.fileLeftBehind ? 'The old picture file could not be deleted, so it may still open from its old link.' : undefined
 
 const linkStyle = 'inline-flex min-h-12 items-center text-sm font-semibold text-brand-800 underline'
 const removeStyle = 'inline-flex min-h-12 items-center text-sm font-semibold text-red-700 underline'
@@ -56,52 +69,82 @@ export function AdminProfile() {
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
+  const [message, setMessage] = useState<Notice | null>(null)
+  const saving = useRef(false)
 
-  // The first load fills the form. Later reloads (after each save) refresh the lists only,
-  // so text being typed in another section is never replaced.
-  const reload = useCallback(async (fillForm = false) => {
+  // The first load fills the form.
+  const load = useCallback(async () => {
     try {
       const next = await api.adminClubProfile()
       setData(next)
-      if (fillForm) setFields(next.profile)
+      setFields(next.profile)
       setLoadFailed(false)
     } catch (error) {
       setLoadFailed(true)
-      setMessage(error instanceof Error ? error.message : 'Could not load the business profile')
+      setMessage({ text: error instanceof Error ? error.message : 'Could not load the business profile', tone: 'problem' })
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    void reload(true)
-  }, [reload])
+    void load()
+  }, [load])
+
+  // After each save only the lists are refreshed, so text being typed in another section is
+  // never replaced. If the refresh fails, the screen stays as it is.
+  async function refreshLists() {
+    try {
+      setData(await api.adminClubProfile())
+      return true
+    } catch {
+      return false
+    }
+  }
 
   const run: Run = async (key, action, done) => {
-    setBusy(key)
-    try {
-      await action()
-      setMessage(done)
-      await reload()
-      return true
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not save. Try again.')
+    // One save at a time: a second one started meanwhile could finish in the wrong order.
+    if (saving.current) {
+      setMessage({ text: 'Wait for the last save to finish, then try again.', tone: 'problem' })
       return false
+    }
+    saving.current = true
+    setBusy(key)
+    setMessage(null)
+    let ok = false
+    let notice: Notice
+    try {
+      try {
+        const note = await action()
+        notice = { text: typeof note === 'string' ? `${sentence(done)} ${note}` : done, tone: 'done' }
+        ok = true
+      } catch (error) {
+        notice = { text: error instanceof Error ? error.message : 'Could not save. Try again.', tone: 'problem' }
+      }
+      // Refresh after a failure too: part of a batch (several photos) may already be saved.
+      if (!(await refreshLists())) {
+        notice = { text: `${sentence(notice.text)} The lists could not be refreshed, so reload the page to see the latest.`, tone: 'problem' }
+      }
+      setMessage(notice)
     } finally {
+      saving.current = false
       setBusy(null)
     }
+    return ok
   }
 
   async function saveProfile(event: FormEvent, key: string) {
     event.preventDefault()
-    const problem = profileProblem(fields)
+    const submitted = fields
+    const clean = normalizeProfile(submitted)
+    const problem = profileProblem(clean)
     if (problem) {
-      setMessage(problem)
+      setMessage({ text: problem, tone: 'problem' })
       return
     }
-    if (await run(key, () => api.updateClubProfile(fields), 'Saved. Players see it on your club page now.')) {
-      setFields(normalizeProfile(fields))
+    if (await run(key, () => api.updateClubProfile(clean), 'Saved. Players see it on your club page now.')) {
+      // Show the tidied text that was saved, unless the admin kept typing meanwhile.
+      setFields((now) => (now === submitted ? clean : now))
     }
   }
 
@@ -132,7 +175,7 @@ export function AdminProfile() {
         {loading ? <ProfileLoading /> : loadFailed || !data ? (
           <section className="card p-4 space-y-3" role="alert">
             <p className="text-sm text-slate-700">The business profile could not be loaded. It may not be set up on this system yet.</p>
-            <button type="button" className="btn-secondary" onClick={() => { setLoading(true); void reload(true) }}>Try again</button>
+            <button type="button" className="btn-secondary" onClick={() => { setLoading(true); void load() }}>Try again</button>
           </section>
         ) : (
           <>
@@ -173,7 +216,7 @@ export function AdminProfile() {
                   ))}
                 </div>
               </fieldset>
-              <SaveButton busy={busy === 'details'}>Save business details</SaveButton>
+              <SaveButton busy={busy} name="details">Save business details</SaveButton>
             </form>
 
             <form className="enter-rise card p-4 space-y-3" style={stagger(1)} onSubmit={(event) => void saveProfile(event, 'rules')} aria-labelledby="profile-rules">
@@ -183,7 +226,7 @@ export function AdminProfile() {
               <TextArea id="profile-cancellation" label="Cancellation and refunds" value={fields.cancellation_policy} onChange={set('cancellation_policy')} max={2000} rows={4}
                 placeholder="Example: Cancel at least 24 hours ahead for a full refund." />
               <TextArea id="profile-terms" label="Terms and conditions" value={fields.terms} onChange={set('terms')} max={6000} rows={6} />
-              <SaveButton busy={busy === 'rules'}>Save rules and terms</SaveButton>
+              <SaveButton busy={busy} name="rules">Save rules and terms</SaveButton>
             </form>
 
             <PaymentCard
@@ -201,7 +244,7 @@ export function AdminProfile() {
           </>
         )}
       </main>
-      {message ? <div className="toast" role="status">{message}</div> : null}
+      {message ? <div className="toast" role={message.tone === 'problem' ? 'alert' : 'status'}>{message.text}</div> : null}
     </AppShell>
   )
 }
@@ -235,10 +278,12 @@ function SectionTitle({ id, hint, children }: { id: string; hint?: string; child
   )
 }
 
-function SaveButton({ busy, children }: { busy: boolean; children: ReactNode }) {
+/** Waits while any save is running; shows "Saving…" only on the one that is. */
+function SaveButton({ busy, name, children }: { busy: string | null; name: string; children: ReactNode }) {
+  const mine = busy === name
   return (
-    <button type="submit" className="btn-primary" disabled={busy} aria-busy={busy}>
-      {busy ? 'Saving…' : children}
+    <button type="submit" className="btn-primary" disabled={busy !== null} aria-busy={mine}>
+      {mine ? 'Saving…' : children}
     </button>
   )
 }
@@ -359,7 +404,7 @@ function PaymentCard({
       <form className="space-y-3" onSubmit={onSaveNote}>
         <TextArea id="profile-payment-note" label="Payment note" value={note} onChange={onNoteChange} max={600} rows={3}
           placeholder="Example: Pay at the desk, or send by GCash and show the receipt when you arrive." />
-        <SaveButton busy={busy === 'payment-note'}>Save payment note</SaveButton>
+        <SaveButton busy={busy} name="payment-note">Save payment note</SaveButton>
       </form>
 
       <h3 className="text-sm font-bold text-slate-700">Payment methods ({methods.length} of {MAX_CLUB_PAYMENT_METHODS})</h3>
@@ -399,12 +444,12 @@ function PaymentCard({
                   <PickPhotos
                     label={method.qr_url ? 'Change QR code' : 'Add QR code'}
                     disabled={busy !== null}
-                    onPick={(files) => void run(`qr:${method.id}`, () => api.setClubPaymentQr(method.id, files[0]), 'QR code saved')}
+                    onPick={(files) => void run(`qr:${method.id}`, async () => fileNote(await api.setClubPaymentQr(method.id, files[0])), 'QR code saved')}
                   />
                   {method.qr_url ? (
                     <button type="button" className="btn-secondary text-sm" disabled={busy !== null}
                       onClick={() => {
-                        if (window.confirm(`Remove the ${method.label} QR code?`)) void run(`qr:${method.id}`, () => api.setClubPaymentQr(method.id, null), 'QR code removed')
+                        if (window.confirm(`Remove the ${method.label} QR code?`)) void run(`qr:${method.id}`, async () => fileNote(await api.setClubPaymentQr(method.id, null)), 'QR code removed')
                       }}>
                       Remove QR code
                     </button>
@@ -415,7 +460,7 @@ function PaymentCard({
                   <button type="button" className={removeStyle} disabled={busy !== null}
                     onClick={() => {
                       if (window.confirm(`Remove ${method.label}? Players will no longer see it.`)) {
-                        void run(`pay:${method.id}`, () => api.removeClubPaymentMethod(method.id), `${method.label} removed`)
+                        void run(`pay:${method.id}`, async () => fileNote(await api.removeClubPaymentMethod(method.id)), `${method.label} removed`)
                       }
                     }}
                     aria-label={`Remove ${method.label}`}>
@@ -644,13 +689,13 @@ function CoachesCard({ index, coaches, busy, run }: { index: number; coaches: Cl
                   <PickPhotos
                     label={coach.photo_url ? 'Change photo' : 'Add photo'}
                     disabled={busy !== null}
-                    onPick={(files) => void run(`coach-photo:${coach.id}`, () => api.setClubCoachPhoto(coach.id, files[0]), 'Photo saved')}
+                    onPick={(files) => void run(`coach-photo:${coach.id}`, async () => fileNote(await api.setClubCoachPhoto(coach.id, files[0])), 'Photo saved')}
                   />
                   {coach.photo_url ? (
                     <button type="button" className="btn-secondary text-sm" disabled={busy !== null}
                       onClick={() => {
                         if (window.confirm(`Remove the photo of ${coach.full_name}?`)) {
-                          void run(`coach-photo:${coach.id}`, () => api.setClubCoachPhoto(coach.id, null), 'Photo removed')
+                          void run(`coach-photo:${coach.id}`, async () => fileNote(await api.setClubCoachPhoto(coach.id, null)), 'Photo removed')
                         }
                       }}>
                       Remove photo
@@ -662,7 +707,7 @@ function CoachesCard({ index, coaches, busy, run }: { index: number; coaches: Cl
                   <button type="button" className={removeStyle} disabled={busy !== null}
                     onClick={() => {
                       if (window.confirm(`Remove ${coach.full_name} from your coaches?`)) {
-                        void run(`coach:${coach.id}`, () => api.removeClubCoach(coach.id), `${coach.full_name} removed`)
+                        void run(`coach:${coach.id}`, async () => fileNote(await api.removeClubCoach(coach.id)), `${coach.full_name} removed`)
                       }
                     }}
                     aria-label={`Remove ${coach.full_name}`}>
@@ -756,8 +801,13 @@ function GalleryCard({ index, gallery, busy, run }: { index: number; gallery: Ad
     setProblem(found)
     if (found) return
     const picked = files.slice(0, room)
+    const leftOut = files.length - picked.length
+    const addedText = picked.length === 1 ? 'Photo added' : `${picked.length} photos added`
+    const done = leftOut
+      ? `${addedText}. ${leftOut === 1 ? '1 photo was' : `${leftOut} photos were`} left out: the gallery holds ${MAX_CLUB_GALLERY_PHOTOS}.`
+      : addedText
     let added = 0
-    await run('gallery', async () => {
+    const ok = await run('gallery', async () => {
       try {
         for (const [position, file] of picked.entries()) {
           setProgress(picked.length > 1 ? `Uploading ${position + 1} of ${picked.length}…` : 'Uploading…')
@@ -770,8 +820,9 @@ function GalleryCard({ index, gallery, busy, run }: { index: number; gallery: Ad
       } finally {
         setProgress(null)
       }
-    }, picked.length === 1 ? 'Photo added' : `${picked.length} photos added`)
-    setCaption('')
+    }, done)
+    // Keep the caption after a failure, so it need not be typed again.
+    if (ok) setCaption('')
   }
 
   return (
@@ -791,7 +842,7 @@ function GalleryCard({ index, gallery, busy, run }: { index: number; gallery: Ad
                 disabled={busy !== null}
                 onClick={() => {
                   if (window.confirm('Remove this photo? Players will no longer see it.')) {
-                    void run(`gallery:${photo.id}`, () => api.removeClubPhoto(photo.id), 'Photo removed')
+                    void run(`gallery:${photo.id}`, async () => fileNote(await api.removeClubPhoto(photo.id)), 'Photo removed')
                   }
                 }}
                 aria-label={`Remove club photo ${position + 1}`}

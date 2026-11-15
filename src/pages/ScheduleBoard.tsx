@@ -197,9 +197,11 @@ export function ScheduleBoard({
   const blockStarts = blocks.map((b) => appHour(b.start_at))
   const dayOpen = Math.min(shownHours.length ? Math.min(...shownHours.map((h) => h.open)) : CLUB_OPEN_HOUR, ...blockStarts)
   const dayClose = Math.max(shownHours.length ? Math.max(...shownHours.map((h) => h.close)) : CLUB_CLOSE_HOUR, ...blockStarts.map((h) => h + 1))
-  // On today's TV board, start an hour back so the screen shows what is ahead.
+  // On today's TV board, start an hour back so the screen shows what is ahead. After closing
+  // time there is nothing ahead, so the whole day shows rather than an empty grid.
   const isToday = dateYmd === ymdLocal(clock)
-  const firstHour = tv && isToday ? Math.max(dayOpen, appHour(clock.toISOString()) - 1) : dayOpen
+  const fromNow = Math.max(dayOpen, appHour(clock.toISOString()) - 1)
+  const firstHour = tv && isToday && fromNow < dayClose ? fromNow : dayOpen
   const hours = useMemo(() => {
     const h: number[] = []
     for (let i = firstHour; i < dayClose; i++) h.push(i)
@@ -327,7 +329,9 @@ export function ScheduleBoard({
                         key={`${c.id}-${h}`}
                         className={`border-t border-l p-1 h-16 relative ${tv ? 'border-slate-800' : 'border-slate-100'} ${closed ? closedTone : ''}`}
                       >
-                        {closed && cellBlocks.length === 0 ? <span className="sr-only">Closed</span> : null}
+                        {closed && cellBlocks.length === 0 ? (
+                          <span className={`text-[11px] font-semibold ${tv ? 'text-slate-400' : 'text-slate-600'}`}>Closed</span>
+                        ) : null}
                         {cellBlocks.map((b) => (
                           <div
                             key={b.id}

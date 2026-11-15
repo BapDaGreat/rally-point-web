@@ -20,6 +20,10 @@ function telHref(phone: string) {
   return `tel:${phone.replace(/[^0-9+]/g, '')}`
 }
 
+// Only a plain address becomes an email link, so a stored value can never add extra
+// mail fields (such as ?bcc=) to the message it opens.
+const PLAIN_EMAIL = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/
+
 function Card({ id, title, index, children }: { id: string; title: string; index: number; children: ReactNode }) {
   return (
     <section className="enter-rise card p-4 space-y-3" style={stagger(index)} aria-labelledby={id}>
@@ -42,7 +46,7 @@ function ExternalButton({ href, icon, children }: { href: string | null; icon: R
 /** About, amenities, and how to reach the club. */
 export function ClubAboutCard({ clubName, profile, index }: { clubName: string; profile: PublicClubProfile; index: number }) {
   const links = [profile.facebook_url, profile.messenger_url, profile.instagram_url, profile.website_url].filter(isSafeLink)
-  const hasContact = !!profile.phone || !!profile.email || links.length > 0
+  const hasContact = !!profile.phone || (!!profile.email && PLAIN_EMAIL.test(profile.email)) || links.length > 0
   if (!profile.about && profile.amenities.length === 0 && !hasContact) return null
   return (
     <Card id="club-about" title={`About ${clubName}`} index={index}>
@@ -64,7 +68,7 @@ export function ClubAboutCard({ clubName, profile, index }: { clubName: string; 
             {profile.phone ? (
               <a className={linkButton} href={telHref(profile.phone)}><Phone size={18} aria-hidden /> Call {profile.phone}</a>
             ) : null}
-            {profile.email ? (
+            {profile.email && PLAIN_EMAIL.test(profile.email) ? (
               <a className={linkButton} href={`mailto:${profile.email}`}><Mail size={18} aria-hidden /> Email</a>
             ) : null}
             <ExternalButton href={profile.facebook_url} icon={<Users size={18} aria-hidden />}>Facebook page</ExternalButton>

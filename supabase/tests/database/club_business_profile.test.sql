@@ -2,7 +2,7 @@ begin;
 set local role postgres;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions, pg_catalog;
-select extensions.plan(66);
+select extensions.plan(68);
 
 -- Fixture:
 --   user 1: Gensan admin
@@ -226,6 +226,14 @@ select extensions.is(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/payment/eeeeeeee-eeee-4eee-8eee-000000000004.webp'),
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/payment/eeeeeeee-eeee-4eee-8eee-000000000003.png',
   'a new QR code returns the old one, so its file can be deleted');
+select extensions.is(
+  public.admin_set_club_payment_qr(current_setting('test.gcash')::uuid,
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/payment/eeeeeeee-eeee-4eee-8eee-000000000004.webp'),
+  null, 'setting the same QR code again returns nothing, so the live file is never deleted');
+select extensions.is(
+  public.admin_set_club_coach_photo(current_setting('test.ana')::uuid,
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/coaches/eeeeeeee-eeee-4eee-8eee-000000000005.webp'),
+  null, 'setting the same coach photo again returns nothing');
 select extensions.is(
   (select array[jsonb_array_length(p -> 'addons'), jsonb_array_length(p -> 'coaches'),
                 jsonb_array_length(p -> 'payment_methods'), jsonb_array_length(p -> 'gallery')]

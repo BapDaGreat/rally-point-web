@@ -61,6 +61,7 @@ describe('AdminProfile', () => {
     vi.mocked(api.adminClubProfile).mockReset().mockResolvedValue(loaded)
     vi.mocked(api.updateClubProfile).mockReset().mockResolvedValue(undefined)
     vi.mocked(api.upsertClubAddon).mockReset()
+    vi.mocked(api.addClubPhoto).mockReset()
   })
 
   it('loads the saved profile and lists add-ons, marking hidden ones', async () => {
@@ -82,19 +83,77 @@ describe('AdminProfile', () => {
 
     await user.type(facebook, 'https://facebook.com.evil.example/page')
     await user.click(screen.getByRole('button', { name: 'Save business details' }))
-    expect(await screen.findByRole('status')).toHaveTextContent('The Facebook link must start with https://facebook.com/ or https://fb.com/')
+    expect(await screen.findByRole('alert')).toHaveTextContent('The Facebook link must start with https://facebook.com/ or https://fb.com/')
     expect(api.updateClubProfile).not.toHaveBeenCalled()
 
     await user.clear(facebook)
-    await user.type(facebook, 'https://facebook.com/clubone')
+    await user.type(facebook, 'https://facebook.com/clubone   ')
     await user.click(screen.getByRole('checkbox', { name: 'Lights for night play' }))
     await user.click(screen.getByRole('button', { name: 'Save business details' }))
+    // The tidied text is what gets sent.
     await waitFor(() => expect(api.updateClubProfile).toHaveBeenCalledWith(expect.objectContaining({
       about: 'Six indoor courts.',
       facebook_url: 'https://facebook.com/clubone',
-      amenities: ['parking', 'night_lights'],
+      amenities: ['night_lights', 'parking'],
     })))
-    expect(await screen.findByText('Saved. Players see it on your club page now.')).toBeInTheDocument()
+    expect(await screen.findByRole('status')).toHaveTextContent('Saved. Players see it on your club page now.')
+  })
+
+  it('keeps the form when a save works but the lists cannot be refreshed', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.adminClubProfile).mockReset()
+      .mockResolvedValueOnce(loaded)
+      .mockRejectedValueOnce(new Error('Network error'))
+    renderPage()
+    const about = await screen.findByLabelText('About your club')
+    await user.click(screen.getByRole('button', { name: 'Save business details' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Saved. Players see it on your club page now. The lists could not be refreshed, so reload the page to see the latest.',
+    )
+    expect(about).toHaveValue('Six indoor courts.')
+    expect(screen.queryByText(/could not be loaded/)).not.toBeInTheDocument()
+  })
+
+  it('makes the other save buttons wait while one save is running', async () => {
+    const user = userEvent.setup()
+    let finish = () => {}
+    vi.mocked(api.updateClubProfile).mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve }))
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'Save business details' }))
+
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save rules and terms' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save payment note' })).toBeDisabled()
+
+    finish()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save rules and terms' })).toBeEnabled())
+  })
+
+  it('refreshes the gallery when one of several photos fails, and keeps the caption', async () => {
+    const user = userEvent.setup()
+    const stored = {
+      id: 'g-1', club_id: 'club-1', path: 'club-1/gallery/a.webp', url: 'https://example.test/a.webp',
+      caption: 'Opening night', position: 0, created_at: '2026-11-15T00:00:00.000Z',
+    }
+    vi.mocked(api.adminClubProfile).mockReset()
+      .mockResolvedValueOnce(loaded)
+      .mockResolvedValue({ ...loaded, gallery: [stored] })
+    vi.mocked(api.addClubPhoto).mockReset()
+      .mockResolvedValueOnce(stored)
+      .mockRejectedValueOnce(new Error('The upload failed'))
+    renderPage()
+
+    const gallery = within(await screen.findByRole('region', { name: 'Photo gallery' }))
+    await user.type(gallery.getByLabelText(/Caption/), 'Opening night')
+    const files = ['a', 'b', 'c'].map((name) => new File(['x'], `${name}.jpg`, { type: 'image/jpeg' }))
+    await user.upload(gallery.getByLabelText('Add photos'), files)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('1 added, then: The upload failed')
+    expect(api.addClubPhoto).toHaveBeenCalledTimes(2)
+    // The list was refreshed after the failure, so the photo that did save shows.
+    expect(await gallery.findByText('1 of 12 photos.', { exact: false })).toBeInTheDocument()
+    expect(gallery.getByLabelText(/Caption/)).toHaveValue('Opening night')
   })
 
   it('adds an add-on with its price and unit', async () => {
