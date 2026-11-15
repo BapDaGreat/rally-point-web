@@ -13,4 +13,7 @@ export const releaseApprovals = Object.freeze({
   // Owner, 2026-10-23, after the dry run on a restored copy of staging passed (all checks,
   // isolation 55/55, schema matches the build): "approve and reply" (meaning approve and apply).
   'court-photos-20261023': 'eaa57596f08f0cbade1b094ce43b9cb1e61c9240db3756eec7bd86aa6e0a0dab',
+  // Prepared 2026-11-15 ("prepare for a staging release"). Not approved: the owner approves
+  // after the capture, the restore check and the dry run on a restored copy have passed.
+  'club-profile-20261115': null,
 })

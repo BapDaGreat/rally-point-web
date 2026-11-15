@@ -177,9 +177,52 @@ export const courtPhotosRelease = Object.freeze({
   databases: Object.freeze({ restore: 'rally_staging_backup_20261023_r1_restore', dryRun: 'rally_staging_backup_20261023_r1_dryrun' }),
 })
 
+// Club business profile: what a club tells players (about, contacts, links, amenities, rules and
+// terms, payment methods with QR codes, add-ons, coaches, a photo gallery), admin-only profile
+// functions, a public read, and Storage policies for the club picture folders in the existing
+// court-photos bucket. Nothing inside the reservation-write pause changes. Staging's Storage is
+// no longer empty, so its capture copies the bucket's files (see the capture's Storage step).
+export const clubProfileRelease = Object.freeze({
+  id: 'club-profile-20261115',
+  title: 'Club business profile',
+  baseVersions: Object.freeze([...courtPhotosRelease.baseVersions, '20261023090000'].sort()),
+  migrations: Object.freeze(['20261115090000_club_business_profile.sql']),
+  // The SQL that runs and the code that runs it. Approval pins all of these bytes.
+  files: Object.freeze(['supabase/migrations/20261115090000_club_business_profile.sql',
+    'supabase/verification/club_profile_postflight.sql', 'supabase/verification/court_photos_postflight.sql',
+    'supabase/verification/court_marketplace_postflight.sql', 'supabase/verification/supabase_advisor_followup_postflight.sql',
+    'supabase/verification/supabase_advisor_postflight.sql', 'supabase/verification/club_platform_postflight.sql',
+    'supabase/verification/two_club_isolation.sql', 'supabase/verification/schema_fingerprint.sql',
+    'supabase/verification/backup_content_inventory.sql', 'supabase/verification/reservation_write_pause_readonly.sql',
+    'supabase/verification/staging_privacy_readonly_preflight.sql', 'scripts/run-staging-release-apply.mjs',
+    'scripts/club-platform-staging.mjs', 'scripts/club-platform-checks.mjs', 'scripts/restore-catalog-checks.mjs',
+    'scripts/restore-data-checks.mjs']),
+  stateCheck: Object.freeze({ file: 'court_photos_postflight.sql', kind: 'courtPhotos' }),
+  postChecks: Object.freeze([
+    Object.freeze({ file: 'club_profile_postflight.sql', kind: 'clubProfile', ignore: Object.freeze([]) }),
+    // Earlier postflights count 22, 23, 26 or 27 migrations; this release brings staging to 28.
+    Object.freeze({ file: 'court_photos_postflight.sql', kind: 'courtPhotos', ignore: Object.freeze(['ledger_has_court_photos']) }),
+    Object.freeze({ file: 'court_marketplace_postflight.sql', kind: 'courtMarketplace',
+      ignore: Object.freeze(['ledger_has_court_marketplace']) }),
+    Object.freeze({ file: 'supabase_advisor_followup_postflight.sql', kind: 'advisorFollowup',
+      ignore: Object.freeze(['ledger_has_followup']) }),
+    Object.freeze({ file: 'supabase_advisor_postflight.sql', kind: 'advisor',
+      ignore: Object.freeze(['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']) }),
+    Object.freeze({ file: 'club_platform_postflight.sql', kind: 'postflight', ignore: Object.freeze(['ledger_has_every_migration']) }),
+  ]),
+  isolation: Object.freeze({ file: 'two_club_isolation.sql', plan: 55 }),
+  dirs: Object.freeze({
+    capture: 'docs/release-private/staging-backup-20261115-r1',
+    restore: 'docs/release-private/staging-backup-restore-20261115-r1',
+    dryRun: 'docs/release-private/club-profile-staging-dryrun-20261115-r1',
+    apply: 'docs/release-private/club-profile-staging-apply-20261115-r1',
+  }),
+  databases: Object.freeze({ restore: 'rally_staging_backup_20261115_r1_restore', dryRun: 'rally_staging_backup_20261115_r1_dryrun' }),
+})
+
 export const releases = Object.freeze({ [advisorFixesRelease.id]: advisorFixesRelease,
   [advisorFollowupRelease.id]: advisorFollowupRelease, [courtMarketplaceRelease.id]: courtMarketplaceRelease,
-  [courtPhotosRelease.id]: courtPhotosRelease })
+  [courtPhotosRelease.id]: courtPhotosRelease, [clubProfileRelease.id]: clubProfileRelease })
 
 export function getRelease(id) {
   assert.ok(Object.hasOwn(releases, id ?? ''), `Unknown release: ${id}. Known: ${Object.keys(releases).join(', ')}`)
@@ -229,6 +272,79 @@ export const captureFiles = Object.freeze(['roles.sql', 'schema.sql', 'data.sql'
   'managed_after_app.sql', 'managed_migration_data.sql', 'managed_migration_rows.json',
   'application_acl_recovery.generated.sql'])
 export const snapshotNames = Object.freeze(['fingerprint', 'grants', 'inventory', 'catalog', 'sequences', 'preflight', 'privacy'])
+
+// Storage. The logical dump holds the bucket and file records (storage.buckets and
+// storage.objects); the files themselves live outside the database, so a capture copies
+// them. Only the bucket the court photos release created may exist; anything else stops it.
+export const knownStorageBuckets = Object.freeze([Object.freeze({ id: 'court-photos', public: true,
+  file_size_limit: 5242880, allowed_mime_types: Object.freeze(['image/jpeg', 'image/png', 'image/webp']) })])
+export const storageBucketsSql = `select id, public, file_size_limit, allowed_mime_types
+  from storage.buckets order by id;`
+export const storageObjectsSql = `select bucket_id, name, (metadata->>'size')::bigint as size,
+  metadata->>'mimetype' as mimetype, metadata->>'eTag' as etag
+  from storage.objects order by bucket_id, name;`
+export const storageCaptureFiles = Object.freeze(['storage_buckets.json', 'storage_objects.json'])
+export const storageObjectFile = index => `storage-object-${String(index + 1).padStart(5, '0')}.bin`
+const storageObjectFilePattern = /^storage-object-\d{5}\.bin$/
+
+/** True when staging's buckets are exactly the known ones, with the known settings. */
+export function knownBucketsOnly(rows) {
+  const shape = bucket => ({ id: bucket.id, public: bucket.public === true, file_size_limit: Number(bucket.file_size_limit),
+    allowed_mime_types: [...(bucket.allowed_mime_types ?? [])].sort() })
+  return Array.isArray(rows) && isDeepStrictEqual(rows.map(shape), knownStorageBuckets.map(shape))
+}
+
+/** The public link of a stored file in a known (public) bucket; staging's unless a test names another host. */
+export function publicObjectUrl(bucket, name, host = `https://${project}.supabase.co`) {
+  assert.ok(knownStorageBuckets.some(known => known.id === bucket && known.public), `Not a known public bucket: ${bucket}`)
+  assert.ok(typeof name === 'string' && name.length > 0 && !name.split('/').some(part => part === '' || part === '.' || part === '..'),
+    'Unsafe Storage file name')
+  return `${host}/storage/v1/object/public/${bucket}/${name.split('/').map(encodeURIComponent).join('/')}`
+}
+
+/**
+ * Downloads one stored file through its public link (no key: the bucket is public) and checks it
+ * against its record: the size, and the MD5 when the eTag holds one. Returns the bytes. Read-only.
+ */
+export async function downloadStoredFile(object, label, { fetchImpl = fetch, host } = {}) {
+  assert.ok(knownStorageBuckets.some(bucket => bucket.id === object.bucket_id), 'A stored file is in an unknown bucket: STOP')
+  const size = Number(object.size)
+  assert.ok(Number.isSafeInteger(size) && size > 0, `${label} has no size in its record: STOP`)
+  const response = await fetchImpl(publicObjectUrl(object.bucket_id, object.name, host),
+    { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(120000) })
+  assert.equal(response.status, 200, `${label} could not be downloaded (HTTP ${response.status}): STOP`)
+  const bytes = Buffer.from(await response.arrayBuffer())
+  assert.equal(bytes.length, size, `${label} downloaded with a different size: STOP`)
+  const etag = String(object.etag ?? '').replaceAll('"', '')
+  if (/^[a-f0-9]{32}$/.test(etag)) {
+    assert.equal(createHash('md5').update(bytes).digest('hex'), etag, `${label} differs from its record: STOP`)
+  }
+  return { bytes, etag: etag || null }
+}
+
+/**
+ * Checks a capture's Storage copies: one verified copy per stored file, in a known bucket, and
+ * as many as the captured records hold. Older captures, made while Storage was empty, have none.
+ */
+export function verifyStorageCopies({ manifest, inventory, objects, buckets }) {
+  const records = Number(inventory.find(row => row.schema_name === 'storage' && row.table_name === 'objects')?.row_count)
+  assert.equal(records, manifest.storageObjects, 'The copied Storage files do not match the captured file records')
+  if (buckets !== undefined) assert.ok(knownBucketsOnly(buckets), 'The capture holds an unknown or changed Storage bucket')
+  if (manifest.storageObjects === 0) return 0
+  assert.ok(Array.isArray(objects) && objects.length === manifest.storageObjects, 'The Storage copy list does not match the count')
+  const files = new Map(manifest.files.map(entry => [entry.file, entry]))
+  const seen = new Set()
+  for (const [index, copy] of objects.entries()) {
+    const key = `${copy?.bucket}/${copy?.name}`
+    assert.ok(knownStorageBuckets.some(known => known.id === copy?.bucket), 'A Storage copy comes from an unknown bucket')
+    assert.ok(typeof copy.name === 'string' && copy.name.length > 0 && !seen.has(key), 'An unnamed or duplicate Storage copy')
+    seen.add(key)
+    assert.equal(copy.file, storageObjectFile(index), 'Storage copies are out of order')
+    const entry = files.get(copy.file)
+    assert.ok(entry && entry.sha256 === copy.sha256 && entry.bytes === copy.bytes, `A Storage copy is missing or changed: ${copy.file}`)
+  }
+  return objects.length
+}
 
 export const sequenceSql = `select n.nspname as schema_name, c.relname as sequence_name,
  query_to_xml(format('select last_value, is_called from %I.%I', n.nspname, c.relname), false, true, '')::text as state
@@ -388,7 +504,7 @@ export function validateCaptureManifest(manifest, versions = expectedStagingVers
   assert.equal(manifest.project, project, 'Wrong capture project')
   assert.deepEqual(manifest.versions, [...versions], 'Capture migration history differs from the staging baseline')
   assert.match(String(manifest.publicFingerprint), /^[a-f0-9]{32}$/, 'Capture fingerprint missing')
-  assert.equal(manifest.storageObjects, 0, 'Storage objects need a separate backup')
+  assert.ok(Number.isSafeInteger(manifest.storageObjects) && manifest.storageObjects >= 0, 'Capture Storage file count missing')
   assert.equal(manifest.activeClientsObserved, 0, 'An active client was observed during capture')
   assert.equal(manifest.writeCounterChanges, 0, 'Writes were observed during capture')
   assert.equal(manifest.stagingWritesAuthorized, false, 'A capture cannot authorize staging writes')
@@ -404,6 +520,12 @@ export function validateCaptureManifest(manifest, versions = expectedStagingVers
   for (const name of [...captureFiles, ...snapshotNames.flatMap(s => [`before_${s}.json`, `after_${s}.json`])]) {
     assert.ok(names.has(name), `Missing capture file: ${name}`)
   }
+  // Stored files are only acceptable with their copies: the list, the bucket check and one copy each.
+  const copies = [...names].filter(name => storageObjectFilePattern.test(name)).length
+  if (manifest.storageObjects > 0) {
+    for (const name of storageCaptureFiles) assert.ok(names.has(name), `Missing capture file: ${name}`)
+  }
+  assert.equal(copies, manifest.storageObjects, 'Stored files need their copies in the capture')
   return { files: names.size, tables: manifest.tables, versions: manifest.versions.length }
 }
 
@@ -442,6 +564,10 @@ export function loadCapture(directory, versions = expectedStagingVersions) {
   }
   assert.equal(fingerprintMarker(json('before_fingerprint.json')), manifest.publicFingerprint, 'Capture fingerprint mismatch')
   const inventory = json('before_inventory.json')
+  const captured = new Set(manifest.files.map(entry => entry.file))
+  verifyStorageCopies({ manifest, inventory,
+    objects: captured.has('storage_objects.json') ? json('storage_objects.json') : [],
+    buckets: captured.has('storage_buckets.json') ? json('storage_buckets.json') : undefined })
   const dataFiles = planRestoreData({ data: read('data.sql'), managed: read('managed_data.sql'),
     history: read('history_data.sql'), managedHistory: json('managed_migration_rows.json'), inventory })
   const catalog = json('before_catalog.json')[0].objects

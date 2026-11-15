@@ -147,6 +147,64 @@ describe('backup and approval gates', () => {
     expect(() => validateCaptureManifest({ ...capture, files: capture.files.filter((f: { file: string }) => f.file !== 'data.sql') })).toThrow('data.sql')
   })
 
+  it('accepts stored files only with a verified copy of each, from the known bucket', async () => {
+    const { knownBucketsOnly, publicObjectUrl, storageObjectFile, validateCaptureManifest, verifyStorageCopies } = await load()
+    const capture = await goodCapture()
+    const records = (files: number) => [{ schema_name: 'storage', table_name: 'objects', row_count: files }]
+    // A capture made while Storage was empty has no copies and still passes.
+    expect(verifyStorageCopies({ manifest: capture, inventory: records(0), objects: [] })).toBe(0)
+
+    const copies = [0, 1].map(index => ({ bucket: 'court-photos', name: `club/gallery/${index}.webp`,
+      file: storageObjectFile(index), bytes: 10, sha256: 'a'.repeat(64) }))
+    const withFiles = { ...capture, storageObjects: 2, files: [...capture.files,
+      ...['storage_buckets.json', 'storage_objects.json', ...copies.map(copy => copy.file)]
+        .map(file => ({ file, bytes: 10, sha256: 'a'.repeat(64) }))] }
+    const buckets = [{ id: 'court-photos', public: true, file_size_limit: 5242880, allowed_mime_types: ['image/webp', 'image/jpeg', 'image/png'] }]
+    expect(validateCaptureManifest(withFiles).files).toBe(capture.files.length + 4)
+    expect(verifyStorageCopies({ manifest: withFiles, inventory: records(2), objects: copies, buckets })).toBe(2)
+
+    expect(() => validateCaptureManifest({ ...capture, storageObjects: 2 })).toThrow('Missing capture file: storage_buckets.json')
+    expect(() => validateCaptureManifest({ ...withFiles, storageObjects: 3 })).toThrow('need their copies')
+    expect(() => validateCaptureManifest({ ...capture, storageObjects: undefined })).toThrow('Storage file count missing')
+    expect(() => verifyStorageCopies({ manifest: withFiles, inventory: records(3), objects: copies }))
+      .toThrow('do not match the captured file records')
+    expect(() => verifyStorageCopies({ manifest: withFiles, inventory: records(2), objects: [copies[0], { ...copies[1], sha256: 'b'.repeat(64) }] }))
+      .toThrow('missing or changed')
+    expect(() => verifyStorageCopies({ manifest: withFiles, inventory: records(2), objects: [copies[1], copies[0]] })).toThrow('out of order')
+    expect(() => verifyStorageCopies({ manifest: withFiles, inventory: records(2), objects: [copies[0], { ...copies[1], name: copies[0].name }] }))
+      .toThrow('duplicate')
+    expect(() => verifyStorageCopies({ manifest: withFiles, inventory: records(2), objects: copies, buckets: [...buckets, { ...buckets[0], id: 'avatars' }] }))
+      .toThrow('unknown or changed Storage bucket')
+    expect(knownBucketsOnly([{ ...buckets[0], public: false }])).toBe(false)
+    expect(knownBucketsOnly([{ ...buckets[0], file_size_limit: 52428800 }])).toBe(false)
+    expect(publicObjectUrl('court-photos', 'a/b c.webp'))
+      .toBe('https://iclrvvsiwypxlwrwgqia.supabase.co/storage/v1/object/public/court-photos/a/b%20c.webp')
+    expect(() => publicObjectUrl('court-photos', 'a/../secret.webp')).toThrow('Unsafe')
+    expect(() => publicObjectUrl('avatars', 'a.webp')).toThrow('Not a known public bucket')
+  })
+
+  it('downloads a stored file through its public link and checks it against its record', async () => {
+    const { downloadStoredFile } = await load()
+    const body = Buffer.from('photo bytes')
+    const md5 = '"' + (await import('node:crypto')).createHash('md5').update(body).digest('hex') + '"'
+    const record = { bucket_id: 'court-photos', name: 'club/gallery/a.webp', size: body.length, etag: md5 }
+    const asked: string[] = []
+    const serve = (status: number, bytes: Buffer) => async (url: string) => {
+      asked.push(url)
+      return { status, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) }
+    }
+    const good = await downloadStoredFile(record, 'File 1', { fetchImpl: serve(200, body) })
+    expect(good.bytes.equals(body)).toBe(true)
+    expect(good.etag).toBe(md5.replaceAll('"', ''))
+    expect(asked).toEqual(['https://iclrvvsiwypxlwrwgqia.supabase.co/storage/v1/object/public/court-photos/club/gallery/a.webp'])
+
+    await expect(downloadStoredFile(record, 'File 1', { fetchImpl: serve(404, body) })).rejects.toThrow('could not be downloaded (HTTP 404)')
+    await expect(downloadStoredFile(record, 'File 1', { fetchImpl: serve(200, Buffer.from('short')) })).rejects.toThrow('different size')
+    await expect(downloadStoredFile(record, 'File 1', { fetchImpl: serve(200, Buffer.from('PHOTO BYTES')) })).rejects.toThrow('differs from its record')
+    await expect(downloadStoredFile({ ...record, size: null }, 'File 1', { fetchImpl: serve(200, body) })).rejects.toThrow('no size')
+    await expect(downloadStoredFile({ ...record, bucket_id: 'avatars' }, 'File 1', { fetchImpl: serve(200, body) })).rejects.toThrow('unknown bucket')
+  })
+
   it('opens the staging gate only for the approved package, a fresh verified backup, a passing dry run and unchanged staging', async () => {
     const { approvedManifestSha256, expectedStagingVersions, verifyApplyGate } = await load()
     const capture = await goodCapture()
@@ -228,6 +286,34 @@ describe('staging releases', () => {
     const { contents } = releaseManifest(advisorFollowupRelease)
     expect(contents.get('supabase/migrations/20261017170000_supabase_advisor_followup.sql')?.toString('utf8'))
       .toContain('create or replace view public.public_schedule with (security_barrier = true, security_invoker = true)')
+  })
+
+  it('builds the club profile release on the 27-migration state and re-runs every earlier check', async () => {
+    const { clubProfileRelease, courtPhotosRelease, releaseManifest, releases } = await load()
+    const { clubProfileChecks } = await import('../scripts/club-platform-checks.mjs')
+    const { releaseApprovals } = await import('../scripts/staging-release-approvals.mjs')
+    expect(clubProfileRelease.baseVersions).toEqual([...courtPhotosRelease.baseVersions, '20261023090000'])
+    expect(clubProfileRelease.baseVersions).toHaveLength(27)
+    expect(clubProfileRelease.migrations).toEqual(['20261115090000_club_business_profile.sql'])
+    expect(clubProfileRelease.stateCheck).toEqual({ file: 'court_photos_postflight.sql', kind: 'courtPhotos' })
+    expect(clubProfileRelease.postChecks.map((check: { kind: string, ignore: string[] }) => [check.kind, [...check.ignore]])).toEqual([
+      ['clubProfile', []],
+      ['courtPhotos', ['ledger_has_court_photos']],
+      ['courtMarketplace', ['ledger_has_court_marketplace']],
+      ['advisorFollowup', ['ledger_has_followup']],
+      ['advisor', ['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']],
+      ['postflight', ['ledger_has_every_migration']],
+    ])
+    // Prepared, not approved: the owner approves after the dry run passes.
+    expect(releaseApprovals['club-profile-20261115']).toBeNull()
+    const earlier = Object.values(releases).filter(release => release !== clubProfileRelease)
+      .flatMap((release: { dirs: object, databases: object }) => [...Object.values(release.dirs), ...Object.values(release.databases)])
+    expect([...Object.values(clubProfileRelease.dirs), ...Object.values(clubProfileRelease.databases)]
+      .filter(name => earlier.includes(name))).toEqual([])
+    const { contents } = releaseManifest(clubProfileRelease)
+    const postflight = contents.get('supabase/verification/club_profile_postflight.sql')?.toString('utf8') ?? ''
+    expect([...postflight.matchAll(/select \d+, '([a-z_]+)'/g)].map(match => match[1])).toEqual([...clubProfileChecks])
+    expect(postflight).toContain("version = '20261115090000'")
   })
 
   it('hashes the release definition and every file, and returns the bytes it hashed', async () => {
