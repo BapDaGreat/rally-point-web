@@ -183,6 +183,32 @@ describe('backup and approval gates', () => {
     expect(() => publicObjectUrl('avatars', 'a.webp')).toThrow('Not a known public bucket')
   })
 
+  it('creates Storage policies after the application functions they call, and leaves older backups unchanged', async () => {
+    const { restoreTransactionSql, splitStoragePolicies } = await load()
+    const policy = 'CREATE POLICY "court_photos_admin_select" ON "storage"."objects" FOR SELECT TO "authenticated" USING ((("bucket_id" = \'court-photos\'::"text") AND "private"."can_manage_court_photo"("name")));'
+    const files: Record<string, string> = {
+      'managed_before_app.sql': `CREATE TABLE "storage"."objects" ();\n\n${policy}\n\nALTER TABLE "storage"."objects" ENABLE ROW LEVEL SECURITY;\n`,
+      'history_schema.sql': '-- history\n',
+      'schema.sql': 'ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";\nCREATE FUNCTION "private"."can_manage_court_photo"("p_name" "text") RETURNS boolean;\n',
+      'managed_after_app.sql': 'CREATE OR REPLACE TRIGGER "on_auth_user_created" AFTER INSERT ON "auth"."users";\n',
+      'application_acl_recovery.generated.sql': '-- acl\n',
+    }
+    // The three default-permission groups every capture holds (tables, sequences, functions).
+    const catalog = [['r', 'SELECT'], ['S', 'USAGE'], ['f', 'EXECUTE']].map(([type, privilege]) =>
+      ({ kind: 'default_acl', identity: `supabase_admin:public:${type}`, details: [['supabase_admin', 'anon', privilege, false]] }))
+    const sql: string = restoreTransactionSql((name: string) => files[name], [], catalog)
+    expect(sql.indexOf(policy)).toBeGreaterThan(sql.indexOf('CREATE FUNCTION "private"."can_manage_court_photo"'))
+    expect(sql.indexOf(policy)).toBeGreaterThan(sql.indexOf('on_auth_user_created'))
+    expect(sql.split(policy)).toHaveLength(2)
+    expect(sql).toContain('-- Storage policy restored after the application schema.')
+
+    // A backup made before Storage had policies restores exactly as before.
+    const plain = 'CREATE TABLE "storage"."objects" ();\n'
+    expect(splitStoragePolicies(plain)).toEqual({ before: plain, policies: [] })
+    // A policy in an unfamiliar shape is refused rather than guessed at.
+    expect(() => splitStoragePolicies('CREATE POLICY "x" ON "storage"."objects" FOR SELECT\n  USING (true);\n')).toThrow('Unrecognised Storage policy')
+  })
+
   it('downloads a stored file through its public link and checks it against its record', async () => {
     const { downloadStoredFile } = await load()
     const body = Buffer.from('photo bytes')

@@ -211,13 +211,15 @@ export const clubProfileRelease = Object.freeze({
     Object.freeze({ file: 'club_platform_postflight.sql', kind: 'postflight', ignore: Object.freeze(['ledger_has_every_migration']) }),
   ]),
   isolation: Object.freeze({ file: 'two_club_isolation.sql', plan: 55 }),
+  // The r1 restore stopped (kept as evidence): the Storage policies were restored before the
+  // application functions they call. The restore now creates them after the application schema.
   dirs: Object.freeze({
     capture: 'docs/release-private/staging-backup-20261115-r1',
-    restore: 'docs/release-private/staging-backup-restore-20261115-r1',
+    restore: 'docs/release-private/staging-backup-restore-20261115-r2',
     dryRun: 'docs/release-private/club-profile-staging-dryrun-20261115-r1',
     apply: 'docs/release-private/club-profile-staging-apply-20261115-r1',
   }),
-  databases: Object.freeze({ restore: 'rally_staging_backup_20261115_r1_restore', dryRun: 'rally_staging_backup_20261115_r1_dryrun' }),
+  databases: Object.freeze({ restore: 'rally_staging_backup_20261115_r2_restore', dryRun: 'rally_staging_backup_20261115_r1_dryrun' }),
 })
 
 export const releases = Object.freeze({ [advisorFixesRelease.id]: advisorFixesRelease,
@@ -539,16 +541,31 @@ export function verifyCaptureFiles(manifest, readBytes, versions = expectedStagi
   return manifest.files.length
 }
 
+// Storage policies are dumped with the managed Storage schema, but since the court photos release
+// (20261023) they call application functions (private.can_manage_court_photo, and later
+// private.can_manage_club_media), which exist only once the application schema is restored.
+// So they move after it, as the signup trigger does. pg_dump writes each on one line.
+const storagePolicyStatement = /^CREATE POLICY "[^"\n]+" ON "storage"\."objects" [^\n]*;$/gm
+
+/** Splits the Storage policies out of the managed schema, to be created after the application schema. */
+export function splitStoragePolicies(managedSql) {
+  const policies = managedSql.match(storagePolicyStatement) ?? []
+  const before = managedSql.replace(storagePolicyStatement, '-- Storage policy restored after the application schema.')
+  assert.ok(!/^CREATE POLICY [^\n]* ON "storage"\."objects"/m.test(before), 'Unrecognised Storage policy statement')
+  return { before, policies }
+}
+
 /** The full restore transaction, following the reviewed 2026-09-25 restore that passed. */
 export function restoreTransactionSql(read, dataFiles, catalogObjects) {
   const schema = read('schema.sql')
   const defaults = schema.match(/^ALTER DEFAULT PRIVILEGES[^;]+;/gm) ?? []
   assert.ok(defaults.length > 0, 'Missing default privileges in the schema dump')
+  const managed = splitStoragePolicies(read('managed_before_app.sql'))
   return ['BEGIN;', 'CREATE SCHEMA private AUTHORIZATION postgres;', 'CREATE SCHEMA extensions AUTHORIZATION postgres;',
     'CREATE SCHEMA vault AUTHORIZATION postgres;', 'GRANT USAGE ON SCHEMA extensions TO PUBLIC;',
     'CREATE EXTENSION pgcrypto WITH SCHEMA extensions;', 'CREATE PUBLICATION supabase_realtime;',
-    read('managed_before_app.sql'), read('history_schema.sql'), defaults.join('\n'), schema,
-    'CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public;', read('managed_after_app.sql'),
+    managed.before, read('history_schema.sql'), defaults.join('\n'), schema,
+    'CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public;', read('managed_after_app.sql'), ...managed.policies,
     ...dataFiles.map(read), read('application_acl_recovery.generated.sql'), defaultAclSupplement(catalogObjects), 'COMMIT;'].join('\n')
 }
 
