@@ -330,8 +330,8 @@ describe('staging releases', () => {
       ['advisor', ['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']],
       ['postflight', ['ledger_has_every_migration']],
     ])
-    // Prepared, not approved: the owner approves after the dry run passes.
-    expect(releaseApprovals['club-profile-20261115']).toBeNull()
+    // Approved by the owner after the dry run passed (applied 2026-11-16).
+    expect(releaseApprovals['club-profile-20261115']).toMatch(/^[a-f0-9]{64}$/)
     const earlier = Object.values(releases).filter(release => release !== clubProfileRelease)
       .flatMap((release: { dirs: object, databases: object }) => [...Object.values(release.dirs), ...Object.values(release.databases)])
     expect([...Object.values(clubProfileRelease.dirs), ...Object.values(clubProfileRelease.databases)]
