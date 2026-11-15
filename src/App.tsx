@@ -36,6 +36,8 @@ import { JoinClubPage } from './pages/JoinClub'
 import { homeFor } from './lib/roleHome'
 import { PrivacyNoticePage } from './pages/PrivacyNoticePage'
 import { ClubDetailPage, ClubDirectory } from './pages/Clubs'
+import { WelcomePage } from './pages/Welcome'
+import { OwnersPage } from './pages/Owners'
 
 function Protected({ roles }: { roles?: Role[] }) {
   const { user, loading } = useAuth()
@@ -75,6 +77,8 @@ function AppRoutes() {
         {/* Find a court: open to visitors; booking asks them to sign in. */}
         <Route path="/clubs" element={<ClubDirectory />} />
         <Route path="/clubs/:slug" element={<ClubDetailPage />} />
+        {/* Court owners: how listing works, and a request for a call. Open to visitors. */}
+        <Route path="/owners" element={<OwnersPage />} />
         <Route path="/" element={<RootRedirect />} />
         {/* Club join links: sign up, or join while signed in */}
         <Route path="/join/:slug" element={<JoinClubPage />} />
@@ -126,6 +130,7 @@ function AppRoutes() {
           <Route path="/superadmin" element={<SuperadminPage section="overview" />} />
           <Route path="/superadmin/clubs" element={<SuperadminPage section="clubs" />} />
           <Route path="/superadmin/ledger" element={<SuperadminPage section="ledger" />} />
+          <Route path="/superadmin/requests" element={<SuperadminPage section="requests" />} />
           {/* Platform FAQs and contacts only; Help loads no club data for superadmins. */}
           <Route path="/superadmin/help" element={<HelpPage />} />
         </Route>
@@ -144,7 +149,7 @@ function RootRedirect() {
       </div>
     )
   }
-  // Visitors land on Find a court; signed-in people go to their own home.
-  if (!user) return <Navigate to="/clubs" replace />
+  // Visitors choose between playing (Find a court) and listing a club; signed-in people go to their own home.
+  if (!user) return <WelcomePage />
   return <Navigate to={homeFor(user.role)} replace />
 }

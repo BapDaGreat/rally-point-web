@@ -68,6 +68,7 @@ const roleLinks: Record<Role, Array<[label: string, href: string]>> = {
     ['Overview', '/superadmin'],
     ['Clubs', '/superadmin/clubs'],
     ['Ledger', '/superadmin/ledger'],
+    ['Requests', '/superadmin/requests'],
     ['Help', '/superadmin/help'],
   ],
 }

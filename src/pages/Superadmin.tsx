@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { Building2, Coins, LifeBuoy, Plus, RefreshCw, TrendingUp, Users } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Building2, Coins, LifeBuoy, Mail, Phone, PhoneCall, Plus, RefreshCw, TrendingUp, Users } from 'lucide-react'
 import { AppHeader, AppShell, LoadingBlock, SignOutButton } from '../components/Shell'
 import { LoadingShapes, SkeletonBlock, SkeletonLine } from '../components/Skeleton'
 import { api, summarizePlatform } from '../lib/api'
 import { stagger } from '../lib/motion'
 import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
+import { callDayLabel, ownerCallTimeLabel } from '../lib/ownerRequests'
 import type {
+  ClubOwnerInvite,
   ClubStatus,
+  OwnerCallRequest,
+  OwnerCallStatus,
   PlatformAction,
   PlatformClub,
   PlatformClubAdmin,
@@ -15,9 +20,9 @@ import type {
   SupportSession,
   SupportSnapshot,
 } from '../types'
-import { fmtDateTime, fmtTime, peso } from '../types'
+import { fmtDate, fmtDateTime, fmtTime, peso } from '../types'
 
-export type SuperadminSection = 'overview' | 'clubs' | 'ledger'
+export type SuperadminSection = 'overview' | 'clubs' | 'ledger' | 'requests'
 
 type Notice = { tone: 'ok' | 'error'; text: string } | null
 
@@ -37,6 +42,7 @@ const sectionTitle: Record<SuperadminSection, string> = {
   overview: 'Platform overview',
   clubs: 'Clubs',
   ledger: 'Commission ledger',
+  requests: 'Owner requests',
 }
 
 function errorText(error: unknown, fallback: string) {
@@ -60,20 +66,24 @@ export function SuperadminPage({ section = 'overview' }: { section?: SuperadminS
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [notice, setNotice] = useState<Notice>(null)
-  const [showSetup, setShowSetup] = useState(false)
+  const [setupDraft, setSetupDraft] = useState<SetupDraft | null>(null)
+  // Null when the requests could not load; the rest of the portal still works.
+  const [requests, setRequests] = useState<OwnerCallRequest[] | null>([])
 
   const load = useCallback(async () => {
     try {
-      const [clubRows, ledgerRows, actionRows, sessionRows] = await Promise.all([
+      const [clubRows, ledgerRows, actionRows, sessionRows, requestRows] = await Promise.all([
         api.platformClubs(),
         api.platformLedger(ledgerClub || null, 200),
         api.platformRecentActions(20),
         api.mySupportSessions(),
+        api.platformOwnerCallRequests().catch(() => null),
       ])
       setClubs(clubRows)
       setLedger(ledgerRows)
       setActions(actionRows)
       setSupportSessions(sessionRows)
+      setRequests(requestRows)
     } catch (error) {
       setNotice({ tone: 'error', text: errorText(error, 'Could not load platform information.') })
     } finally {
@@ -91,11 +101,11 @@ export function SuperadminPage({ section = 'overview' }: { section?: SuperadminS
    * Resolves to null when it worked, or to the error text. Dialogs pass
    * `inline` and show the error themselves, because they cover the page notice.
    */
-  async function run(action: () => Promise<unknown>, success: string, { inline = false } = {}) {
+  async function run<T>(action: () => Promise<T>, success: string | ((result: T) => string), { inline = false } = {}) {
     setNotice(null)
     try {
-      await action()
-      setNotice({ tone: 'ok', text: success })
+      const result = await action()
+      setNotice({ tone: 'ok', text: typeof success === 'function' ? success(result) : success })
       await load()
       return null
     } catch (error) {
@@ -146,32 +156,47 @@ export function SuperadminPage({ section = 'overview' }: { section?: SuperadminS
           section === 'overview' ? (
             <OverviewLoading />
           ) : (
-            <LoadingBlock label={section === 'clubs' ? 'Loading clubs…' : 'Loading the commission ledger…'} />
+            <LoadingBlock
+              label={section === 'clubs' ? 'Loading clubs…' : section === 'requests' ? 'Loading owner requests…' : 'Loading the commission ledger…'}
+            />
           )
         ) : section === 'overview' ? (
-          <Overview clubs={clubs} actions={actions} />
+          <Overview clubs={clubs} actions={actions} newRequests={requests?.filter((request) => request.status === 'new').length ?? 0} />
         ) : section === 'clubs' ? (
           <ClubDirectory
             clubs={clubs}
             openSession={supportSessions.find((session) => session.is_open) ?? null}
-            onSetUp={() => setShowSetup(true)}
+            onSetUp={() => setSetupDraft(emptyDraft())}
             run={run}
           />
+        ) : section === 'requests' ? (
+          <OwnerRequests rows={requests} run={run} onSetUp={(request) => setSetupDraft(draftFromRequest(request))} />
         ) : (
           <Ledger clubs={clubs} rows={ledger} clubFilter={ledgerClub} onFilter={setLedgerClub} />
         )}
       </main>
 
-      {showSetup ? (
+      {setupDraft ? (
         <SetUpClubDialog
-          onClose={() => setShowSetup(false)}
-          onSubmit={async (input) => {
+          initial={setupDraft}
+          onClose={() => setSetupDraft(null)}
+          onSubmit={async (input, ownerEmail) => {
+            const email = ownerEmail.trim().toLowerCase()
             const error = await run(
-              () => api.provisionClub(input),
-              `${input.name} is set up. Assign an admin, then activate it.`,
+              async (): Promise<OwnerSetupResult> => {
+                const clubId = await api.provisionClub(input)
+                if (!email) return null
+                // The club exists now, so a failed invite is reported, not retried as a new club.
+                try {
+                  return await api.inviteClubOwner(clubId, email)
+                } catch (inviteError) {
+                  return { failed: errorText(inviteError, 'The owner invite did not work.') }
+                }
+              },
+              (result) => setupMessage(input.name, email, result),
               { inline: true },
             )
-            if (!error) setShowSetup(false)
+            if (!error) setSetupDraft(null)
             return error
           }}
         />
@@ -241,7 +266,7 @@ function OverviewLoading() {
   )
 }
 
-function Overview({ clubs, actions }: { clubs: PlatformClub[]; actions: PlatformAction[] }) {
+function Overview({ clubs, actions, newRequests }: { clubs: PlatformClub[]; actions: PlatformAction[]; newRequests: number }) {
   const stats = summarizePlatform(clubs)
   const cards: { label: string; value: string; icon: typeof Coins }[] = [
     { label: 'Commission recorded', value: peso(stats.totalCommissionsEarned), icon: Coins },
@@ -251,6 +276,15 @@ function Overview({ clubs, actions }: { clubs: PlatformClub[]; actions: Platform
   ]
   return (
     <div className="space-y-4">
+      {newRequests > 0 ? (
+        <Link
+          to="/superadmin/requests"
+          className="enter-rise control-feedback card flex min-h-14 items-center gap-3 p-4 text-body font-semibold text-slate-900"
+        >
+          <PhoneCall size={22} className="text-brand-700" aria-hidden />
+          {newRequests === 1 ? '1 court owner asked for a call' : `${newRequests} court owners asked for a call`}
+        </Link>
+      ) : null}
       <section aria-label="Platform totals" className="enter-rise grid grid-cols-2 gap-3 lg:grid-cols-4">
         {cards.map(({ label, value, icon: Icon }) => (
           <div key={label} className="card p-4">
@@ -319,6 +353,14 @@ function describeAction(action: PlatformAction) {
       return `Added an admin to ${club}`
     case 'club.admin_revoke':
       return `Removed an admin from ${club}`
+    case 'club.owner_invite':
+      return `Invited the owner of ${club}`
+    case 'club.owner_invite_cancel':
+      return `Cancelled an owner invite for ${club}`
+    case 'club.owner_claim':
+      return `The owner of ${club} signed up and became its admin`
+    case 'owner_request.status':
+      return `Marked an owner request as ${to || 'updated'}`
     case 'support.start':
       return `Opened a support view of ${club}`
     case 'support.read':
@@ -342,7 +384,7 @@ function StatusBadge({ status }: { status: ClubStatus }) {
   )
 }
 
-type Run = (action: () => Promise<unknown>, success: string, options?: { inline?: boolean }) => Promise<string | null>
+type Run = <T>(action: () => Promise<T>, success: string | ((result: T) => string), options?: { inline?: boolean }) => Promise<string | null>
 
 function ClubDirectory({
   clubs,
@@ -382,18 +424,20 @@ function ClubCard({ club, supportSession, run }: { club: PlatformClub; supportSe
   const [rate, setRate] = useState(String(club.commission_rate))
   const [adminEmail, setAdminEmail] = useState('')
   const [admins, setAdmins] = useState<PlatformClubAdmin[] | null>(null)
+  const [invites, setInvites] = useState<ClubOwnerInvite[]>([])
   const [busy, setBusy] = useState(false)
   const isDefault = club.slug === DEFAULT_CLUB_SLUG
 
   const loadAdmins = useCallback(async () => {
-    try {
-      setAdmins(await api.platformClubAdmins(club.club_id))
-    } catch {
-      setAdmins([])
-    }
+    const [adminRows, inviteRows] = await Promise.all([
+      api.platformClubAdmins(club.club_id).catch(() => [] as PlatformClubAdmin[]),
+      api.clubOwnerInvites(club.club_id).catch(() => [] as ClubOwnerInvite[]),
+    ])
+    setAdmins(adminRows)
+    setInvites(inviteRows)
   }, [club.club_id])
 
-  async function act(action: () => Promise<unknown>, success: string) {
+  async function act<T>(action: () => Promise<T>, success: string | ((result: T) => string)) {
     setBusy(true)
     const ok = (await run(action, success)) === null
     setBusy(false)
@@ -420,6 +464,11 @@ function ClubCard({ club, supportSession, run }: { club: PlatformClub; supportSe
           <p className="mt-1 text-body text-slate-600">
             Join link: <span className="font-mono text-slate-800">{joinLink(club.slug)}</span>
           </p>
+          {club.status === 'provisioning' ? (
+            <p className="text-body font-semibold text-slate-700">
+              {club.admin_count > 0 ? 'Has an admin. Ready to activate.' : 'Needs an admin before it can be activated.'}
+            </p>
+          ) : null}
           {club.city || club.contact_email ? (
             <p className="text-body text-slate-600">
               {[club.city, club.contact_email, club.contact_phone].filter(Boolean).join(' · ')}
@@ -476,7 +525,7 @@ function ClubCard({ club, supportSession, run }: { club: PlatformClub; supportSe
       <section aria-label={`${club.name} admins`} className="space-y-3">
         {admins === null ? (
           <button type="button" className="btn-secondary min-h-12" onClick={() => void loadAdmins()}>
-            Show admins
+            Show admins and invites
           </button>
         ) : admins.length === 0 ? (
           <p className="text-body text-slate-600">No admins yet.</p>
@@ -499,11 +548,37 @@ function ClubCard({ club, supportSession, run }: { club: PlatformClub; supportSe
             ))}
           </ul>
         )}
+        {invites.length > 0 ? (
+          <ul aria-label={`${club.name} owner invites`} className="divide-y divide-amber-100 rounded-xl border border-amber-200 bg-amber-50">
+            {invites.map((invite) => (
+              <li key={invite.id} className="flex flex-wrap items-center justify-between gap-2 p-3">
+                <span className="text-body text-slate-800">
+                  <span className="font-semibold">{invite.email}</span> · invited {fmtDate(invite.created_at)}, waiting for sign-up
+                </span>
+                <button
+                  type="button"
+                  className="btn-secondary min-h-12"
+                  disabled={busy}
+                  onClick={() => void act(() => api.cancelClubOwnerInvite(invite.id), `The invite for ${invite.email} is cancelled.`)}
+                >
+                  Cancel invite
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <form
           className="flex flex-wrap items-end gap-2"
           onSubmit={async (event: FormEvent) => {
             event.preventDefault()
-            const ok = await act(() => api.assignClubAdmin(club.club_id, adminEmail), `${adminEmail.trim()} is now an admin of ${club.name}.`)
+            const email = adminEmail.trim()
+            const ok = await act(
+              () => api.inviteClubOwner(club.club_id, email),
+              (result) =>
+                result === 'assigned'
+                  ? `${email} is now an admin of ${club.name}.`
+                  : `${email} is invited. They become an admin of ${club.name} after signing up with that email and confirming it.`,
+            )
             if (ok) {
               setAdminEmail('')
               await loadAdmins()
@@ -518,13 +593,17 @@ function ClubCard({ club, supportSession, run }: { club: PlatformClub; supportSe
               autoComplete="off"
               value={adminEmail}
               onChange={(event) => setAdminEmail(event.target.value)}
-              placeholder="They must sign up first"
+              placeholder="name@example.com"
+              aria-describedby={`admin-hint-${club.club_id}`}
               required
             />
           </label>
           <button type="submit" className="btn-primary min-h-12" disabled={busy}>
             Add admin
           </button>
+          <p id={`admin-hint-${club.club_id}`} className="w-full text-caption text-slate-500">
+            No account yet? They are invited, and become an admin once they sign up with this email and confirm it.
+          </p>
         </form>
       </section>
 
@@ -862,14 +941,51 @@ function toLinkName(name: string) {
     .slice(0, 50)
 }
 
+/** What the set-up dialog starts with: empty, or filled in from an owner's request. */
+type SetupDraft = { input: ProvisionClubInput; ownerEmail: string }
+type OwnerSetupResult = 'assigned' | 'invited' | { failed: string } | null
+
+function emptyDraft(): SetupDraft {
+  return { input: emptySetup, ownerEmail: '' }
+}
+
+function draftFromRequest(request: OwnerCallRequest): SetupDraft {
+  return {
+    input: {
+      ...emptySetup,
+      name: request.club_name,
+      slug: toLinkName(request.club_name),
+      city: request.city,
+      contact_email: request.email ?? '',
+      contact_phone: request.phone ?? '',
+      court_count: Math.min(Math.max(request.court_count, 1), 12),
+    },
+    ownerEmail: request.email ?? '',
+  }
+}
+
+function setupMessage(name: string, email: string, result: OwnerSetupResult) {
+  if (result === 'assigned') return `${name} is set up and ${email} is its admin. Activate it when the owner is ready.`
+  if (result === 'invited') {
+    return `${name} is set up. ${email} becomes its admin after signing up with that email and confirming it. Then activate the club.`
+  }
+  if (result) return `${name} is set up, but the owner invite did not work: ${result.failed} Add the owner from the club card.`
+  return `${name} is set up. Assign an admin, then activate it.`
+}
+
+const ownerEmailPattern = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+
 function SetUpClubDialog({
+  initial,
   onClose,
   onSubmit,
 }: {
+  initial: SetupDraft
   onClose: () => void
-  onSubmit: (input: ProvisionClubInput) => Promise<string | null>
+  onSubmit: (input: ProvisionClubInput, ownerEmail: string) => Promise<string | null>
 }) {
-  const [form, setForm] = useState<ProvisionClubInput>(emptySetup)
+  const [form, setForm] = useState<ProvisionClubInput>(initial.input)
+  const [ownerEmail, setOwnerEmail] = useState(initial.ownerEmail)
   const [linkTouched, setLinkTouched] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -898,9 +1014,13 @@ function SetUpClubDialog({
           className="mt-4 space-y-3"
           onSubmit={async (event: FormEvent) => {
             event.preventDefault()
+            if (ownerEmail.trim() && !ownerEmailPattern.test(ownerEmail.trim())) {
+              setError('Enter the owner’s email like name@example.com')
+              return
+            }
             setSaving(true)
             setError(null)
-            setError(await onSubmit({ ...form, slug: form.slug || toLinkName(form.name) }))
+            setError(await onSubmit({ ...form, slug: form.slug || toLinkName(form.name) }, ownerEmail))
             setSaving(false)
           }}
         >
@@ -924,7 +1044,8 @@ function SetUpClubDialog({
                 setLinkTouched(true)
                 update('slug', event.target.value.toLowerCase())
               }}
-              pattern="[a-z0-9][a-z0-9-]{1,48}[a-z0-9]"
+              // Browsers read this with the v flag, where a bare "-" inside [ ] is an error.
+              pattern="[a-z0-9][a-z0-9\-]{1,48}[a-z0-9]"
               title="3 to 50 lowercase letters, numbers or dashes"
               required
             />
@@ -976,6 +1097,18 @@ function SetUpClubDialog({
               />
             </Field>
           </div>
+          <Field
+            label="Owner’s email (optional)"
+            hint="They become the club’s admin once they sign up with this email and confirm it. If they already have an account, they become admin now."
+          >
+            <input
+              className="input min-h-12 w-full"
+              type="email"
+              autoComplete="off"
+              value={ownerEmail}
+              onChange={(event) => setOwnerEmail(event.target.value)}
+            />
+          </Field>
           <DialogError text={error} />
           <div className="flex flex-wrap justify-end gap-2 pt-2">
             <button type="button" className="btn-secondary min-h-12" onClick={onClose}>
@@ -1001,5 +1134,179 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       </label>
       {hint ? <p className="mt-1 text-caption text-slate-500">{hint}</p> : null}
     </div>
+  )
+}
+
+const requestFilters: { value: OwnerCallStatus | 'all'; label: string }[] = [
+  { value: 'new', label: 'New' },
+  { value: 'called', label: 'Called' },
+  { value: 'closed', label: 'Closed' },
+  { value: 'all', label: 'All' },
+]
+
+const requestStatusLabel: Record<OwnerCallStatus, string> = { new: 'New', called: 'Called', closed: 'Closed' }
+const requestStatusStyle: Record<OwnerCallStatus, string> = {
+  new: 'bg-amber-100 text-amber-900',
+  called: 'bg-sky-100 text-sky-900',
+  closed: 'bg-slate-200 text-slate-800',
+}
+
+/** Court owners who asked for a call. Contact details stay on this screen; the audit log keeps ids only. */
+function OwnerRequests({
+  rows,
+  run,
+  onSetUp,
+}: {
+  rows: OwnerCallRequest[] | null
+  run: Run
+  onSetUp: (request: OwnerCallRequest) => void
+}) {
+  const [filter, setFilter] = useState<OwnerCallStatus | 'all'>('new')
+  if (rows === null) {
+    return (
+      <p role="alert" className="rounded-2xl bg-red-50 p-4 text-base font-semibold text-red-800">
+        Owner requests could not load. Try Refresh.
+      </p>
+    )
+  }
+  const shown = rows.filter((row) => filter === 'all' || row.status === filter)
+  const count = (value: OwnerCallStatus | 'all') => (value === 'all' ? rows.length : rows.filter((row) => row.status === value).length)
+  return (
+    <div className="enter-rise space-y-4">
+      <p className="text-body text-slate-600">
+        Court owners who asked us to call about listing their club. Call them, then set up their club from here.
+      </p>
+      <div role="group" aria-label="Show requests" className="flex flex-wrap gap-2">
+        {requestFilters.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={filter === option.value}
+            onClick={() => setFilter(option.value)}
+            className={`control-feedback min-h-12 rounded-2xl px-4 text-body font-semibold ${
+              filter === option.value ? 'bg-brand-700 text-white' : 'border-2 border-slate-200 text-slate-700'
+            }`}
+          >
+            {option.label} ({count(option.value)})
+          </button>
+        ))}
+      </div>
+      {shown.length === 0 ? (
+        <p className="text-body text-slate-600">{filter === 'new' ? 'No new requests.' : 'No requests here.'}</p>
+      ) : (
+        <ul className="space-y-3">
+          {shown.map((request) => (
+            <OwnerRequestCard key={request.id} request={request} run={run} onSetUp={onSetUp} />
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function OwnerRequestCard({
+  request,
+  run,
+  onSetUp,
+}: {
+  request: OwnerCallRequest
+  run: Run
+  onSetUp: (request: OwnerCallRequest) => void
+}) {
+  const [busy, setBusy] = useState(false)
+
+  async function setStatus(status: OwnerCallStatus, success: string) {
+    setBusy(true)
+    await run(() => api.setOwnerCallStatus(request.id, status), success)
+    setBusy(false)
+  }
+
+  const handled = request.handled_at
+    ? ` · ${requestStatusLabel[request.status]} ${fmtDateTime(request.handled_at)}${request.handled_by_email ? ` by ${request.handled_by_email}` : ''}`
+    : ''
+
+  return (
+    <li className="card space-y-3 p-4">
+      <article aria-labelledby={`request-${request.id}`} className="space-y-3">
+        <header className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 id={`request-${request.id}`} className="text-subtitle font-bold text-slate-900">
+              {request.club_name}
+            </h2>
+            <p className="text-body text-slate-600">
+              {request.city} · {request.court_count === 1 ? '1 court' : `${request.court_count} courts`}
+            </p>
+          </div>
+          <span className={`inline-block rounded-full px-2.5 py-0.5 text-caption font-bold ${requestStatusStyle[request.status]}`}>
+            {requestStatusLabel[request.status]}
+          </span>
+        </header>
+        <dl className="grid grid-cols-1 gap-2 text-body sm:grid-cols-2">
+          <div>
+            <dt className="font-semibold text-slate-600">Owner</dt>
+            <dd className="text-slate-900">{request.full_name}</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-slate-600">Call on</dt>
+            <dd className="text-slate-900">
+              {callDayLabel(request.preferred_date)}, {ownerCallTimeLabel(request.preferred_time).toLowerCase()}
+            </dd>
+          </div>
+        </dl>
+        <div className="flex flex-wrap gap-2">
+          {request.phone ? (
+            <a href={`tel:${request.phone.replace(/[^\d+]/g, '')}`} className="btn-secondary min-h-12">
+              <Phone size={18} aria-hidden /> {request.phone}
+            </a>
+          ) : null}
+          {request.email ? (
+            <a href={`mailto:${request.email}`} className="btn-secondary min-h-12 break-all">
+              <Mail size={18} aria-hidden /> {request.email}
+            </a>
+          ) : null}
+        </div>
+        {request.message ? (
+          <p className="whitespace-pre-line rounded-xl bg-slate-50 p-3 text-body text-slate-700">{request.message}</p>
+        ) : null}
+        <p className="text-caption text-slate-500">
+          Received {fmtDateTime(request.created_at)}
+          {handled}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {request.status === 'new' ? (
+            <button
+              type="button"
+              className="btn-primary min-h-12"
+              disabled={busy}
+              onClick={() => void setStatus('called', `Marked ${request.club_name} as called.`)}
+            >
+              Mark as called
+            </button>
+          ) : null}
+          <button type="button" className="btn-secondary min-h-12" onClick={() => onSetUp(request)}>
+            <Plus size={18} aria-hidden /> Set up this club
+          </button>
+          {request.status === 'closed' ? (
+            <button
+              type="button"
+              className="btn-secondary min-h-12"
+              disabled={busy}
+              onClick={() => void setStatus('new', `Reopened the request from ${request.club_name}.`)}
+            >
+              Reopen
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-secondary min-h-12"
+              disabled={busy}
+              onClick={() => void setStatus('closed', `Closed the request from ${request.club_name}.`)}
+            >
+              Close
+            </button>
+          )}
+        </div>
+      </article>
+    </li>
   )
 }

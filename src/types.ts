@@ -198,6 +198,56 @@ export interface ProvisionClubInput {
   court_count: number
 }
 
+/** When a court owner would like Rally Point to call. */
+export type OwnerCallTime = 'morning' | 'afternoon' | 'evening'
+export type OwnerCallStatus = 'new' | 'called' | 'closed'
+
+/** What a court owner sends from the public "I own a court" page. Blank text means "not given". */
+export interface OwnerCallRequestInput {
+  full_name: string
+  club_name: string
+  city: string
+  court_count: number
+  phone: string
+  email: string
+  /** YYYY-MM-DD, Philippine time. */
+  preferred_date: string
+  preferred_time: OwnerCallTime
+  message: string
+}
+
+/** An owner's request, as the platform superadmin sees it. */
+export interface OwnerCallRequest {
+  id: string
+  full_name: string
+  club_name: string
+  city: string
+  court_count: number
+  phone: string | null
+  email: string | null
+  preferred_date: string
+  preferred_time: OwnerCallTime
+  message: string | null
+  status: OwnerCallStatus
+  created_at: string
+  handled_at: string | null
+  handled_by_email: string | null
+}
+
+/** An open invite: the person becomes the club's admin once they sign up with this email and confirm it. */
+export interface ClubOwnerInvite {
+  id: string
+  email: string
+  created_at: string
+}
+
+/** A club the signed-in person owns through an invite, with its platform status. */
+export interface OwnerClub {
+  club_id: string
+  name: string
+  status: ClubStatus
+}
+
 export interface SuperadminStats {
   totalGrossVolume: number
   totalCommissionsEarned: number

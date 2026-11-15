@@ -11,7 +11,7 @@ const CLUB_STATUSES: ClubStatus[] = ['provisioning', 'active', 'suspended']
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/
 
 /** Mirrors private.require_platform_superadmin: only a trusted platform role may act. */
-function requirePlatform(db: DemoDB): string {
+export function requirePlatform(db: DemoDB): string {
   const actor = db.sessionUserId
   if (!actor || !db.platformRoles.some((row) => row.user_id === actor && row.role === 'superadmin')) {
     throw new Error('Platform access required')
@@ -19,11 +19,11 @@ function requirePlatform(db: DemoDB): string {
   return actor
 }
 
-function audit(db: DemoDB, actorId: string, action: string, clubId: string | null, details: Record<string, unknown>) {
+export function audit(db: DemoDB, actorId: string | null, action: string, clubId: string | null, details: Record<string, unknown>) {
   db.auditLog.unshift({ id: uid('audit'), actor_id: actorId, action, club_id: clubId, details, created_at: todayISO() })
 }
 
-function findClub(db: DemoDB, clubId: string) {
+export function findClub(db: DemoDB, clubId: string) {
   const club = db.clubs.find((row) => row.id === clubId)
   if (!club) throw new Error('Club not found')
   return club

@@ -88,6 +88,9 @@ function signupCodeErrorMessage(action: 'verify' | 'resend', error: unknown) {
   return 'Unable to confirm your code. Please try again.'
 }
 
+/** The court-owner messages from sign-in: an owner whose club is not open yet, or who should log in instead. */
+const ownerNotice = /^Your owner account is ready\./
+
 function authenticationErrorMessage(mode: Mode, error: unknown) {
   const message = error instanceof Error ? error.message : 'Unable to continue. Please try again.'
 
@@ -102,7 +105,9 @@ function authenticationErrorMessage(mode: Mode, error: unknown) {
   if (
     /^Password must be at least \d+ characters$/i.test(message) ||
     /^Please enter your name$/i.test(message) ||
-    /^This club link is not valid/i.test(message)
+    /^This club link is not valid/i.test(message) ||
+    // Shown only after the password or sign-up worked, so it reveals nothing to a stranger.
+    ownerNotice.test(message)
   ) {
     return message
   }
@@ -124,7 +129,9 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
   // A club page sends visitors here to sign in, then expects them back to finish booking.
   // The Find a court "Sign up" button opens the sign-up tab directly.
   const location = useLocation()
-  const navState = location.state as { returnTo?: unknown; mode?: unknown } | null
+  const navState = location.state as { returnTo?: unknown; mode?: unknown; owner?: unknown } | null
+  // The court-owner page opens sign-up with a note: owners use the email they gave Rally Point.
+  const ownerSignup = navState?.owner === true && !joinClub
   const [mode, setMode] = useState<Mode>(joinClub || navState?.mode === 'join' ? 'join' : 'login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -212,7 +219,13 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
       finishSignup(profile.role)
     } catch (err) {
       const message = err instanceof Error ? err.message : ''
-      if (/^Your club profile is not ready/i.test(message)) {
+      if (ownerNotice.test(message)) {
+        // The code worked and the email is confirmed; the owner logs in once their club is open.
+        leaveCodeStep(true)
+        setModeSwitches((count) => count + 1)
+        setMode('login')
+        setError(message)
+      } else if (/^Your club profile is not ready/i.test(message)) {
         // The code worked and the email is confirmed, so the same code cannot be used
         // again. Send the person to Log in instead of asking for the code once more.
         leaveCodeStep(true)
@@ -521,6 +534,11 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
                   ? `Already have an account? Log in, then confirm joining ${joinClub.name}.`
                   : 'Members, staff, and admin all use this log-in.'}
               </p>
+              {mode === 'join' && ownerSignup ? (
+                <p className="mt-2 rounded-xl bg-brand-50 p-3 text-base text-brand-900">
+                  Court owner? Use the email you gave Rally Point. Your account becomes your club’s admin, not a player membership.
+                </p>
+              ) : null}
             </div>
 
             <form onSubmit={onSubmit} className="space-y-3.5">
