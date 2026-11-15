@@ -1,5 +1,5 @@
 import type { Booking, BookingStatus, CourtDayAvailability, CourtSession, PaymentMethod } from '../../types'
-import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, courtRateFor, fmtDateTime, hourLabel, localRangeISO } from '../../types'
+import { courtRateFor, fmtDateTime, hourLabel, localRangeISO, venueHours } from '../../types'
 import { makePaymentRef } from '../payments'
 import { activeClubId } from './access'
 import { hydrateBooking, isSlotFree, todayISO, uid } from './common'
@@ -13,7 +13,9 @@ export const bookingOperations = {
     const now = new Date()
     return db.courts.filter((court) => court.club_id === clubId && (!venueId || court.venue_id === venueId)).map((court) => {
       const slots = []
-      for (let h = CLUB_OPEN_HOUR; h < CLUB_CLOSE_HOUR; h++) {
+      // Only the hours the court's venue is open.
+      const { open, close } = venueHours(db.venues.find((venue) => venue.id === court.venue_id))
+      for (let h = open; h < close; h++) {
         const { start_at, end_at } = localRangeISO(dateYmd, h, 1)
         const start = new Date(start_at)
         let available = court.status !== 'maintenance' && isSlotFree(db, { courtId: court.id, start_at, end_at })
@@ -39,7 +41,8 @@ export const bookingOperations = {
     if (opts.venue_id && court.venue_id !== opts.venue_id) throw new Error('Court is outside the selected venue')
     if (court.status === 'maintenance') throw new Error('Court under maintenance')
     if (opts.hours < 1 || opts.hours > 3) throw new Error('Book 1–3 hours')
-    if (opts.startHour + opts.hours > CLUB_CLOSE_HOUR) throw new Error('Outside club hours')
+    const { open, close } = venueHours(db.venues.find((venue) => venue.id === court.venue_id))
+    if (opts.startHour < open || opts.startHour + opts.hours > close) throw new Error('Outside club hours')
     const member = db.members.find((m) => m.id === opts.member_id)
     if (member && member.club_id !== court.club_id) throw new Error('Member belongs to another club')
 

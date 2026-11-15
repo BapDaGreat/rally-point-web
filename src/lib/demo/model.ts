@@ -1,4 +1,4 @@
-import type { Booking, CheckIn, Club, ClubAccount, ClubStaffRole, Court, CourtSession, Member, Notification, OpenPlaySession, OpenPlaySignup, Profile, Reminder, StaffVenueGrant, SupportInquiry, Transaction, Venue, WalkIn } from '../../types'
+import type { Booking, CheckIn, Club, ClubAccount, ClubAddon, ClubCoach, ClubGalleryPhoto, ClubPaymentMethod, ClubProfileFields, ClubStaffRole, Court, CourtSession, Member, Notification, OpenPlaySession, OpenPlaySignup, Profile, Reminder, StaffVenueGrant, SupportInquiry, Transaction, Venue, WalkIn } from '../../types'
 
 /** Platform role, granted by trusted provisioning only. */
 export interface DemoPlatformRole {
@@ -41,6 +41,12 @@ export interface DemoPhoto {
   created_at: string
 }
 
+/** One club's business profile, as stored; mirrors public.club_profiles. */
+export interface DemoClubProfile extends ClubProfileFields {
+  club_id: string
+  updated_at: string
+}
+
 /** A superadmin's support session, as stored; mirrors platform_support_sessions. */
 export interface DemoSupportSession {
   id: string
@@ -79,5 +85,14 @@ export interface DemoDB {
   supportSessions?: DemoSupportSession[]
   /** Optional so browser data saved before court photos existed still loads. */
   photos?: DemoPhoto[]
+  /**
+   * The club business profile (mirrors the club_business_profile tables). Optional so
+   * older browser data still loads. Pictures are data links in photo_url, qr_url and url.
+   */
+  clubProfiles?: DemoClubProfile[]
+  clubAddons?: ClubAddon[]
+  clubCoaches?: ClubCoach[]
+  clubPaymentMethods?: ClubPaymentMethod[]
+  clubGallery?: ClubGalleryPhoto[]
   sessionUserId: string | null
 }

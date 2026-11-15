@@ -177,6 +177,9 @@ export function AdminHome() {
                           <Link to="/admin/venues" className="btn-secondary text-sm">
                             Venues & courts
                           </Link>
+                          <Link to="/admin/profile" className="btn-secondary text-sm">
+                            Business profile
+                          </Link>
                         </div>
 
             <section className="enter-rise card p-4" style={stagger(2)}>

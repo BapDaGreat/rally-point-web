@@ -1,13 +1,22 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Clock, ImageOff, Images, MapPin, Navigation, Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Clock, Images, MapPin, Navigation, Search } from 'lucide-react'
 import { AppHeader, AppShell, SignOutButton } from '../components/Shell'
 import { CourtArt } from '../components/CourtArt'
+import { Photo } from '../components/Photo'
+import {
+  ClubAboutCard,
+  ClubAddonsCard,
+  ClubCoachesCard,
+  ClubGallery,
+  ClubPaymentCard,
+  ClubPoliciesCard,
+} from '../components/ClubProfileSections'
 import { LoadingShapes } from '../components/Skeleton'
 import { stagger } from '../lib/motion'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
-import type { PublicClubDetail, PublicClubListing } from '../types'
+import type { PublicClubDetail, PublicClubListing, PublicClubProfile } from '../types'
 import { openingHoursLabel, peso } from '../types'
 import { directionsUrl, mapEmbedUrl, placeLine } from '../lib/maps'
 
@@ -66,46 +75,6 @@ function ClubDetailLoading() {
         </div>
       </div>
     </LoadingShapes>
-  )
-}
-
-type PhotoState = 'loading' | 'loaded' | 'error'
-
-/**
- * A photo that waits on a grey placeholder while it downloads, then fades in.
- * `className` sizes the frame (aspect, height, rounding), so the space is held either way.
- * A photo that fails to load leaves the labelled placeholder, never a broken-image icon.
- */
-function Photo({ src, alt, className = '', lazy = false }: { src: string; alt: string; className?: string; lazy?: boolean }) {
-  const [status, setStatus] = useState<{ src: string; state: PhotoState }>({ src, state: 'loading' })
-  const state = status.src === src ? status.state : 'loading'
-  // A cached photo can finish before React sees its load event; catch that on mount.
-  // Errors come only from the error event: jsdom and not-yet-started lazy images also
-  // report complete with no size, so that alone does not mean the photo is broken.
-  const checkLoaded = useCallback((img: HTMLImageElement | null) => {
-    if (img?.complete && img.naturalWidth > 0) setStatus({ src, state: 'loaded' })
-  }, [src])
-
-  if (state === 'error') {
-    return (
-      <div role="img" aria-label={alt} data-state="error" className={`photo relative ${className}`}>
-        <ImageOff size={28} className="absolute inset-0 m-auto text-slate-500" aria-hidden />
-      </div>
-    )
-  }
-  return (
-    <div data-state={state} className={`photo relative overflow-hidden ${className}`}>
-      <img
-        ref={checkLoaded}
-        src={src}
-        alt={alt}
-        className="photo-img absolute inset-0 h-full w-full object-cover"
-        loading={lazy ? 'lazy' : undefined}
-        decoding="async"
-        onLoad={() => setStatus({ src, state: 'loaded' })}
-        onError={() => setStatus({ src, state: 'error' })}
-      />
-    </div>
   )
 }
 
@@ -294,6 +263,8 @@ export function ClubDetailPage() {
   const [club, setClub] = useState<PublicClubDetail | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [busyVenue, setBusyVenue] = useState<string | null>(null)
+  // The club's business profile is extra: the page still shows courts if it cannot load.
+  const [profile, setProfile] = useState<{ slug: string; data: PublicClubProfile } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -301,6 +272,11 @@ export function ClubDetailPage() {
     api.publicClubDetail(slug)
       .then((detail) => { if (!cancelled) setClub(detail) })
       .catch((e) => { if (!cancelled) { setClub(null); setError(e instanceof Error ? e.message : 'Could not load this club') } })
+    if (typeof api.publicClubProfile === 'function') {
+      api.publicClubProfile(slug)
+        .then((data) => { if (!cancelled) setProfile(data ? { slug, data } : null) })
+        .catch(() => { if (!cancelled) setProfile(null) })
+    }
     return () => { cancelled = true }
   }, [slug])
 
@@ -335,6 +311,9 @@ export function ClubDetailPage() {
   }
 
   const isPlatform = user?.role === 'superadmin'
+  // Only this club's profile: a slower answer for a previous club page is never shown here.
+  const info = profile?.slug === slug ? profile.data : null
+  const lead = info ? 2 : 0
   const courts = club.venues.flatMap((venue) => venue.courts)
   const openRates = courts.filter((court) => court.in_service).map((court) => court.hourly_rate)
   const fromRate = openRates.length ? Math.min(...openRates) : null
@@ -364,13 +343,16 @@ export function ClubDetailPage() {
       </p>
       {error ? <p role="alert" className="text-body text-red-700">{error}</p> : null}
 
+      {info ? <ClubAboutCard clubName={club.name} profile={info} index={1} /> : null}
+      {info ? <ClubGallery clubName={club.name} profile={info} index={2} /> : null}
+
       {club.venues.map((venue, venueIndex) => {
         const bookable = venue.courts.some((court) => court.in_service)
         const venuePlace = placeLine(venue)
         const directions = directionsUrl(venue)
         const mapUrl = mapEmbedUrl(venue)
         return (
-          <section key={venue.id} className="enter-rise card p-4 space-y-3" style={stagger(venueIndex + 1)} aria-labelledby={`venue-${venue.id}`}>
+          <section key={venue.id} className="enter-rise card p-4 space-y-3" style={stagger(venueIndex + 1 + lead)} aria-labelledby={`venue-${venue.id}`}>
             {venue.cover_photo ? (
               <Photo src={venue.cover_photo} alt={`Cover photo of ${venue.name}`} className="block aspect-[16/9] max-h-64 w-full rounded-xl" lazy />
             ) : null}
@@ -436,6 +418,15 @@ export function ClubDetailPage() {
           </section>
         )
       })}
+
+      {info ? (
+        <>
+          <ClubAddonsCard profile={info} index={club.venues.length + 1 + lead} />
+          <ClubCoachesCard profile={info} index={club.venues.length + 2 + lead} />
+          <ClubPaymentCard clubName={club.name} profile={info} index={club.venues.length + 3 + lead} />
+          <ClubPoliciesCard profile={info} index={club.venues.length + 4 + lead} />
+        </>
+      ) : null}
       {isPlatform ? <p className="text-body text-slate-600">Platform accounts can look but cannot book.</p> : null}
     </Frame>
   )

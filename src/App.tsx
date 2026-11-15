@@ -25,6 +25,7 @@ import {
 } from './pages/admin'
 import { AdminBookings, StaffBookings } from './pages/BookingsDesk'
 import { AdminVenues } from './pages/AdminVenues'
+import { AdminProfile } from './pages/AdminProfile'
 import { LoadingBlock } from './components/Shell'
 import { useEffect } from 'react'
 import { api } from './lib/api'
@@ -117,6 +118,7 @@ function AppRoutes() {
           <Route path="/admin/transactions" element={<AdminTransactions />} />
           <Route path="/admin/users" element={<AdminUsers />} />
           <Route path="/admin/venues" element={<AdminVenues />} />
+          <Route path="/admin/profile" element={<AdminProfile />} />
           <Route path="/admin/help" element={<HelpPage />} />
         </Route>
 

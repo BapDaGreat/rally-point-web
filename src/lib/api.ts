@@ -2,9 +2,19 @@ import { demoStore } from './demoStore'
 import { isDemoMode, supabase } from './supabase'
 import { paymentConfig, simulateCheckout, startCheckout } from './payments'
 import type {
+  AdminClubProfile,
   Booking,
   CheckIn,
   Club,
+  ClubAddon,
+  ClubAddonInput,
+  ClubCoach,
+  ClubCoachInput,
+  ClubGalleryPhoto,
+  ClubPaymentMethod,
+  ClubPaymentMethodInput,
+  ClubProfileFields,
+  PublicClubProfile,
   Court,
   CourtInput,
   CourtPhoto,
@@ -43,9 +53,10 @@ import type {
   SupportSession,
   SupportSnapshot,
 } from '../types'
-import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, hourLabel, localRangeISO } from '../types'
+import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, hourLabel, localRangeISO, venueHours } from '../types'
 import { CLUB_HEADER, getActiveClubId, notifyClubUnavailable, requireActiveClubId } from './clubContext'
 import { PHOTO_BUCKET, photoUrl, shrinkPhoto, shrinkPhotoToDataUrl } from './photos'
+import { emptyClubProfile, normalizeProfile } from './clubProfile'
 
 /** Deletes a stored photo file. A file left behind is never shown, so a failure here is not fatal. */
 async function deletePhotoFile(path: string | null | undefined) {
@@ -53,10 +64,8 @@ async function deletePhotoFile(path: string | null | undefined) {
   await supabase!.storage.from(PHOTO_BUCKET).remove([path]).catch(() => undefined)
 }
 
-/** Shrinks and uploads a photo into a court's or location's folder; returns its stored path. */
-async function uploadPhoto(kind: 'courts' | 'venues', ownerId: string, file: File) {
-  const prepared = await shrinkPhoto(file)
-  const path = `${requireActiveClubId()}/${kind}/${ownerId}/${crypto.randomUUID()}.${prepared.ext}`
+/** Uploads a prepared photo to `path`, never overwriting a file; returns the path. */
+async function storePhoto(path: string, prepared: Awaited<ReturnType<typeof shrinkPhoto>>) {
   const { error } = await supabase!.storage.from(PHOTO_BUCKET).upload(path, prepared.blob, {
     contentType: prepared.type,
     cacheControl: '31536000',
@@ -64,6 +73,43 @@ async function uploadPhoto(kind: 'courts' | 'venues', ownerId: string, file: Fil
   })
   if (error) throw new Error(`The photo could not be uploaded: ${error.message}`)
   return path
+}
+
+/** Shrinks and uploads a photo into a court's or location's folder; returns its stored path. */
+async function uploadPhoto(kind: 'courts' | 'venues', ownerId: string, file: File) {
+  const prepared = await shrinkPhoto(file)
+  return storePhoto(`${requireActiveClubId()}/${kind}/${ownerId}/${crypto.randomUUID()}.${prepared.ext}`, prepared)
+}
+
+/** Shrinks and uploads a club picture (gallery photo, payment QR code, coach photo); returns its stored path. */
+async function uploadClubPicture(folder: 'gallery' | 'payment' | 'coaches', file: File) {
+  // A QR code keeps more detail, so it still scans after shrinking.
+  const prepared = folder === 'payment' ? await shrinkPhoto(file, 1200, 0.95) : await shrinkPhoto(file)
+  return storePhoto(`${requireActiveClubId()}/${folder}/${crypto.randomUUID()}.${prepared.ext}`, prepared)
+}
+
+type StoredCoach = Omit<ClubCoach, 'photo_url'>
+type StoredPaymentMethod = Omit<ClubPaymentMethod, 'qr_url'>
+type StoredGalleryPhoto = Omit<ClubGalleryPhoto, 'url'>
+
+function toAddon(row: ClubAddon): ClubAddon {
+  return { ...row, price: Number(row.price) }
+}
+
+function toCoach(row: StoredCoach): ClubCoach {
+  return {
+    ...row,
+    hourly_rate: row.hourly_rate == null ? null : Number(row.hourly_rate),
+    photo_url: row.photo_path ? photoUrl(row.photo_path) : null,
+  }
+}
+
+function toPaymentMethod(row: StoredPaymentMethod): ClubPaymentMethod {
+  return { ...row, qr_url: row.qr_path ? photoUrl(row.qr_path) : null }
+}
+
+function toGalleryPhoto(row: StoredGalleryPhoto): ClubGalleryPhoto {
+  return { ...row, url: photoUrl(row.path) }
 }
 
 function startOfToday() {
@@ -230,6 +276,14 @@ export const api = {
   async availability(dateYmd: string, venueId?: string): Promise<CourtDayAvailability[]> {
     if (isDemoMode) return demoStore.availability(dateYmd, venueId)
     const courts = await this.listCourts(venueId)
+    // Each venue's own opening hours decide which slots it offers.
+    const venueIds = [...new Set(courts.map((court) => court.venue_id).filter(Boolean))] as string[]
+    const { data: venueRows, error: venueError } = venueIds.length
+      ? await supabase!.from('venues').select('id, open_hour, close_hour').in('id', venueIds)
+      : { data: [], error: null }
+    if (venueError) throw venueError
+    const hoursFor = (id: string | null | undefined) =>
+      venueHours((venueRows ?? []).find((venue) => venue.id === id) as Pick<Venue, 'open_hour' | 'close_hour'> | undefined)
     const dayStart = localRangeISO(dateYmd, CLUB_OPEN_HOUR, 1).start_at
     const dayEnd = localRangeISO(dateYmd, CLUB_CLOSE_HOUR - 1, 1).end_at
     // Private booking/session rows are owner-only for members. The safe schedule
@@ -247,7 +301,8 @@ export const api = {
     const now = new Date()
     return courts.map((court) => {
       const slots = []
-      for (let h = CLUB_OPEN_HOUR; h < CLUB_CLOSE_HOUR; h++) {
+      const { open, close } = hoursFor(court.venue_id)
+      for (let h = open; h < close; h++) {
         const { start_at, end_at } = localRangeISO(dateYmd, h, 1)
         let available = court.status !== 'maintenance'
         if (new Date(start_at).getTime() < now.getTime() - 5 * 60000) available = false
@@ -670,6 +725,158 @@ export const api = {
     await deletePhotoFile(data as string | null)
   },
 
+  // ---- Club business profile (admins write it; the club page shows it to everyone) ----
+
+  /** Everything on the Business profile screen for the active club, inactive items included. */
+  async adminClubProfile(): Promise<AdminClubProfile> {
+    if (isDemoMode) return demoStore.clubProfile()
+    const { data, error } = await supabase!.rpc('admin_club_profile')
+    if (error) throw error
+    const row = data as {
+      profile: ClubProfileFields | null
+      addons: ClubAddon[]
+      coaches: StoredCoach[]
+      payment_methods: StoredPaymentMethod[]
+      gallery: StoredGalleryPhoto[]
+    }
+    return {
+      profile: row.profile ? normalizeProfile(row.profile) : emptyClubProfile(),
+      addons: (row.addons ?? []).map(toAddon),
+      coaches: (row.coaches ?? []).map(toCoach),
+      payment_methods: (row.payment_methods ?? []).map(toPaymentMethod),
+      gallery: (row.gallery ?? []).map(toGalleryPhoto),
+    }
+  },
+
+  /** Saves the whole profile. Empty fields are cleared. */
+  async updateClubProfile(fields: ClubProfileFields): Promise<void> {
+    if (isDemoMode) {
+      demoStore.updateClubProfile(fields)
+      return
+    }
+    const { error } = await supabase!.rpc('admin_update_club_profile', {
+      p_about: fields.about,
+      p_phone: fields.phone,
+      p_email: fields.email,
+      p_facebook_url: fields.facebook_url,
+      p_messenger_url: fields.messenger_url,
+      p_instagram_url: fields.instagram_url,
+      p_website_url: fields.website_url,
+      p_amenities: fields.amenities,
+      p_payment_note: fields.payment_note,
+      p_house_rules: fields.house_rules,
+      p_cancellation_policy: fields.cancellation_policy,
+      p_terms: fields.terms,
+    })
+    if (error) throw error
+  },
+
+  async upsertClubAddon(input: ClubAddonInput): Promise<ClubAddon> {
+    if (isDemoMode) return demoStore.upsertClubAddon(input)
+    const { data, error } = await supabase!.rpc('admin_upsert_club_addon', {
+      p_addon_id: input.id ?? null,
+      p_name: input.name,
+      p_description: input.description,
+      p_price: input.price,
+      p_unit: input.unit,
+      p_is_active: input.is_active,
+    })
+    if (error) throw error
+    return toAddon(data as ClubAddon)
+  },
+
+  async removeClubAddon(addonId: string): Promise<void> {
+    if (isDemoMode) return demoStore.removeClubAddon(addonId)
+    const { error } = await supabase!.rpc('admin_remove_club_addon', { p_addon_id: addonId })
+    if (error) throw error
+  },
+
+  async upsertClubCoach(input: ClubCoachInput): Promise<ClubCoach> {
+    if (isDemoMode) return demoStore.upsertClubCoach(input)
+    const { data, error } = await supabase!.rpc('admin_upsert_club_coach', {
+      p_coach_id: input.id ?? null,
+      p_full_name: input.full_name,
+      p_headline: input.headline,
+      p_bio: input.bio,
+      p_hourly_rate: input.hourly_rate,
+      p_contact_phone: input.contact_phone,
+      p_contact_url: input.contact_url,
+      p_is_active: input.is_active,
+    })
+    if (error) throw error
+    return toCoach(data as StoredCoach)
+  },
+
+  /** Sets a coach's photo, or removes it when `file` is null. */
+  async setClubCoachPhoto(coachId: string, file: File | null): Promise<void> {
+    if (isDemoMode) return demoStore.setClubCoachPhoto(coachId, file ? await shrinkPhotoToDataUrl(file) : null)
+    const path = file ? await uploadClubPicture('coaches', file) : null
+    const { data, error } = await supabase!.rpc('admin_set_club_coach_photo', { p_coach_id: coachId, p_path: path })
+    if (error) {
+      await deletePhotoFile(path)
+      throw error
+    }
+    await deletePhotoFile(data as string | null)
+  },
+
+  async removeClubCoach(coachId: string): Promise<void> {
+    if (isDemoMode) return demoStore.removeClubCoach(coachId)
+    const { data, error } = await supabase!.rpc('admin_remove_club_coach', { p_coach_id: coachId })
+    if (error) throw error
+    await deletePhotoFile(data as string | null)
+  },
+
+  async upsertClubPaymentMethod(input: ClubPaymentMethodInput): Promise<ClubPaymentMethod> {
+    if (isDemoMode) return demoStore.upsertClubPaymentMethod(input)
+    const { data, error } = await supabase!.rpc('admin_upsert_club_payment_method', {
+      p_method_id: input.id ?? null,
+      p_label: input.label,
+      p_account_name: input.account_name,
+      p_account_number: input.account_number,
+      p_is_active: input.is_active,
+    })
+    if (error) throw error
+    return toPaymentMethod(data as StoredPaymentMethod)
+  },
+
+  /** Sets a payment method's QR code picture, or removes it when `file` is null. */
+  async setClubPaymentQr(methodId: string, file: File | null): Promise<void> {
+    if (isDemoMode) return demoStore.setClubPaymentQr(methodId, file ? await shrinkPhotoToDataUrl(file) : null)
+    const path = file ? await uploadClubPicture('payment', file) : null
+    const { data, error } = await supabase!.rpc('admin_set_club_payment_qr', { p_method_id: methodId, p_path: path })
+    if (error) {
+      await deletePhotoFile(path)
+      throw error
+    }
+    await deletePhotoFile(data as string | null)
+  },
+
+  async removeClubPaymentMethod(methodId: string): Promise<void> {
+    if (isDemoMode) return demoStore.removeClubPaymentMethod(methodId)
+    const { data, error } = await supabase!.rpc('admin_remove_club_payment_method', { p_method_id: methodId })
+    if (error) throw error
+    await deletePhotoFile(data as string | null)
+  },
+
+  /** Adds a photo to the club's gallery. The photo is shrunk in the browser first. */
+  async addClubPhoto(file: File, caption: string | null): Promise<ClubGalleryPhoto> {
+    if (isDemoMode) return demoStore.addClubPhoto(await shrinkPhotoToDataUrl(file), caption)
+    const path = await uploadClubPicture('gallery', file)
+    const { data, error } = await supabase!.rpc('admin_add_club_photo', { p_path: path, p_caption: caption })
+    if (error) {
+      await deletePhotoFile(path)
+      throw error
+    }
+    return toGalleryPhoto(data as StoredGalleryPhoto)
+  },
+
+  async removeClubPhoto(photoId: string): Promise<void> {
+    if (isDemoMode) return demoStore.removeClubPhoto(photoId)
+    const { data, error } = await supabase!.rpc('admin_remove_club_photo', { p_photo_id: photoId })
+    if (error) throw error
+    await deletePhotoFile(data as string | null)
+  },
+
   async setStaffVenueGrant(userId: string, venueId: string, isActive: boolean): Promise<void> {
     if (isDemoMode) {
       demoStore.setStaffVenueGrant(userId, venueId, isActive)
@@ -965,6 +1172,34 @@ export const api = {
             member_rate: court.member_rate == null ? null : Number(court.member_rate),
           })),
         })),
+      }
+    },
+
+    /** What a club tells players: about, contacts, links, payment, add-ons, coaches, gallery, rules. Null when the club is not taking bookings. */
+    async publicClubProfile(slug: string): Promise<PublicClubProfile | null> {
+      if (isDemoMode) return demoStore.publicClubProfile(slug)
+      const { data, error } = await supabase!.rpc('get_public_club_profile', { p_slug: slug })
+      if (error) throw error
+      if (!data) return null
+      const row = data as ClubProfileFields & {
+        payment_methods: (Pick<ClubPaymentMethod, 'id' | 'label' | 'account_name' | 'account_number'> & { qr_path: string | null })[]
+        addons: PublicClubProfile['addons']
+        coaches: (Omit<PublicClubProfile['coaches'][number], 'photo_url'> & { photo_path: string | null })[]
+        gallery: { id: string; path: string; caption: string | null }[]
+      }
+      return {
+        ...normalizeProfile(row),
+        payment_methods: (row.payment_methods ?? []).map(({ qr_path, ...method }) => ({
+          ...method,
+          qr_url: qr_path ? photoUrl(qr_path) : null,
+        })),
+        addons: (row.addons ?? []).map((addon) => ({ ...addon, price: Number(addon.price) })),
+        coaches: (row.coaches ?? []).map(({ photo_path, ...coach }) => ({
+          ...coach,
+          hourly_rate: coach.hourly_rate == null ? null : Number(coach.hourly_rate),
+          photo_url: photo_path ? photoUrl(photo_path) : null,
+        })),
+        gallery: (row.gallery ?? []).map(({ path, ...photo }) => ({ ...photo, url: photoUrl(path) })),
       }
     },
 

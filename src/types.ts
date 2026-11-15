@@ -308,6 +308,131 @@ export interface CourtPhoto {
 /** Up to this many photos per court, as the database enforces. */
 export const MAX_COURT_PHOTOS = 8
 
+// ---- Club business profile (see the club_business_profile migration) ----
+
+export type AddonUnit = 'per_hour' | 'per_booking' | 'per_item' | 'per_person'
+
+export type Amenity =
+  | 'parking' | 'restrooms' | 'showers' | 'lockers' | 'drinking_water' | 'wifi' | 'seating'
+  | 'canteen' | 'pro_shop' | 'covered_courts' | 'night_lights' | 'air_conditioning' | 'first_aid'
+
+/** What a club tells players about itself. Null means not filled in, so it is not shown. */
+export interface ClubProfileFields {
+  about: string | null
+  phone: string | null
+  email: string | null
+  facebook_url: string | null
+  messenger_url: string | null
+  instagram_url: string | null
+  website_url: string | null
+  amenities: Amenity[]
+  payment_note: string | null
+  house_rules: string | null
+  cancellation_policy: string | null
+  terms: string | null
+}
+
+/** An extra the club offers, such as paddle rental. Shown on the club page; nothing charges for it yet. */
+export interface ClubAddon {
+  id: string
+  club_id: string
+  name: string
+  description: string | null
+  price: number
+  unit: AddonUnit
+  is_active: boolean
+  position: number
+  created_at: string
+}
+
+export interface ClubAddonInput {
+  id?: string
+  name: string
+  description: string | null
+  price: number
+  unit: AddonUnit
+  is_active: boolean
+}
+
+/** A coach the club lists. Not linked to a member record. */
+export interface ClubCoach {
+  id: string
+  club_id: string
+  full_name: string
+  headline: string | null
+  bio: string | null
+  hourly_rate: number | null
+  contact_phone: string | null
+  contact_url: string | null
+  photo_path: string | null
+  /** Ready to show, or null when the coach has no photo. */
+  photo_url: string | null
+  is_active: boolean
+  position: number
+  created_at: string
+}
+
+export interface ClubCoachInput {
+  id?: string
+  full_name: string
+  headline: string | null
+  bio: string | null
+  hourly_rate: number | null
+  contact_phone: string | null
+  contact_url: string | null
+  is_active: boolean
+}
+
+/** A way to pay the club directly (GCash, Maya, a bank). Rally Point does not take or check these payments. */
+export interface ClubPaymentMethod {
+  id: string
+  club_id: string
+  label: string
+  account_name: string | null
+  account_number: string | null
+  qr_path: string | null
+  /** The QR code picture, ready to show, or null. */
+  qr_url: string | null
+  is_active: boolean
+  position: number
+  created_at: string
+}
+
+export interface ClubPaymentMethodInput {
+  id?: string
+  label: string
+  account_name: string | null
+  account_number: string | null
+  is_active: boolean
+}
+
+export interface ClubGalleryPhoto {
+  id: string
+  club_id: string
+  path: string
+  url: string
+  caption: string | null
+  position: number
+  created_at: string
+}
+
+/** Everything on the admin Business profile screen, inactive items included. */
+export interface AdminClubProfile {
+  profile: ClubProfileFields
+  addons: ClubAddon[]
+  coaches: ClubCoach[]
+  payment_methods: ClubPaymentMethod[]
+  gallery: ClubGalleryPhoto[]
+}
+
+/** The public part of a club's profile, for its club page: active items only, links ready to show. */
+export interface PublicClubProfile extends ClubProfileFields {
+  payment_methods: Pick<ClubPaymentMethod, 'id' | 'label' | 'account_name' | 'account_number' | 'qr_url'>[]
+  addons: Pick<ClubAddon, 'id' | 'name' | 'description' | 'price' | 'unit'>[]
+  coaches: Pick<ClubCoach, 'id' | 'full_name' | 'headline' | 'bio' | 'hourly_rate' | 'contact_phone' | 'contact_url' | 'photo_url'>[]
+  gallery: Pick<ClubGalleryPhoto, 'id' | 'url' | 'caption'>[]
+}
+
 /** A membership counts when it has a plan, is active, and has not expired. Players have no plan. */
 export function hasActiveMembership(member: Pick<Member, 'membership_type' | 'status' | 'expiry_date'> | null | undefined, today = new Date()) {
   if (!member?.membership_type || !member.expiry_date || member.status !== 'active') return false
@@ -602,6 +727,11 @@ export function hourLabel(h: number) {
 /** "Open 24 hours", or "Open 6:00 AM to 10:00 PM" for a venue with set hours. */
 export function openingHoursLabel(openHour: number, closeHour: number) {
   return openHour === 0 && closeHour === 24 ? 'Open 24 hours' : `Open ${hourLabel(openHour)} to ${hourLabel(closeHour)}`
+}
+
+/** The hours a venue takes bookings (a booking ends by its closing hour); without a venue, all day. */
+export function venueHours(venue: Pick<Venue, 'open_hour' | 'close_hour'> | null | undefined) {
+  return { open: venue?.open_hour ?? CLUB_OPEN_HOUR, close: venue?.close_hour ?? CLUB_CLOSE_HOUR }
 }
 
 /** The hour of day (0–23) of an instant, in Philippine time. */

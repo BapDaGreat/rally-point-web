@@ -1,5 +1,5 @@
 import type {
-  Court, CourtInput, MyClub, Profile, PublicClub, PublicClubDetail, PublicClubListing, StaffVenueGrant, Venue,
+  Court, CourtInput, MyClub, Profile, PublicClub, PublicClubDetail, PublicClubListing, PublicClubProfile, StaffVenueGrant, Venue,
   VenueLocationInput,
 } from '../types'
 import { daysFromNow, todayISO, uid } from './demo/common'
@@ -18,6 +18,7 @@ import { chooseVenueId, demoClub } from './tenant'
 import { inquiryOperations } from './demo/inquiries'
 import { platformOperations } from './demo/platform'
 import { demoCourtPhotos, demoVenueCover, photoOperations } from './demo/photos'
+import { clubProfileOperations, publicClubProfileFor } from './demo/clubProfile'
 
 export type { DemoDB } from './demo/model'
 
@@ -264,6 +265,12 @@ export const demoStore = {
         })),
     }
   },
+  /** Mirrors public.get_public_club_profile: what the club tells players, active items only. */
+  publicClubProfile(slug: string): PublicClubProfile | null {
+    const db = load()
+    const club = bookableClubBySlug(db, slug)
+    return club ? publicClubProfileFor(db, club.id) : null
+  },
   tenantContext(userId?: string, role?: Profile['role']) {
     const db = load()
     const resolvedUserId = userId ?? db.sessionUserId ?? undefined
@@ -437,4 +444,5 @@ export const demoStore = {
   ...inquiryOperations,
   ...platformOperations,
   ...photoOperations,
+  ...clubProfileOperations,
 }

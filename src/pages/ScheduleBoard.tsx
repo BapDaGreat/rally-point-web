@@ -9,7 +9,7 @@ import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
 import type { PublicClub, Venue } from '../types'
 import type { Court, Role, ScheduleBlock } from '../types'
 import { APP_TIME_ZONE, appHour, fmtTime, hourLabel, ymdLocal } from '../types'
-import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR } from '../types'
+import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, venueHours } from '../types'
 
 /** A TV board court: every court of the club, with its location, whether or not it has bookings. */
 type BoardCourt = Court & { venue_name?: string }
@@ -93,7 +93,7 @@ export function ScheduleBoard({
   const [dateYmd, setDateYmd] = useState(ymdLocal(new Date()))
   const [blocks, setBlocks] = useState<ScheduleBlock[]>([])
   const [courts, setCourts] = useState<BoardCourt[]>([])
-  const [venues, setVenues] = useState<Pick<Venue, 'id' | 'name'>[]>([])
+  const [venues, setVenues] = useState<(Pick<Venue, 'id' | 'name'> & Partial<Pick<Venue, 'open_hour' | 'close_hour'>>)[]>([])
   const [venueId, setVenueId] = useState('')
   const [loading, setLoading] = useState(true)
   const [clock, setClock] = useState(new Date())
@@ -120,7 +120,7 @@ export function ScheduleBoard({
         const detail = club && typeof api.publicClubDetail === 'function' ? await api.publicClubDetail(club.slug) : null
         if (!isLatest()) return
         const allVenues = detail?.venues ?? []
-        setVenues(allVenues.map((venue) => ({ id: venue.id, name: venue.name })))
+        setVenues(allVenues.map((venue) => ({ id: venue.id, name: venue.name, open_hour: venue.open_hour, close_hour: venue.close_hour })))
         const shownVenues = tvVenueId ? allVenues.filter((venue) => venue.id === tvVenueId) : allVenues
         const b = typeof api.publicDaySchedule === 'function'
           ? await api.publicDaySchedule(dateYmd, tvVenueId || undefined, club?.id)
@@ -185,14 +185,26 @@ export function ScheduleBoard({
     return () => clearInterval(t)
   }, [])
 
-  // Booking runs around the clock. On today's TV board, start an hour back so the screen shows what is ahead.
+  // Each venue keeps its own opening hours. The grid runs from the earliest opening to the
+  // latest closing of the venues on screen; hours when a court's own venue is closed are shaded.
+  const hoursByVenue = useMemo(
+    () => new Map(venues.map((venue) => [venue.id, venueHours(venue.open_hour == null || venue.close_hour == null ? null : { open_hour: venue.open_hour, close_hour: venue.close_hour })])),
+    [venues],
+  )
+  const courtHours = (court: BoardCourt) => hoursByVenue.get(court.venue_id ?? '') ?? venueHours(null)
+  const shownHours = courts.map(courtHours)
+  // A booking made before a venue changed its hours still shows: the grid stretches to cover it.
+  const blockStarts = blocks.map((b) => appHour(b.start_at))
+  const dayOpen = Math.min(shownHours.length ? Math.min(...shownHours.map((h) => h.open)) : CLUB_OPEN_HOUR, ...blockStarts)
+  const dayClose = Math.max(shownHours.length ? Math.max(...shownHours.map((h) => h.close)) : CLUB_CLOSE_HOUR, ...blockStarts.map((h) => h + 1))
+  // On today's TV board, start an hour back so the screen shows what is ahead.
   const isToday = dateYmd === ymdLocal(clock)
-  const firstHour = tv && isToday ? Math.max(CLUB_OPEN_HOUR, appHour(clock.toISOString()) - 1) : CLUB_OPEN_HOUR
+  const firstHour = tv && isToday ? Math.max(dayOpen, appHour(clock.toISOString()) - 1) : dayOpen
   const hours = useMemo(() => {
     const h: number[] = []
-    for (let i = firstHour; i < CLUB_CLOSE_HOUR; i++) h.push(i)
+    for (let i = firstHour; i < dayClose; i++) h.push(i)
     return h
-  }, [firstHour])
+  }, [firstHour, dayClose])
   const showVenueNames = tv && new Set(courts.map((court) => court.venue_id)).size > 1
 
   const body = (
@@ -307,11 +319,15 @@ export function ScheduleBoard({
                   </div>
                   {courts.map((c) => {
                     const cellBlocks = blocks.filter((b) => b.court_id === c.id && appHour(b.start_at) === h)
+                    const { open, close } = courtHours(c)
+                    const closed = h < open || h >= close
+                    const closedTone = tv ? 'bg-slate-900' : 'bg-slate-100'
                     return (
                       <div
                         key={`${c.id}-${h}`}
-                        className={`border-t border-l p-1 h-16 relative ${tv ? 'border-slate-800' : 'border-slate-100'}`}
+                        className={`border-t border-l p-1 h-16 relative ${tv ? 'border-slate-800' : 'border-slate-100'} ${closed ? closedTone : ''}`}
                       >
+                        {closed && cellBlocks.length === 0 ? <span className="sr-only">Closed</span> : null}
                         {cellBlocks.map((b) => (
                           <div
                             key={b.id}
