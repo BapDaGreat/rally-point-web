@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { BackButton } from '../components/BackButton'
-import { AppHeader, AppShell, SignOutButton } from '../components/Shell'
+import { AppHeader, AppShell, ClosableToast, SignOutButton } from '../components/Shell'
 import { LoadingShapes, SkeletonBlock, SkeletonLine } from '../components/Skeleton'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import { stagger } from '../lib/motion'
-import type { Court, CourtInput, CourtPhoto, Profile, Venue, VenueLocationInput } from '../types'
+import type { Court, CourtInput, CourtPhoto, PictureCleanup, Profile, Venue, VenueLocationInput } from '../types'
 import { hourLabel, openingHoursLabel, peso } from '../types'
 import { directionsUrl, mapEmbedUrl, placeLine } from '../lib/maps'
+import { useFocusFirstField, useInlineForm } from '../lib/formFocus'
 import { CourtPhotosEditor, VenueCoverEditor } from './AdminPhotos'
+import { fileNote, sentence } from './adminProfileShared'
 
 const DEFAULT_COURT_RATE = 500
 
@@ -177,11 +179,11 @@ export function AdminVenues() {
     }
   }
 
-  async function runPhotoAction(key: string, action: () => Promise<void>, done: string) {
+  async function runPhotoAction(key: string, action: () => Promise<PictureCleanup | void>, done: string) {
     setBusy(key)
     try {
-      await action()
-      setMessage(done)
+      const note = fileNote((await action()) ?? { fileLeftBehind: false })
+      setMessage(note ? `${sentence(done)} ${note}` : done)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not update the photo')
     } finally {
@@ -298,7 +300,7 @@ export function AdminVenues() {
           </>
         )}
       </main>
-      {message ? <div className="toast" role="status">{message}</div> : null}
+      {message ? <ClosableToast text={message} onClose={() => setMessage(null)} /> : null}
     </AppShell>
   )
 }
@@ -383,7 +385,8 @@ function VenueCard({
   photoActions: PhotoActions
 }) {
   const [adding, setAdding] = useState(false)
-  const [editingHours, setEditingHours] = useState(false)
+  const hoursForm = useInlineForm()
+  const hoursButtonId = `venue-${venue.id}-hours-change`
   const [photosOpenId, setPhotosOpenId] = useState<string | null>(null)
   const { photos } = photoActions
   const cover = photos?.find((photo) => photo.venue_id === venue.id && !photo.court_id) ?? null
@@ -411,19 +414,20 @@ function VenueCard({
 
       <div>
         <h3 className="text-sm font-bold text-slate-700">Opening hours</h3>
-        {editingHours ? (
+        {hoursForm.editing === 'hours' ? (
           <HoursForm
             venue={venue}
             saving={busy === `hours:${venue.id}`}
-            onCancel={() => setEditingHours(false)}
+            onCancel={hoursForm.close}
             onSave={async (openHour, closeHour) => {
-              if (await onSaveHours(venue, openHour, closeHour)) setEditingHours(false)
+              if (await onSaveHours(venue, openHour, closeHour)) hoursForm.close()
             }}
           />
         ) : (
           <div className="mt-1">
             <p className="text-sm text-slate-700">{openingHoursLabel(venue.open_hour, venue.close_hour)}, Philippine time</p>
-            <button type="button" className="inline-flex min-h-12 items-center text-sm font-semibold text-brand-800 underline" onClick={() => setEditingHours(true)}>
+            <button type="button" id={hoursButtonId} className="inline-flex min-h-12 items-center text-sm font-semibold text-brand-800 underline"
+              onClick={() => hoursForm.open('hours', hoursButtonId)}>
               Change opening hours
             </button>
           </div>
@@ -631,6 +635,8 @@ function HoursForm({
   const [closeHour, setCloseHour] = useState(venue.close_hour)
   const id = `venue-${venue.id}-hours`
   const invalid = closeHour <= openHour
+  const formRef = useRef<HTMLFormElement>(null)
+  useFocusFirstField(formRef)
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -638,7 +644,7 @@ function HoursForm({
   }
 
   return (
-    <form className="mt-2 space-y-3" onSubmit={submit} aria-label={`Opening hours of ${venue.name}`}>
+    <form ref={formRef} className="mt-2 space-y-3" onSubmit={submit} aria-label={`Opening hours of ${venue.name}`}>
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="label" htmlFor={`${id}-open`}>Opens</label>

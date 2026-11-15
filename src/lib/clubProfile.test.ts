@@ -35,7 +35,20 @@ describe('club profile rules (mirror the club_business_profile checks)', () => {
     expect(profileProblem(profile({ messenger_url: 'javascript:alert(1)' }))).toBe('The Messenger link must start with https://m.me/')
     expect(profileProblem(profile({ instagram_url: 'https://instagram.com@evil.example' })))
       .toBe('The Instagram link must start with https://instagram.com/')
-    expect(profileProblem(profile({ website_url: 'http://rallypoint.ph' }))).toBe('The website link must start with https://')
+    const website = 'The website link must start with https:// and name a web address, like https://yourclub.ph'
+    expect(profileProblem(profile({ website_url: 'http://rallypoint.ph' }))).toBe(website)
+  })
+
+  it('takes a website only as a named web address, like the database', () => {
+    const website = 'The website link must start with https:// and name a web address, like https://yourclub.ph'
+    for (const bad of ['https://192.168.0.1/', 'https://rallypoint.ph:8443/', 'https://-club.ph', 'https://club-.ph', 'https://club.p4', 'https://localhost']) {
+      expect(profileProblem(profile({ website_url: bad })), bad).toBe(website)
+    }
+    for (const good of ['https://rallypoint.ph', 'https://www.rally-point.com.ph/about?x=1#map', 'HTTPS://RallyPoint.PH', 'https://xn--bcher-kva.example']) {
+      expect(profileProblem(profile({ website_url: good })), good).toBeNull()
+    }
+    expect(coachProblem({ full_name: 'Ana', headline: null, bio: null, hourly_rate: null, contact_phone: null, contact_url: 'https://10.0.0.1', is_active: true }))
+      .toBe('The coach\'s link must start with https:// and name a web address, like https://m.me/coachana')
   })
 
   it('checks phone, email, amenities and lengths with the database messages', () => {
@@ -55,6 +68,7 @@ describe('club profile rules (mirror the club_business_profile checks)', () => {
     expect(isSafeLink('https://m.me/coach')).toBe(true)
     expect(isSafeLink('http://m.me/coach')).toBe(false)
     expect(isSafeLink('javascript:alert(1)')).toBe(false)
+    expect(isSafeLink('https://127.0.0.1/admin')).toBe(false)
     expect(isSafeLink(null)).toBe(false)
   })
 
@@ -67,7 +81,8 @@ describe('club profile rules (mirror the club_business_profile checks)', () => {
 
     const coach = { full_name: 'Coach Ana', headline: null, bio: null, hourly_rate: null, contact_phone: null, contact_url: null, is_active: true }
     expect(coachProblem(coach)).toBeNull()
-    expect(coachProblem({ ...coach, contact_url: 'http://coach.example' })).toBe('The coach\'s link must start with https://')
+    expect(coachProblem({ ...coach, contact_url: 'http://coach.example' }))
+      .toBe('The coach\'s link must start with https:// and name a web address, like https://m.me/coachana')
     expect(coachProblem({ ...coach, hourly_rate: -1 })).toBe('Coach rate must be between 0 and 100,000 pesos')
 
     expect(paymentMethodProblem({ label: 'GCash', account_name: null, account_number: null, is_active: true })).toBeNull()

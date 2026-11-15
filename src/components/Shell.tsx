@@ -478,3 +478,19 @@ export function Toast({ message, fadingOut = false }: { message: string | null; 
     </div>
   )
 }
+
+/**
+ * A message that stays on screen until the person closes it (or the next one replaces it),
+ * for screens whose messages must not vanish before they are read. A problem is announced
+ * straight away.
+ */
+export function ClosableToast({ text, problem = false, onClose }: { text: string; problem?: boolean; onClose: () => void }) {
+  return (
+    <div className="toast flex items-start gap-2">
+      <p className="flex-1" role={problem ? 'alert' : 'status'}>{text}</p>
+      <button type="button" className="-my-3 -mr-2 min-h-12 shrink-0 rounded-xl px-3 font-semibold underline" onClick={onClose}>
+        Close
+      </button>
+    </div>
+  )
+}

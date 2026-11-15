@@ -618,10 +618,12 @@ button[aria-busy='true'],
   }
 }
 
+/* Fixed to the screen, like the bottom navigation, so a message shows wherever the page is scrolled. */
 .toast {
-  position: absolute;
-  left: 1rem;
-  right: 1rem;
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(min(100%, 430px) - 2rem);
   bottom: calc(6.25rem + env(safe-area-inset-bottom, 0px));
   z-index: 50;
   background: #0f172a;
@@ -642,6 +644,8 @@ button[aria-busy='true'],
     left: auto;
     right: 1.5rem;
     bottom: 1.5rem;
+    transform: none;
+    width: auto;
     max-width: 380px;
   }
 

@@ -2,7 +2,7 @@ begin;
 set local role postgres;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions, pg_catalog;
-select extensions.plan(68);
+select extensions.plan(76);
 
 -- Fixture:
 --   user 1: Gensan admin
@@ -57,6 +57,7 @@ select extensions.ok(
                  'public.admin_remove_club_payment_method(uuid)'::regprocedure,
                  'public.admin_add_club_photo(text, text)'::regprocedure,
                  'public.admin_remove_club_photo(uuid)'::regprocedure,
+                 'public.admin_unused_club_pictures()'::regprocedure,
                  'public.get_public_club_profile(text)'::regprocedure,
                  'private.require_club_admin()'::regprocedure,
                  'private.club_media_target(text)'::regprocedure,
@@ -70,7 +71,8 @@ select extensions.ok(
       and p.proname in ('admin_club_profile', 'admin_update_club_profile', 'admin_upsert_club_addon',
                         'admin_remove_club_addon', 'admin_upsert_club_coach', 'admin_set_club_coach_photo',
                         'admin_remove_club_coach', 'admin_upsert_club_payment_method', 'admin_set_club_payment_qr',
-                        'admin_remove_club_payment_method', 'admin_add_club_photo', 'admin_remove_club_photo')
+                        'admin_remove_club_payment_method', 'admin_add_club_photo', 'admin_remove_club_photo',
+                        'admin_unused_club_pictures')
       and has_function_privilege('anon', p.oid, 'EXECUTE')
   ),
   'visitors cannot run any admin profile function');
@@ -126,7 +128,15 @@ select extensions.throws_ok(
 select extensions.throws_ok(
   $$select public.admin_update_club_profile(null, null, null, null, null, null, 'http://rallypoint.ph',
     '{}', null, null, null, null)$$,
-  '22023', 'The website link must start with https://', 'a link without https is refused');
+  '22023', 'The website link must start with https:// and name a web address, like https://yourclub.ph', 'a link without https is refused');
+select extensions.throws_ok(
+  $$select public.admin_update_club_profile(null, null, null, null, null, null, 'https://192.168.0.1/',
+    '{}', null, null, null, null)$$,
+  '22023', 'The website link must start with https:// and name a web address, like https://yourclub.ph', 'a website given as an IP address is refused');
+select extensions.throws_ok(
+  $$select public.admin_update_club_profile(null, null, null, null, null, null, 'https://rallypoint.ph:8443/',
+    '{}', null, null, null, null)$$,
+  '22023', 'The website link must start with https:// and name a web address, like https://yourclub.ph', 'a website with a port number is refused');
 select extensions.throws_ok(
   $$select public.admin_update_club_profile(null, null, null, null, 'javascript:alert(1)', null, null,
     '{}', null, null, null, null)$$,
@@ -163,7 +173,10 @@ select extensions.is(
   'Coach Ana', 'an admin adds a coach');
 select extensions.throws_ok(
   $$select public.admin_upsert_club_coach(null, 'Coach Cy', null, null, null, null, 'http://coach.example', true)$$,
-  '22023', 'The coach''s link must start with https://', 'a coach link without https is refused');
+  '22023', 'The coach''s link must start with https:// and name a web address, like https://m.me/coachana', 'a coach link without https is refused');
+select extensions.throws_ok(
+  $$select public.admin_upsert_club_coach(null, 'Coach Cy', null, null, null, null, 'https://-coach.example', true)$$,
+  '22023', 'The coach''s link must start with https:// and name a web address, like https://m.me/coachana', 'a coach link whose address starts with a hyphen is refused');
 select extensions.lives_ok(
   $$select public.admin_upsert_club_coach(null, 'Coach Ben', null, null, null, null, null, false)$$,
   'an admin can add a hidden coach');
@@ -200,6 +213,7 @@ reset role;
 select set_config('test.paddle', (select id::text from public.club_addons where name = 'Paddle rental'), true);
 select set_config('test.ana', (select id::text from public.club_coaches where full_name = 'Coach Ana'), true);
 select set_config('test.gcash', (select id::text from public.club_payment_methods where label = 'GCash'), true);
+select set_config('test.ben', (select id::text from public.club_coaches where full_name = 'Coach Ben'), true);
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'e8000000-0000-4000-8000-000000000001', true);
 
@@ -234,11 +248,51 @@ select extensions.is(
   public.admin_set_club_coach_photo(current_setting('test.ana')::uuid,
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/coaches/eeeeeeee-eeee-4eee-8eee-000000000005.webp'),
   null, 'setting the same coach photo again returns nothing');
+select extensions.throws_ok(
+  $$select public.admin_set_club_coach_photo(current_setting('test.ben')::uuid,
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/coaches/eeeeeeee-eeee-4eee-8eee-000000000005.webp')$$,
+  '23505', 'This picture is already in use. Upload it again.', 'one picture cannot be two coaches'' photo');
+select extensions.throws_ok(
+  $$select public.admin_add_club_photo('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/gallery/eeeeeeee-eeee-4eee-8eee-000000000001.webp', null)$$,
+  '23505', 'This picture is already in use. Upload it again.', 'a gallery photo cannot be recorded twice');
 select extensions.is(
   (select array[jsonb_array_length(p -> 'addons'), jsonb_array_length(p -> 'coaches'),
                 jsonb_array_length(p -> 'payment_methods'), jsonb_array_length(p -> 'gallery')]
    from public.admin_club_profile() p),
   array[2, 2, 1, 1], 'the admin screen lists every item, hidden ones included');
+
+-- Unused picture files. So far gallery 1, QR 4 and coach photo 5 are in use; gallery 2 was
+-- never saved and QR 3 was replaced. Add a court photo in use, an old court photo nothing
+-- uses, a gallery upload never saved, a badly named file and another club's file; make them
+-- all older than an hour; then add one uploaded just now.
+reset role;
+select set_config('test.court', (select id::text from public.courts where club_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' order by name limit 1), true);
+select set_config('test.court_venue', (select venue_id::text from public.courts where id = current_setting('test.court')::uuid), true);
+insert into storage.objects (bucket_id, name) values
+  ('court-photos', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/courts/' || current_setting('test.court') || '/eeeeeeee-eeee-4eee-8eee-00000000000c.webp'),
+  ('court-photos', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/courts/' || current_setting('test.court') || '/eeeeeeee-eeee-4eee-8eee-00000000000e.webp'),
+  ('court-photos', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/gallery/eeeeeeee-eeee-4eee-8eee-00000000000a.webp'),
+  ('court-photos', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/gallery/photo.webp'),
+  ('court-photos', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/gallery/eeeeeeee-eeee-4eee-8eee-00000000000d.webp');
+insert into public.court_photos (club_id, venue_id, court_id, path) values (
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', current_setting('test.court_venue')::uuid, current_setting('test.court')::uuid,
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/courts/' || current_setting('test.court') || '/eeeeeeee-eeee-4eee-8eee-00000000000c.webp');
+update storage.objects set created_at = now() - interval '2 hours'
+where bucket_id = 'court-photos' and (name like 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/%' or name like 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/%');
+insert into storage.objects (bucket_id, name) values
+  ('court-photos', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/gallery/eeeeeeee-eeee-4eee-8eee-00000000000b.webp');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', 'e8000000-0000-4000-8000-000000000001', true);
+
+select extensions.is(
+  (select array_agg(x order by x collate "C") from unnest(public.admin_unused_club_pictures()) x
+   where x like '%/eeeeeeee-eeee-4eee-8eee-%' or x like '%/photo.webp'),
+  array[
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/courts/' || current_setting('test.court') || '/eeeeeeee-eeee-4eee-8eee-00000000000e.webp',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/gallery/eeeeeeee-eeee-4eee-8eee-000000000002.jpg',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/gallery/eeeeeeee-eeee-4eee-8eee-00000000000a.webp',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/payment/eeeeeeee-eeee-4eee-8eee-000000000003.png'],
+  'only files nothing uses are listed: not those in use, uploaded in the last hour, badly named or another club''s');
 
 -- ---------------------------------------------------------------------------
 -- The public club page (as a visitor)
@@ -305,6 +359,9 @@ select extensions.throws_ok(
     ('court-photos', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/gallery/eeeeeeee-eeee-4eee-8eee-000000000008.webp')$$,
   '42501', null, 'staff cannot upload club pictures');
 select extensions.throws_ok(
+  $$select public.admin_unused_club_pictures()$$,
+  '42501', 'admin access required', 'staff cannot list the club''s unused picture files');
+select extensions.throws_ok(
   $$select count(*) from public.club_addons$$,
   '42501', null, 'staff cannot read the add-on table directly');
 
@@ -329,6 +386,10 @@ select extensions.ok(
   'another club''s admin cannot manage Gensan''s pictures');
 
 select set_config('request.headers', '{"x-club-id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}', true);
+select extensions.is(
+  (select array_agg(x) from unnest(public.admin_unused_club_pictures()) x where x like '%/eeeeeeee-eeee-4eee-8eee-%'),
+  array['bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/gallery/eeeeeeee-eeee-4eee-8eee-00000000000d.webp'],
+  'another club''s admin sees only their own club''s unused files');
 select extensions.throws_ok(
   $$select public.admin_remove_club_addon(current_setting('test.paddle')::uuid)$$,
   'P0002', 'add-on not found', 'another club''s admin cannot remove Gensan add-ons');

@@ -182,9 +182,21 @@ describe('AdminVenues photos', () => {
     vi.mocked(api.staffAccounts).mockReset().mockResolvedValue([])
     vi.mocked(api.listCourtPhotos).mockReset().mockResolvedValue([])
     vi.mocked(api.addCourtPhoto).mockReset()
-    vi.mocked(api.removeCourtPhoto).mockReset().mockResolvedValue()
+    vi.mocked(api.removeCourtPhoto).mockReset().mockResolvedValue({ fileLeftBehind: false })
     vi.mocked(api.makeMainCourtPhoto).mockReset().mockResolvedValue()
-    vi.mocked(api.setVenueCover).mockReset().mockResolvedValue()
+    vi.mocked(api.setVenueCover).mockReset().mockResolvedValue({ fileLeftBehind: false })
+  })
+
+  it('says when an old photo file could not be deleted', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.setVenueCover).mockResolvedValueOnce({ fileLeftBehind: true })
+    renderPage()
+    await screen.findByRole('heading', { name: 'East Venue' })
+
+    await user.upload(venueCard('East Venue').getByLabelText('Add cover photo'), new File(['c'], 'cover.jpg', { type: 'image/jpeg' }))
+    expect(await screen.findByText(
+      'Cover photo saved. The old picture file could not be deleted, so it may still open from its old link.',
+    )).toBeInTheDocument()
   })
 
   it('uploads several photos to a court, one at a time', async () => {

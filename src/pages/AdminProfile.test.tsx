@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -30,6 +30,8 @@ vi.mock('../lib/api', () => ({
     removeClubPaymentMethod: vi.fn(),
     addClubPhoto: vi.fn(),
     removeClubPhoto: vi.fn(),
+    unusedClubPictures: vi.fn(),
+    deleteUnusedClubPictures: vi.fn(),
   },
 }))
 
@@ -61,7 +63,100 @@ describe('AdminProfile', () => {
     vi.mocked(api.adminClubProfile).mockReset().mockResolvedValue(loaded)
     vi.mocked(api.updateClubProfile).mockReset().mockResolvedValue(undefined)
     vi.mocked(api.upsertClubAddon).mockReset()
+    vi.mocked(api.removeClubAddon).mockReset().mockResolvedValue(undefined)
     vi.mocked(api.addClubPhoto).mockReset()
+    vi.mocked(api.unusedClubPictures).mockReset().mockResolvedValue([])
+    vi.mocked(api.deleteUnusedClubPictures).mockReset()
+  })
+
+  it('moves focus into a form when it opens, and back to its button when it closes', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const addons = within(await screen.findByRole('region', { name: 'Add-ons' }))
+
+    await user.click(addons.getByRole('button', { name: 'Add an add-on' }))
+    expect(within(addons.getByRole('form', { name: 'Add an add-on' })).getByLabelText('Name')).toHaveFocus()
+    await user.click(addons.getByRole('button', { name: 'Cancel' }))
+    expect(addons.getByRole('button', { name: 'Add an add-on' })).toHaveFocus()
+
+    await user.click(addons.getByRole('button', { name: 'Edit Paddle rental' }))
+    expect(within(addons.getByRole('form', { name: 'Edit Paddle rental' })).getByLabelText('Name')).toHaveFocus()
+    await user.click(addons.getByRole('button', { name: 'Cancel' }))
+    expect(addons.getByRole('button', { name: 'Edit Paddle rental' })).toHaveFocus()
+  })
+
+  it('moves focus to the section heading after a removal, since the row is gone', async () => {
+    const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderPage()
+    const addons = within(await screen.findByRole('region', { name: 'Add-ons' }))
+
+    await user.click(addons.getByRole('button', { name: 'Remove Paddle rental' }))
+    await waitFor(() => expect(addons.getByRole('heading', { name: 'Add-ons' })).toHaveFocus())
+    expect(api.removeClubAddon).toHaveBeenCalledWith('addon-1')
+    confirm.mockRestore()
+  })
+
+  it('offers to delete picture files nothing uses any more', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.unusedClubPictures).mockResolvedValueOnce(['club-1/gallery/a.webp', 'club-1/payment/b.webp']).mockResolvedValue([])
+    vi.mocked(api.deleteUnusedClubPictures).mockResolvedValue({ deleted: 2, left: 0, more: false })
+    renderPage()
+
+    const card = within(await screen.findByRole('region', { name: 'Old picture files' }))
+    expect(card.getByText(/2 old picture files are no longer used/)).toBeInTheDocument()
+    await user.click(card.getByRole('button', { name: 'Delete old picture files' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Old picture files deleted')
+    expect(api.deleteUnusedClubPictures).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('region', { name: 'Old picture files' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the old-files card, and focus on its button, when a file could not be deleted', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.unusedClubPictures).mockResolvedValueOnce(['club-1/gallery/a.webp', 'club-1/payment/b.webp'])
+      .mockResolvedValue(['club-1/payment/b.webp'])
+    vi.mocked(api.deleteUnusedClubPictures).mockResolvedValue({ deleted: 1, left: 1, more: false })
+    renderPage()
+
+    const card = within(await screen.findByRole('region', { name: 'Old picture files' }))
+    await user.click(card.getByRole('button', { name: 'Delete old picture files' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('1 file could not be deleted. Try again later.')
+    expect(card.getByText(/1 old picture file is no longer used/)).toBeInTheDocument()
+    await waitFor(() => expect(card.getByRole('button', { name: 'Delete old picture files' })).toHaveFocus())
+  })
+
+  it('keeps a problem on screen until it is closed', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.type(await screen.findByLabelText('Website (optional)'), 'https://192.168.0.1/')
+    await user.click(screen.getByRole('button', { name: 'Save business details' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The website link must start with https:// and name a web address')
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('clears a done message by itself after a few seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      renderPage()
+      await user.click(await screen.findByRole('button', { name: 'Save business details' }))
+      expect(await screen.findByRole('status')).toHaveTextContent('Saved. Players see it on your club page now.')
+      act(() => { vi.advanceTimersByTime(4000) })
+      expect(screen.queryByText('Saved. Players see it on your club page now.')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows no old-files card when every picture is in use', async () => {
+    renderPage()
+    await screen.findByLabelText('About your club')
+    await waitFor(() => expect(api.unusedClubPictures).toHaveBeenCalled())
+    expect(screen.queryByRole('region', { name: 'Old picture files' })).not.toBeInTheDocument()
   })
 
   it('loads the saved profile and lists add-ons, marking hidden ones', async () => {

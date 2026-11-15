@@ -60,18 +60,36 @@ import { PHOTO_BUCKET, photoUrl, shrinkPhoto, shrinkPhotoToDataUrl } from './pho
 import { emptyClubProfile, normalizeProfile } from './clubProfile'
 
 /**
- * Deletes a stored photo file; returns false when it could not be deleted. Storage reports a
- * failure in its result rather than by throwing, so both are checked. The bucket is public:
- * a file left behind still opens from its old link, though nothing in the app points to it.
+ * Deletes stored photo files; returns how many are gone. Storage answers a refused delete
+ * with an empty list and no error, exactly as it answers for a file that was already gone,
+ * so a file it does not name as deleted is looked up: only one still there counts as left.
+ * The bucket is public: a file left behind still opens from its old link.
  */
-async function deletePhotoFile(path: string | null | undefined): Promise<boolean> {
-  if (!path) return true
+async function deletePhotoFiles(paths: string[]): Promise<{ deleted: number; left: number }> {
+  if (paths.length === 0) return { deleted: 0, left: 0 }
+  const bucket = supabase!.storage.from(PHOTO_BUCKET)
+  let named = new Set<string>()
   try {
-    const { error } = await supabase!.storage.from(PHOTO_BUCKET).remove([path])
-    return !error
+    const { data, error } = await bucket.remove(paths)
+    if (!error) named = new Set((data ?? []).map((file) => file.name))
   } catch {
-    return false
+    // Treated like a refusal: each file is looked up below.
   }
+  let left = 0
+  for (const path of paths.filter((path) => !named.has(path))) {
+    try {
+      const { data: stillThere } = await bucket.exists(path)
+      if (stillThere) left += 1
+    } catch {
+      left += 1
+    }
+  }
+  return { deleted: paths.length - left, left }
+}
+
+/** Deletes one stored photo file; returns false when it is still there. */
+async function deletePhotoFile(path: string | null | undefined): Promise<boolean> {
+  return !path || (await deletePhotoFiles([path])).left === 0
 }
 
 /**
@@ -730,23 +748,50 @@ export const api = {
     if (error) throw error
   },
 
-  async removeCourtPhoto(photoId: string): Promise<void> {
-    if (isDemoMode) return demoStore.removeCourtPhoto(photoId)
+  async removeCourtPhoto(photoId: string): Promise<PictureCleanup> {
+    if (isDemoMode) {
+      demoStore.removeCourtPhoto(photoId)
+      return { fileLeftBehind: false }
+    }
     const { data, error } = await supabase!.rpc('admin_remove_court_photo', { p_photo_id: photoId })
     if (error) throw error
-    await deletePhotoFile(data as string | null)
+    return deleteReplacedPicture(data)
   },
 
   /** Sets a location's cover photo, or removes it when `file` is null. */
-  async setVenueCover(venueId: string, file: File | null): Promise<void> {
-    if (isDemoMode) return demoStore.setVenueCover(venueId, file ? await shrinkPhotoToDataUrl(file) : null)
+  async setVenueCover(venueId: string, file: File | null): Promise<PictureCleanup> {
+    if (isDemoMode) {
+      demoStore.setVenueCover(venueId, file ? await shrinkPhotoToDataUrl(file) : null)
+      return { fileLeftBehind: false }
+    }
     const path = file ? await uploadPhoto('venues', venueId, file) : null
     const { data, error } = await supabase!.rpc('admin_set_venue_cover', { p_venue_id: venueId, p_path: path })
     if (error) {
       await deletePhotoFile(path)
       throw error
     }
-    await deletePhotoFile(data as string | null)
+    return deleteReplacedPicture(data, path)
+  },
+
+  /**
+   * The club's picture files that nothing uses any more (older than an hour): files whose
+   * delete failed, and uploads that were never saved. The demo stores no files.
+   */
+  async unusedClubPictures(): Promise<string[]> {
+    if (isDemoMode) return []
+    const { data, error } = await supabase!.rpc('admin_unused_club_pictures')
+    if (error) throw error
+    return (data as string[] | null) ?? []
+  },
+
+  /**
+   * Deletes the files `unusedClubPictures` lists, asking the database again first so only
+   * files nothing uses are deleted. Up to 200 at a time; `more` says when to run it again.
+   */
+  async deleteUnusedClubPictures(): Promise<{ deleted: number; left: number; more: boolean }> {
+    const paths = await this.unusedClubPictures()
+    const { deleted, left } = await deletePhotoFiles(paths)
+    return { deleted, left, more: paths.length >= 200 }
   },
 
   // ---- Club business profile (admins write it; the club page shows it to everyone) ----

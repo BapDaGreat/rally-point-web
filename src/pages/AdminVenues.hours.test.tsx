@@ -60,6 +60,17 @@ describe('AdminVenues opening hours', () => {
     })))
   })
 
+  it('moves focus into the hours form, and back to its button on cancel', async () => {
+    const user = userEvent.setup()
+    render(<MemoryRouter><AdminVenues /></MemoryRouter>)
+    const card = within((await screen.findByRole('heading', { name: 'Main Venue' })).closest('section')!)
+
+    await user.click(card.getByRole('button', { name: 'Change opening hours' }))
+    expect(card.getByLabelText('Opens')).toHaveFocus()
+    await user.click(card.getByRole('button', { name: 'Cancel' }))
+    expect(card.getByRole('button', { name: 'Change opening hours' })).toHaveFocus()
+  })
+
   it('will not save a closing time before the opening time', async () => {
     const user = userEvent.setup()
     render(<MemoryRouter><AdminVenues /></MemoryRouter>)

@@ -27,6 +27,9 @@
 --   <club id>/coaches/<random id>.<webp|jpg|png>
 -- The court and location photo policies are unchanged. New policies cover the
 -- new folders and also require the admin role in the folder's club.
+-- admin_unused_club_pictures lists the club's files that nothing uses any more
+-- (in the new folders and the court and location folders), so the admin's app
+-- can delete them through Storage.
 --
 -- Opening hours need no change here: admin_upsert_venue already saves them and
 -- the venues table already checks them (0 to 24, closing after opening).
@@ -66,9 +69,11 @@ create table public.club_profiles (
   instagram_url text constraint club_profiles_instagram_check
     check (char_length(instagram_url) <= 300
            and instagram_url ~* '^https://([a-z0-9-]+\.)?instagram\.com([/?#][^[:space:]]*)?$'),
+  -- A web address by name: labels of letters, digits and inner hyphens, ending in a
+  -- letter domain (or an xn-- one). No IP addresses and no port numbers.
   website_url text constraint club_profiles_website_check
     check (char_length(website_url) <= 300
-           and website_url ~* '^https://[a-z0-9-]+(\.[a-z0-9-]+)+(:[0-9]{1,5})?([/?#][^[:space:]]*)?$'),
+           and website_url ~* '^https://([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})([/?#][^[:space:]]*)?$'),
   amenities text[] not null default '{}'::text[] constraint club_profiles_amenities_check
     check (amenities <@ array[
       'parking', 'restrooms', 'showers', 'lockers', 'drinking_water', 'wifi', 'seating',
@@ -109,7 +114,7 @@ create table public.club_coaches (
   contact_phone text constraint club_coaches_phone_check check (contact_phone ~ '^\+?[0-9 ()-]{7,24}$'),
   contact_url text constraint club_coaches_link_check
     check (char_length(contact_url) <= 300
-           and contact_url ~* '^https://[a-z0-9-]+(\.[a-z0-9-]+)+(:[0-9]{1,5})?([/?#][^[:space:]]*)?$'),
+           and contact_url ~* '^https://([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})([/?#][^[:space:]]*)?$'),
   photo_path text unique check (char_length(photo_path) <= 300),
   is_active boolean not null default true,
   position integer not null default 0,
@@ -198,7 +203,7 @@ as $$
     when 'club_profiles_facebook_check' then 'The Facebook link must start with https://facebook.com/ or https://fb.com/'
     when 'club_profiles_messenger_check' then 'The Messenger link must start with https://m.me/'
     when 'club_profiles_instagram_check' then 'The Instagram link must start with https://instagram.com/'
-    when 'club_profiles_website_check' then 'The website link must start with https://'
+    when 'club_profiles_website_check' then 'The website link must start with https:// and name a web address, like https://yourclub.ph'
     when 'club_profiles_amenities_check' then 'Pick amenities from the list'
     when 'club_profiles_payment_note_check' then 'The payment note is limited to 600 characters'
     when 'club_profiles_house_rules_check' then 'House rules are limited to 3,000 characters'
@@ -210,7 +215,7 @@ as $$
     when 'club_coaches_headline_check' then 'The coach''s short line is limited to 120 characters'
     when 'club_coaches_bio_check' then 'The coach''s bio is limited to 1,000 characters'
     when 'club_coaches_phone_check' then 'Enter the coach''s phone number using digits, spaces, +, ( ) and -'
-    when 'club_coaches_link_check' then 'The coach''s link must start with https://'
+    when 'club_coaches_link_check' then 'The coach''s link must start with https:// and name a web address, like https://m.me/coachana'
     when 'club_payment_methods_label_check' then 'Payment method name must be 1 to 40 characters'
     when 'club_payment_methods_account_name_check' then 'Account name is limited to 80 characters'
     when 'club_payment_methods_account_number_check' then 'Account number is limited to 60 characters'
@@ -537,6 +542,8 @@ begin
   end if;
   update public.club_coaches c set photo_path = p_path, updated_at = now() where c.id = p_coach_id;
   return case when v_old is distinct from p_path then v_old end;
+exception when unique_violation then
+  raise exception 'This picture is already in use. Upload it again.' using errcode = '23505';
 end;
 $$;
 
@@ -627,6 +634,8 @@ begin
   end if;
   update public.club_payment_methods m set qr_path = p_path, updated_at = now() where m.id = p_method_id;
   return case when v_old is distinct from p_path then v_old end;
+exception when unique_violation then
+  raise exception 'This picture is already in use. Upload it again.' using errcode = '23505';
 end;
 $$;
 
@@ -670,9 +679,12 @@ begin
   )
   returning * into v_row;
   return v_row;
-exception when check_violation then
-  get stacked diagnostics v_constraint = constraint_name;
-  raise exception '%', private.club_profile_message(v_constraint) using errcode = '22023';
+exception
+  when check_violation then
+    get stacked diagnostics v_constraint = constraint_name;
+    raise exception '%', private.club_profile_message(v_constraint) using errcode = '22023';
+  when unique_violation then
+    raise exception 'This picture is already in use. Upload it again.' using errcode = '23505';
 end;
 $$;
 
@@ -691,6 +703,43 @@ begin
     raise exception 'photo not found' using errcode = 'P0002';
   end if;
   return v_path;
+end;
+$$;
+
+-- The active club's picture files that nothing uses any more: files whose delete failed,
+-- and uploads that were never saved. Covers every column that keeps a path in this
+-- bucket (court and location photos, coach photos, QR codes, gallery photos). Files from
+-- the last hour are left out, so an upload still being saved is never listed, and only
+-- files the admin may delete through Storage are listed. Up to 200, oldest first.
+-- SQL cannot delete Storage files (storage.objects refuses direct deletes), so the app
+-- deletes these through Storage, under the admin delete policies.
+create or replace function public.admin_unused_club_pictures()
+returns text[]
+language plpgsql stable security definer set search_path = ''
+as $$
+declare
+  v_club uuid := private.require_club_admin();
+begin
+  return coalesce((
+    select array_agg(u.name order by u.created_at, u.name)
+    from (
+      select o.name, o.created_at
+      from storage.objects o
+      where o.bucket_id = 'court-photos'
+        and o.name like v_club::text || '/%'
+        and o.created_at < now() - interval '1 hour'
+        and not exists (select 1 from public.court_photos p where p.path = o.name)
+        and not exists (select 1 from public.club_coaches c where c.photo_path = o.name)
+        and not exists (select 1 from public.club_payment_methods m where m.qr_path = o.name)
+        and not exists (select 1 from public.club_gallery_photos g where g.path = o.name)
+        and (
+          exists (select 1 from private.club_media_target(o.name) t where t.club_id = v_club)
+          or exists (select 1 from private.court_photo_target(o.name) t where t.club_id = v_club)
+        )
+      order by o.created_at, o.name
+      limit 200
+    ) u
+  ), '{}'::text[]);
 end;
 $$;
 
@@ -771,6 +820,7 @@ alter function public.admin_set_club_payment_qr(uuid, text) owner to postgres;
 alter function public.admin_remove_club_payment_method(uuid) owner to postgres;
 alter function public.admin_add_club_photo(text, text) owner to postgres;
 alter function public.admin_remove_club_photo(uuid) owner to postgres;
+alter function public.admin_unused_club_pictures() owner to postgres;
 alter function public.get_public_club_profile(text) owner to postgres;
 
 revoke all on function private.require_club_admin() from public, anon, authenticated;
@@ -793,6 +843,7 @@ revoke all on function public.admin_set_club_payment_qr(uuid, text) from public,
 revoke all on function public.admin_remove_club_payment_method(uuid) from public, anon;
 revoke all on function public.admin_add_club_photo(text, text) from public, anon;
 revoke all on function public.admin_remove_club_photo(uuid) from public, anon;
+revoke all on function public.admin_unused_club_pictures() from public, anon;
 grant execute on function public.admin_club_profile() to authenticated;
 grant execute on function public.admin_update_club_profile(text, text, text, text, text, text, text, text[], text, text, text, text) to authenticated;
 grant execute on function public.admin_upsert_club_addon(uuid, text, text, numeric, text, boolean) to authenticated;
@@ -805,6 +856,7 @@ grant execute on function public.admin_set_club_payment_qr(uuid, text) to authen
 grant execute on function public.admin_remove_club_payment_method(uuid) to authenticated;
 grant execute on function public.admin_add_club_photo(text, text) to authenticated;
 grant execute on function public.admin_remove_club_photo(uuid) to authenticated;
+grant execute on function public.admin_unused_club_pictures() to authenticated;
 
 -- Like get_public_club_detail: open to visitors.
 revoke all on function public.get_public_club_profile(text) from public;

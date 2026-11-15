@@ -9,7 +9,9 @@ const live = vi.hoisted(() => {
   const tables = new Map<string, unknown[]>()
   const rpc = vi.fn(async (_name: string, _args: Record<string, unknown>) => ({ data: null as unknown, error: null as unknown }))
   const upload = vi.fn(async (_path: string, _blob: Blob, _options: unknown) => ({ data: {}, error: null as unknown }))
-  const remove = vi.fn(async (_paths: string[]) => ({ data: [], error: null as unknown }))
+  // Like Storage: a delete answers with the files it deleted (an empty list when refused).
+  const remove = vi.fn(async (paths: string[]) => ({ data: paths.map((name) => ({ name })) as { name: string }[], error: null as unknown }))
+  const exists = vi.fn(async (_path: string) => ({ data: false, error: null as unknown }))
   const getPublicUrl = vi.fn((path: string) => ({ data: { publicUrl: `https://cdn.example/court-photos/${path}` } }))
   const from = vi.fn((table: string) => {
     const query: Record<string, unknown> = {
@@ -18,7 +20,7 @@ const live = vi.hoisted(() => {
     for (const method of ['select', 'eq', 'in', 'lt', 'gt', 'order']) query[method] = () => query
     return query
   })
-  return { clubId, tables, rpc, upload, remove, getPublicUrl, from }
+  return { clubId, tables, rpc, upload, remove, exists, getPublicUrl, from }
 })
 
 vi.mock('./supabase', () => ({
@@ -26,7 +28,7 @@ vi.mock('./supabase', () => ({
   supabase: {
     rpc: live.rpc,
     from: live.from,
-    storage: { from: () => ({ upload: live.upload, remove: live.remove, getPublicUrl: live.getPublicUrl }) },
+    storage: { from: () => ({ upload: live.upload, remove: live.remove, exists: live.exists, getPublicUrl: live.getPublicUrl }) },
   },
 }))
 
@@ -43,7 +45,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   live.tables.clear()
   live.rpc.mockImplementation(async () => ({ data: null, error: null }))
-  live.remove.mockImplementation(async () => ({ data: [], error: null }))
+  live.remove.mockImplementation(async (paths) => ({ data: paths.map((name) => ({ name })), error: null }))
+  live.exists.mockImplementation(async () => ({ data: false, error: null }))
   setActiveClubId(live.clubId)
 })
 
@@ -88,11 +91,32 @@ describe('club profile (live)', () => {
 
   it('says so when an old picture file could not be deleted', async () => {
     live.rpc.mockImplementation(async () => ({ data: oldPath, error: null }))
-    // Storage reports a failure in its result; it does not throw.
-    live.remove.mockImplementation(async () => ({ data: [], error: { message: 'Object not found' } }))
+    live.exists.mockImplementation(async () => ({ data: true, error: null }))
+    // A refused delete: Storage answers with an empty list and no error.
+    live.remove.mockImplementation(async () => ({ data: [], error: null }))
     await expect(api.removeClubPhoto('photo-1')).resolves.toEqual({ fileLeftBehind: true })
+    // A failed delete, reported in the result rather than thrown.
+    live.remove.mockImplementation(async () => ({ data: [], error: { message: 'Internal error' } }))
     await expect(api.removeClubPaymentMethod('method-1')).resolves.toEqual({ fileLeftBehind: true })
     await expect(api.removeClubCoach('coach-1')).resolves.toEqual({ fileLeftBehind: true })
+    expect(live.exists).toHaveBeenCalledWith(oldPath)
+  })
+
+  it('does not raise a false alarm when the old file was already gone', async () => {
+    live.rpc.mockImplementation(async () => ({ data: oldPath, error: null }))
+    live.remove.mockImplementation(async () => ({ data: [], error: null }))
+    await expect(api.removeClubPhoto('photo-1')).resolves.toEqual({ fileLeftBehind: false })
+  })
+
+  it('deletes only the unused files the database lists, and counts any left', async () => {
+    const unused = [`${live.clubId}/gallery/a.webp`, `${live.clubId}/payment/b.webp`]
+    live.rpc.mockImplementation(async (name) => ({ data: name === 'admin_unused_club_pictures' ? unused : null, error: null }))
+    live.remove.mockImplementation(async () => ({ data: [{ name: unused[0] }], error: null }))
+    live.exists.mockImplementation(async (path) => ({ data: path === unused[1], error: null }))
+
+    await expect(api.unusedClubPictures()).resolves.toEqual(unused)
+    await expect(api.deleteUnusedClubPictures()).resolves.toEqual({ deleted: 1, left: 1, more: false })
+    expect(live.remove).toHaveBeenCalledWith(unused)
   })
 
   it('removes the new upload when the save is refused', async () => {

@@ -81,7 +81,11 @@ const TAIL = '([/?#]\\S*)?$'
 const FACEBOOK = new RegExp(`^https://([a-z0-9-]+\\.)?(facebook\\.com|fb\\.com|fb\\.me)${TAIL}`, 'i')
 const MESSENGER = new RegExp(`^https://([a-z0-9-]+\\.)?(m\\.me|messenger\\.com)${TAIL}`, 'i')
 const INSTAGRAM = new RegExp(`^https://([a-z0-9-]+\\.)?instagram\\.com${TAIL}`, 'i')
-const WEB = new RegExp(`^https://[a-z0-9-]+(\\.[a-z0-9-]+)+(:[0-9]{1,5})?${TAIL}`, 'i')
+// A web address by name, as the database checks it: labels of letters, digits and inner
+// hyphens, ending in a letter domain (or an xn-- one). No IP addresses and no port numbers.
+const WEB = new RegExp(`^https://([a-z0-9]([a-z0-9-]*[a-z0-9])?\\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})${TAIL}`, 'i')
+const WEBSITE_PROBLEM = 'The website link must start with https:// and name a web address, like https://yourclub.ph'
+const COACH_LINK_PROBLEM = 'The coach\'s link must start with https:// and name a web address, like https://m.me/coachana'
 
 /** True for a link this app will open: https only, so nothing like javascript: ever reaches an href. */
 export function isSafeLink(url: string | null | undefined) {
@@ -105,7 +109,7 @@ export function profileProblem(fields: ClubProfileFields): string | null {
   if (badLink(f.facebook_url, FACEBOOK)) return 'The Facebook link must start with https://facebook.com/ or https://fb.com/'
   if (badLink(f.messenger_url, MESSENGER)) return 'The Messenger link must start with https://m.me/'
   if (badLink(f.instagram_url, INSTAGRAM)) return 'The Instagram link must start with https://instagram.com/'
-  if (badLink(f.website_url, WEB)) return 'The website link must start with https://'
+  if (badLink(f.website_url, WEB)) return WEBSITE_PROBLEM
   if (f.amenities.some((value) => !AMENITIES.some((amenity) => amenity.value === value))) return 'Pick amenities from the list'
   if (tooLong(f.payment_note, 600)) return 'The payment note is limited to 600 characters'
   if (tooLong(f.house_rules, 3000)) return 'House rules are limited to 3,000 characters'
@@ -158,7 +162,7 @@ export function coachProblem(input: ClubCoachInput): string | null {
   if (tooLong(cleanText(input.bio), 1000)) return 'The coach\'s bio is limited to 1,000 characters'
   const phone = cleanText(input.contact_phone)
   if (phone != null && !PHONE.test(phone)) return 'Enter the coach\'s phone number using digits, spaces, +, ( ) and -'
-  if (badLink(cleanText(input.contact_url), WEB)) return 'The coach\'s link must start with https://'
+  if (badLink(cleanText(input.contact_url), WEB)) return COACH_LINK_PROBLEM
   return null
 }
 
