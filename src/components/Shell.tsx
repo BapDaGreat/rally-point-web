@@ -7,6 +7,7 @@ import {
   HelpCircle,
   LayoutDashboard,
   LogOut,
+  PhoneCall,
   QrCode,
   Tv,
   UserRound,
@@ -75,6 +76,7 @@ const superadminTabs = [
   { to: '/superadmin', end: true, label: 'Overview', icon: LayoutDashboard },
   { to: '/superadmin/clubs', label: 'Clubs', icon: Building2 },
   { to: '/superadmin/ledger', label: 'Ledger', icon: Coins },
+  { to: '/superadmin/requests', label: 'Requests', icon: PhoneCall },
   { to: '/superadmin/help', label: 'Help', icon: HelpCircle },
 ]
 

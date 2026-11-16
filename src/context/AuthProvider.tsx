@@ -16,13 +16,27 @@ import {
   rememberClub,
   setActiveClubId,
 } from '../lib/clubContext'
-import type { MyClub, Profile } from '../types'
+import type { MyClub, OwnerClub, Profile } from '../types'
 import { AuthContext, type SignUpResult } from './AuthContext'
 
 interface Access {
   profile: Profile
   clubs: MyClub[]
   activeClub: MyClub | null
+  /** Clubs the person owns through an owner invite (any status). */
+  ownerClubs: OwnerClub[]
+}
+
+/**
+ * A plain message for a court owner who cannot use the app yet: their only club
+ * is still being set up, or a sign-up landed them in their own club's admin
+ * screens. It replaces the generic "profile is not ready" error.
+ */
+class OwnerNotice extends Error {}
+
+function ownerNames(clubs: OwnerClub[]) {
+  const names = clubs.map((club) => club.name)
+  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
 /**
@@ -31,20 +45,37 @@ interface Access {
  * from profiles.role. Returns null when the person has no access anywhere.
  */
 async function loadAccess(identity: Profile, preferredClubId?: string | null): Promise<Access | null> {
-  const [clubs, platform] = await Promise.all([api.myClubs(identity.id), api.platformAccess(identity.id)])
+  // The owner check runs with the other lookups, while the session is certainly
+  // still open. It takes up any owner invites for a confirmed email; it never
+  // fails the sign-in (it answers "no owner clubs" when it cannot tell).
+  const [ownerClubs, firstClubs, platform] = await Promise.all([
+    api.claimOwnerClubs(),
+    api.myClubs(identity.id),
+    api.platformAccess(identity.id),
+  ])
   if (platform === 'superadmin') {
     // Platform accounts work in the platform portal only, with no club context.
     setActiveClubId(null)
-    return { profile: { ...identity, role: 'superadmin' }, clubs: [], activeClub: null }
+    return { profile: { ...identity, role: 'superadmin' }, clubs: [], activeClub: null, ownerClubs: [] }
   }
+  // An invite taken up just now for an open club: read the club list once more.
+  const clubs = ownerClubs.some((owned) => owned.status === 'active' && !firstClubs.some((club) => club.club_id === owned.club_id))
+    ? await api.myClubs(identity.id)
+    : firstClubs
   const activeClub = chooseActiveClub(clubs, identity.id, preferredClubId)
   if (!activeClub) {
     setActiveClubId(null)
+    const waiting = ownerClubs.filter((club) => club.status === 'provisioning')
+    if (waiting.length) {
+      throw new OwnerNotice(
+        `Your owner account is ready. ${ownerNames(waiting)} ${waiting.length === 1 ? 'is' : 'are'} still being set up. You can log in as soon as Rally Point opens ${waiting.length === 1 ? 'it' : 'them'}.`,
+      )
+    }
     return null
   }
   setActiveClubId(activeClub.club_id)
   rememberClub(identity.id, activeClub.club_id)
-  return { profile: { ...identity, role: activeClub.role }, clubs, activeClub }
+  return { profile: { ...identity, role: activeClub.role }, clubs, activeClub, ownerClubs }
 }
 
 async function fetchIdentity(userId: string): Promise<Profile | null> {
@@ -56,6 +87,11 @@ async function fetchIdentity(userId: string): Promise<Profile | null> {
 
 const profileSetupError =
   'Your club profile is not ready. Please try again or contact staff.'
+
+/** The owner's own message when there is one; otherwise the usual setup error. */
+function accessError(error: unknown) {
+  return error instanceof OwnerNotice ? error : new Error(profileSetupError)
+}
 
 const invalidClubLinkError = 'This club link is not valid. Ask the club for a new link.'
 
@@ -144,7 +180,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     if (isDemoMode) {
       const identity = demoStore.login(email, password)
-      const access = await loadAccess(identity)
+      let access: Access | null
+      try {
+        access = await loadAccess(identity)
+      } catch (error) {
+        demoStore.logout()
+        applyAccess(null)
+        throw accessError(error)
+      }
       if (!access) {
         demoStore.logout()
         applyAccess(null)
@@ -164,10 +207,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!access) throw new Error(profileSetupError)
       applyAccess(access)
       return access.profile
-    } catch {
+    } catch (error) {
       applyAccess(null)
       await clearUnauthorizedSession()
-      throw new Error(profileSetupError)
+      throw accessError(error)
     }
   }, [applyAccess])
 
@@ -181,13 +224,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const identity = await fetchIdentity(userId)
         const access = identity ? await loadAccess(identity, preferredClubId) : null
+        if (access && access.profile.role !== 'member') {
+          // Sign-up only ever opens a member's screens. An owner whose club is
+          // already open is told to log in, which opens their admin screens.
+          const owned = access.ownerClubs.find((club) => club.club_id === access.activeClub?.club_id)
+          if (owned) throw new OwnerNotice(`Your owner account is ready. Log in to manage ${owned.name}.`)
+        }
         if (!access || access.profile.role !== 'member') throw new Error(profileSetupError)
         applyAccess(access)
         return access.profile
-      } catch {
+      } catch (error) {
         applyAccess(null)
         await clearUnauthorizedSession()
-        throw new Error(profileSetupError)
+        throw accessError(error)
       }
     },
     [applyAccess],
@@ -219,7 +268,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           phone: input.phone?.trim() || undefined,
           clubSlug,
         })
-        const access = await loadAccess(identity, joining?.id)
+        let access: Access | null
+        try {
+          access = await loadAccess(identity, joining?.id)
+        } catch (error) {
+          demoStore.logout()
+          throw accessError(error)
+        }
         if (!access) throw new Error(profileSetupError)
         applyAccess(access)
         return { status: 'signed_in', profile: access.profile }

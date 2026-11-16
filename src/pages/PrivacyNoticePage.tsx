@@ -38,6 +38,11 @@ function sections(club: NoticeClub): { title: string; content: ReactNode }[] {
             <li>Account details such as your name, email address, and optional phone number.</li>
             <li>Membership, booking, open-play, check-in, and support inquiry details.</li>
             <li>Payment and transaction records related to club services.</li>
+            <li>
+              If you ask us to call you about listing your club: your name, your club or venue name and
+              city, how many courts it has, your mobile number or email, when you would like the call,
+              and any message. Only the Rally Point platform team sees these requests.
+            </li>
           </ul>
           <p className="mt-2">
             Do not send sensitive personal information unless it is needed for a specific service
@@ -52,8 +57,8 @@ function sections(club: NoticeClub): { title: string; content: ReactNode }[] {
         <>
           <p>
             We use information to create and manage accounts, provide memberships and bookings,
-            support check-in and transactions, respond to questions, maintain the service, and
-            meet legal requirements.
+            support check-in and transactions, respond to questions, call court owners back about
+            listing their club, maintain the service, and meet legal requirements.
           </p>
           <p className="mt-2">
             Under the Philippine Data Privacy Act of 2012 (RA 10173), processing is based, as
@@ -212,7 +217,7 @@ export function PrivacyNoticePage() {
           </h1>
           <p className="mt-2 text-body text-slate-600">{subtitle}</p>
           <p className="mt-1 text-caption text-slate-500">
-            Last updated: October 17, 2026
+            Last updated: November 15, 2026
           </p>
         </header>
 

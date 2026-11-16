@@ -55,7 +55,7 @@ describe('PrivacyNoticePage', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Privacy Notice' })).toBeInTheDocument()
     expect(screen.getByText('For Rally Point Gensan app users')).toBeInTheDocument()
-    expect(screen.getByText('Last updated: October 17, 2026')).toBeInTheDocument()
+    expect(screen.getByText('Last updated: November 15, 2026')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Who we are' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Personal information we collect' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Why we use information and lawful bases' })).toBeInTheDocument()

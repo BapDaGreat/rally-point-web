@@ -17,6 +17,8 @@ const authState = vi.hoisted(() => ({
   // Trusted access records returned by list_my_clubs / get_platform_access.
   clubs: [] as MyClub[],
   platform: null as string | null,
+  // Clubs the person owns through an owner invite (claim_my_owner_clubs).
+  ownerClubs: [] as { club_id: string; name: string; status: string }[],
   publicClub: null as PublicClub | null,
   sessionUser: {
     id: 'auth-user-1',
@@ -30,13 +32,16 @@ const authState = vi.hoisted(() => ({
 
 const unsubscribe = vi.hoisted(() => vi.fn())
 
+const defaultRpc = vi.hoisted(() => async (name: string) => {
+  if (name === 'list_my_clubs') return { data: authState.clubs, error: null } as { data: unknown; error: unknown }
+  if (name === 'get_platform_access') return { data: authState.platform, error: null } as { data: unknown; error: unknown }
+  if (name === 'get_public_club') return { data: authState.publicClub ? [authState.publicClub] : [], error: null } as { data: unknown; error: unknown }
+  if (name === 'claim_my_owner_clubs') return { data: authState.ownerClubs, error: null } as { data: unknown; error: unknown }
+  return { data: null, error: null } as { data: unknown; error: unknown }
+})
+
 const supabaseMock = vi.hoisted(() => ({
-  rpc: vi.fn(async (name: string) => {
-    if (name === 'list_my_clubs') return { data: authState.clubs, error: null }
-    if (name === 'get_platform_access') return { data: authState.platform, error: null }
-    if (name === 'get_public_club') return { data: authState.publicClub ? [authState.publicClub] : [], error: null }
-    return { data: null, error: null }
-  }),
+  rpc: vi.fn(defaultRpc),
   from: vi.fn(() => ({
     select: vi.fn(() => ({
       eq: vi.fn(() => ({
@@ -213,6 +218,7 @@ describe('AuthProvider trusted role boundary', () => {
     authState.clubs = [gensanMember]
     authState.platform = null
     authState.publicClub = null
+    authState.ownerClubs = []
     setActiveClubId(null)
     localStorage.clear()
     vi.clearAllMocks()
@@ -585,5 +591,95 @@ describe('AuthProvider trusted role boundary', () => {
 
     expect(supabaseMock.auth.resetPasswordForEmail).toHaveBeenCalledWith('new@example.com')
     expect(await screen.findByText('Reset unavailable')).toBeInTheDocument()
+  })
+
+  it('tells an owner whose club is still being set up why they cannot log in yet, and signs out', async () => {
+    authState.profileResult = { data: {
+      id: authState.sessionUser.id, email: authState.sessionUser.email, full_name: 'Club Owner',
+      role: 'member', created_at: '2026-11-16T00:00:00.000Z',
+    }, error: null }
+    authState.clubs = []
+    authState.ownerClubs = [{ club_id: 'club-owner-1', name: 'Cebu Hub', status: 'provisioning' }]
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: null } })
+    const user = userEvent.setup()
+    render(<AuthProvider><AuthActionProbe /></AuthProvider>)
+    await screen.findByText('Signed out')
+
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect(await screen.findByText(
+      'Your owner account is ready. Cebu Hub is still being set up. You can log in as soon as Rally Point opens it.',
+    )).toBeInTheDocument()
+    expect(screen.getByText('Signed out')).toBeInTheDocument()
+    expect(supabaseMock.auth.signOut).toHaveBeenCalled()
+  })
+
+  it('keeps sign-up to member screens, and tells an owner of an open club to log in instead', async () => {
+    authState.profileResult = { data: {
+      id: authState.sessionUser.id, email: authState.sessionUser.email, full_name: 'Club Owner',
+      role: 'member', created_at: '2026-11-16T00:00:00.000Z',
+    }, error: null }
+    authState.clubs = [{ club_id: 'club-owner-1', slug: 'cebu-hub', name: 'Cebu Hub', role: 'admin' }]
+    authState.ownerClubs = [{ club_id: 'club-owner-1', name: 'Cebu Hub', status: 'active' }]
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: null } })
+    supabaseMock.auth.verifyOtp.mockResolvedValueOnce({
+      data: { user: authState.sessionUser, session: { user: authState.sessionUser } },
+      error: null,
+    })
+    const user = userEvent.setup()
+    render(<AuthProvider><SignupCodeProbe /></AuthProvider>)
+    await screen.findByText('Signed out')
+
+    await user.click(screen.getByRole('button', { name: 'Confirm code' }))
+
+    expect(await screen.findByText('Your owner account is ready. Log in to manage Cebu Hub.')).toBeInTheDocument()
+    expect(screen.getByText('Signed out')).toBeInTheDocument()
+    expect(supabaseMock.auth.signOut).toHaveBeenCalled()
+  })
+
+  it('keeps the owner message when the auth listener checks access at the same moment', async () => {
+    authState.profileResult = { data: {
+      id: authState.sessionUser.id, email: authState.sessionUser.email, full_name: 'Club Owner',
+      role: 'member', created_at: '2026-11-16T00:00:00.000Z',
+    }, error: null }
+    authState.clubs = []
+    authState.ownerClubs = [{ club_id: 'club-owner-1', name: 'Cebu Hub', status: 'provisioning' }]
+    let listener: (() => void) | null = null
+    let signedIn = false
+    supabaseMock.auth.onAuthStateChange.mockImplementation(((callback: () => void) => {
+      listener = callback
+      return { data: { subscription: { unsubscribe } } }
+    }) as never)
+    supabaseMock.auth.getSession.mockImplementation(async () => ({
+      data: { session: signedIn ? { user: authState.sessionUser } : null },
+    }))
+    // The listener fires as the session starts, so it checks access alongside sign-in.
+    supabaseMock.auth.signInWithPassword.mockImplementation(async () => {
+      signedIn = true
+      listener?.()
+      return { data: { user: authState.sessionUser }, error: null }
+    })
+    supabaseMock.auth.signOut.mockImplementation(async () => {
+      signedIn = false
+      return { error: null }
+    })
+    // Once signed out, the database answers nothing (as for an anonymous caller).
+    supabaseMock.rpc.mockImplementation(async (name: string) =>
+      signedIn ? defaultRpc(name) : { data: null, error: { message: 'permission denied' } })
+    try {
+      const user = userEvent.setup()
+      render(<AuthProvider><AuthActionProbe /></AuthProvider>)
+      await screen.findByText('Signed out')
+
+      await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+      expect(await screen.findByText(
+        'Your owner account is ready. Cebu Hub is still being set up. You can log in as soon as Rally Point opens it.',
+      )).toBeInTheDocument()
+      expect(screen.getByText('Signed out')).toBeInTheDocument()
+    } finally {
+      supabaseMock.rpc.mockImplementation(defaultRpc)
+      supabaseMock.auth.onAuthStateChange.mockImplementation((() => ({ data: { subscription: { unsubscribe } } })) as never)
+    }
   })
 })

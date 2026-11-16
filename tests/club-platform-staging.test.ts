@@ -342,6 +342,37 @@ describe('staging releases', () => {
     expect(postflight).toContain("version = '20261115090000'")
   })
 
+  it('builds the owner onboarding release on the 28-migration state and re-runs every earlier check', async () => {
+    const { clubProfileRelease, ownerOnboardingRelease, releaseManifest, releases } = await load()
+    const { ownerOnboardingChecks } = await import('../scripts/club-platform-checks.mjs')
+    const { releaseApprovals } = await import('../scripts/staging-release-approvals.mjs')
+    expect(ownerOnboardingRelease.baseVersions).toEqual([...clubProfileRelease.baseVersions, '20261115090000'])
+    expect(ownerOnboardingRelease.baseVersions).toHaveLength(28)
+    expect(ownerOnboardingRelease.migrations).toEqual(['20261116090000_owner_call_requests.sql', '20261116090100_club_owner_invites.sql'])
+    expect(ownerOnboardingRelease.stateCheck).toEqual({ file: 'club_profile_postflight.sql', kind: 'clubProfile' })
+    expect(ownerOnboardingRelease.postChecks.map((check: { kind: string, ignore: string[] }) => [check.kind, [...check.ignore]])).toEqual([
+      ['ownerOnboarding', []],
+      ['clubProfile', ['ledger_has_club_profile']],
+      ['courtPhotos', ['ledger_has_court_photos']],
+      ['courtMarketplace', ['ledger_has_court_marketplace', 'venues_open_all_day']],
+      ['advisorFollowup', ['ledger_has_followup']],
+      ['advisor', ['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']],
+      ['postflight', ['ledger_has_every_migration']],
+    ])
+    // Approved by the owner after the dry run passed (applied 2026-11-16).
+    expect(releaseApprovals['owner-onboarding-20261116']).toMatch(/^[a-f0-9]{64}$/)
+    const earlier = Object.values(releases).filter(release => release !== ownerOnboardingRelease)
+      .flatMap((release: { dirs: object, databases: object }) => [...Object.values(release.dirs), ...Object.values(release.databases)])
+    expect([...Object.values(ownerOnboardingRelease.dirs), ...Object.values(ownerOnboardingRelease.databases)]
+      .filter(name => earlier.includes(name))).toEqual([])
+    const { contents } = releaseManifest(ownerOnboardingRelease)
+    for (const migration of ownerOnboardingRelease.migrations) expect(contents.has(`supabase/migrations/${migration}`)).toBe(true)
+    const postflight = contents.get('supabase/verification/owner_onboarding_postflight.sql')?.toString('utf8') ?? ''
+    expect([...postflight.matchAll(/select \d+, '([a-z_]+)'/g)].map(match => match[1])).toEqual([...ownerOnboardingChecks])
+    expect(postflight).toContain("version = '20261116090000'")
+    expect(postflight).toContain("version = '20261116090100'")
+  })
+
   it('hashes the release definition and every file, and returns the bytes it hashed', async () => {
     const { releaseManifest } = await load()
     const { dir, release } = releaseFixture()

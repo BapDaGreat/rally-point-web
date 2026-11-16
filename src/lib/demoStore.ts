@@ -17,6 +17,7 @@ import { staffOperations } from './demo/staff'
 import { chooseVenueId, demoClub } from './tenant'
 import { inquiryOperations } from './demo/inquiries'
 import { platformOperations } from './demo/platform'
+import { hasOpenOwnerInvite, ownerOperations } from './demo/owners'
 import { demoCourtPhotos, demoVenueCover, photoOperations } from './demo/photos'
 import { clubProfileOperations, publicClubProfileFor } from './demo/clubProfile'
 
@@ -122,7 +123,8 @@ export const demoStore = {
     db.profiles.push(profile)
     setDemoPassword(e, input.password)
     // With the default club closed, keep the profile and skip the membership, as the database does.
-    if (club?.is_active) {
+    // So does an invited court owner signing up without a club link: they become their own club's admin instead.
+    if (club?.is_active && !(!slug && hasOpenOwnerInvite(db, e))) {
       addMembership(db, club.id, profile)
       db.notifications.unshift({
         id: uid('n'),
@@ -443,6 +445,7 @@ export const demoStore = {
   ...ledgerOperations,
   ...inquiryOperations,
   ...platformOperations,
+  ...ownerOperations,
   ...photoOperations,
   ...clubProfileOperations,
 }

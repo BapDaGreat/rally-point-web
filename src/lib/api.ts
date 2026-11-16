@@ -53,6 +53,11 @@ import type {
   SuperadminStats,
   SupportSession,
   SupportSnapshot,
+  ClubOwnerInvite,
+  OwnerCallRequest,
+  OwnerCallRequestInput,
+  OwnerCallStatus,
+  OwnerClub,
 } from '../types'
 import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, hourLabel, localRangeISO, venueHours } from '../types'
 import { CLUB_HEADER, getActiveClubId, notifyClubUnavailable, requireActiveClubId } from './clubContext'
@@ -1369,6 +1374,91 @@ export const api = {
       if (error) throw error
     },
 
+    // ---- Court owners: call requests and owner invites ----
+
+    /** Open to visitors: a court owner asks Rally Point to call about listing their club. */
+    async requestOwnerCall(input: OwnerCallRequestInput): Promise<string> {
+      if (isDemoMode) return demoStore.requestOwnerCall(input)
+      const { data, error } = await supabase!.rpc('request_owner_call', {
+        p_full_name: input.full_name,
+        p_club_name: input.club_name,
+        p_city: input.city,
+        p_court_count: input.court_count,
+        p_phone: input.phone,
+        p_email: input.email,
+        p_preferred_date: input.preferred_date,
+        p_preferred_time: input.preferred_time,
+        p_message: input.message,
+      })
+      if (error) {
+        throw isMissingFunction(error) ? new Error('We cannot take requests yet. Please try again later.') : error
+      }
+      return data as string
+    },
+
+    async platformOwnerCallRequests(status?: OwnerCallStatus | null): Promise<OwnerCallRequest[]> {
+      if (isDemoMode) return demoStore.platformOwnerCallRequests(status ?? null)
+      const { data, error } = await supabase!.rpc('platform_owner_call_requests', { p_status: status ?? null, p_limit: 200 })
+      if (error) throw error
+      return ((data ?? []) as OwnerCallRequest[]).map((row) => ({ ...row, court_count: Number(row.court_count) }))
+    },
+
+    async setOwnerCallStatus(requestId: string, status: OwnerCallStatus): Promise<void> {
+      if (isDemoMode) return demoStore.setOwnerCallStatus(requestId, status)
+      const { error } = await supabase!.rpc('platform_set_owner_call_status', { p_request_id: requestId, p_status: status })
+      if (error) throw error
+    },
+
+    /** Makes someone with an account the club's admin now; anyone else is invited until they sign up and confirm the email. */
+    async inviteClubOwner(clubId: string, email: string): Promise<'assigned' | 'invited'> {
+      if (isDemoMode) return demoStore.inviteClubOwner(clubId, email)
+      const { data, error } = await supabase!.rpc('platform_invite_club_owner', { p_club_id: clubId, p_email: email })
+      if (error) {
+        // Until the owner-invite migration reaches this database, keep the older step:
+        // an existing account becomes the admin, and anyone else is asked to sign up first.
+        if (isMissingFunction(error)) {
+          await api.assignClubAdmin(clubId, email)
+          return 'assigned'
+        }
+        throw error
+      }
+      return data === 'assigned' ? 'assigned' : 'invited'
+    },
+
+    async clubOwnerInvites(clubId: string): Promise<ClubOwnerInvite[]> {
+      if (isDemoMode) return demoStore.clubOwnerInvites(clubId)
+      const { data, error } = await supabase!.rpc('platform_club_owner_invites', { p_club_id: clubId })
+      if (error) {
+        if (isMissingFunction(error)) return []
+        throw error
+      }
+      return (data ?? []) as ClubOwnerInvite[]
+    },
+
+    async cancelClubOwnerInvite(inviteId: string): Promise<void> {
+      if (isDemoMode) return demoStore.cancelClubOwnerInvite(inviteId)
+      const { error } = await supabase!.rpc('platform_cancel_club_owner_invite', { p_invite_id: inviteId })
+      if (error) throw error
+    },
+
+    /**
+     * Takes up any owner invites for the signed-in person's confirmed email, then
+     * lists the clubs they own that way. It never fails a sign-in: when the
+     * database cannot answer (for example before this feature is released there),
+     * it reports no owner clubs.
+     */
+    async claimOwnerClubs(): Promise<OwnerClub[]> {
+      if (isDemoMode) return demoStore.claimOwnerClubs()
+      try {
+        const { data, error } = await supabase!.rpc('claim_my_owner_clubs')
+        if (error) throw error
+        return (data ?? []) as OwnerClub[]
+      } catch (error) {
+        console.warn('Owner invites could not be checked', error)
+        return []
+      }
+    },
+
     // ---- Support sessions: time-limited, read-only, logged views of one club ----
 
     async startSupportSession(clubId: string, reason: string, minutes: number): Promise<string> {
@@ -1398,6 +1488,12 @@ export const api = {
       return data as SupportSnapshot
     },
   }
+
+/** PostgREST answers PGRST202 (and Postgres 42883) when a database function is not there yet. */
+function isMissingFunction(error: unknown) {
+  const code = (error as { code?: unknown } | null)?.code
+  return code === 'PGRST202' || code === '42883'
+}
 
 /** Postgres numerics can arrive as strings; the portal works with numbers. */
 function normalizePlatformClub(club: PlatformClub): PlatformClub {

@@ -368,6 +368,39 @@ describe("LoginPage return to a club page", () => {
     expect(screen.getByLabelText("Full name")).toBeInTheDocument();
   });
 
+  it("tells a court owner which email to use when the owner page opens sign-up", () => {
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/login", state: { mode: "join", owner: true } }]}>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+    expect(switchToJoin()).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/Court owner\? Use the email you gave Rally Point\./)).toBeInTheDocument();
+  });
+
+  it("shows a court owner why they cannot log in while their club is being set up", async () => {
+    const user = userEvent.setup();
+    authState.signIn.mockRejectedValue(
+      new Error("Your owner account is ready. Cebu Hub is still being set up. You can log in as soon as Rally Point opens it."),
+    );
+    renderLogin();
+    await user.type(screen.getByLabelText("Email"), "owner@example.com");
+    await user.type(screen.getByLabelText("Password"), "secret123");
+    await user.click(loginSubmitButton());
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Your owner account is ready. Cebu Hub is still being set up. You can log in as soon as Rally Point opens it.",
+    );
+  });
+
+  it("shows no owner note on the usual sign-up", () => {
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/login", state: { mode: "join" } }]}>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText(/Court owner\?/)).not.toBeInTheDocument();
+  });
+
   it("ignores a return path outside the club pages", async () => {
     const user = userEvent.setup();
     authState.signIn.mockResolvedValue({ id: "u1", email: "p@example.com", full_name: "Pia", role: "member", created_at: "2026-09-01" });
@@ -618,6 +651,24 @@ describe("LoginPage sign-up code step", () => {
     expect(screen.getByLabelText("Email")).toHaveValue("New@Example.com");
     expect(screen.getByLabelText("Password")).toHaveValue("");
     expect(screen.getByLabelText("Email")).toHaveFocus();
+  });
+
+  it("tells a court owner what happens next once the code is confirmed", async () => {
+    const user = userEvent.setup();
+    authState.verifySignupCode.mockRejectedValue(
+      new Error("Your owner account is ready. Cebu Hub is still being set up. You can log in as soon as Rally Point opens it."),
+    );
+    renderJoin();
+    await fillAndJoin(user);
+
+    await user.type(await screen.findByLabelText("6-digit code"), "123456");
+    await user.click(screen.getByRole("button", { name: "Confirm and continue" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Your owner account is ready. Cebu Hub is still being set up. You can log in as soon as Rally Point opens it.",
+    );
+    expect(screen.queryByLabelText("6-digit code")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Full name")).not.toBeInTheDocument();
   });
 
   it("signs straight in when the account needs no code", async () => {
