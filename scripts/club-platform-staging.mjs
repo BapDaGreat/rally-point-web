@@ -261,7 +261,8 @@ export const ownerOnboardingRelease = Object.freeze({
   ]),
   isolation: Object.freeze({ file: 'two_club_isolation.sql', plan: 55 }),
   dirs: Object.freeze({
-    capture: 'docs/release-private/staging-backup-20261116-r1',
+    // r1 stopped before reaching staging: the local database container was not running.
+    capture: 'docs/release-private/staging-backup-20261116-r2',
     restore: 'docs/release-private/staging-backup-restore-20261116-r1',
     dryRun: 'docs/release-private/owner-onboarding-staging-dryrun-20261116-r1',
     apply: 'docs/release-private/owner-onboarding-staging-apply-20261116-r1',
