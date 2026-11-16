@@ -222,9 +222,57 @@ export const clubProfileRelease = Object.freeze({
   databases: Object.freeze({ restore: 'rally_staging_backup_20261115_r2_restore', dryRun: 'rally_staging_backup_20261115_r1_dryrun' }),
 })
 
+// Court owner onboarding: owners ask Rally Point for a call (request_owner_call, open to visitors,
+// checked and flood-limited) and superadmins follow the requests up; owner invites by email, taken
+// up at sign-in once the email is confirmed (claim_my_owner_clubs); handle_new_user gives an invited
+// email no default membership. Two migrations in one release. Nothing inside the reservation-write
+// pause changes, and no trigger is added to auth.users, so the capture's sign-up trigger step holds.
+export const ownerOnboardingRelease = Object.freeze({
+  id: 'owner-onboarding-20261116',
+  title: 'Court owner onboarding',
+  baseVersions: Object.freeze([...clubProfileRelease.baseVersions, '20261115090000'].sort()),
+  migrations: Object.freeze(['20261116090000_owner_call_requests.sql', '20261116090100_club_owner_invites.sql']),
+  // The SQL that runs and the code that runs it. Approval pins all of these bytes.
+  files: Object.freeze(['supabase/migrations/20261116090000_owner_call_requests.sql',
+    'supabase/migrations/20261116090100_club_owner_invites.sql', 'supabase/verification/owner_onboarding_postflight.sql',
+    'supabase/verification/club_profile_postflight.sql', 'supabase/verification/court_photos_postflight.sql',
+    'supabase/verification/court_marketplace_postflight.sql', 'supabase/verification/supabase_advisor_followup_postflight.sql',
+    'supabase/verification/supabase_advisor_postflight.sql', 'supabase/verification/club_platform_postflight.sql',
+    'supabase/verification/two_club_isolation.sql', 'supabase/verification/schema_fingerprint.sql',
+    'supabase/verification/backup_content_inventory.sql', 'supabase/verification/reservation_write_pause_readonly.sql',
+    'supabase/verification/staging_privacy_readonly_preflight.sql', 'scripts/run-staging-release-apply.mjs',
+    'scripts/club-platform-staging.mjs', 'scripts/club-platform-checks.mjs', 'scripts/restore-catalog-checks.mjs',
+    'scripts/restore-data-checks.mjs']),
+  stateCheck: Object.freeze({ file: 'club_profile_postflight.sql', kind: 'clubProfile' }),
+  postChecks: Object.freeze([
+    Object.freeze({ file: 'owner_onboarding_postflight.sql', kind: 'ownerOnboarding', ignore: Object.freeze([]) }),
+    // Earlier postflights count 22, 23, 26, 27 or 28 migrations; this release brings staging to 30.
+    Object.freeze({ file: 'club_profile_postflight.sql', kind: 'clubProfile', ignore: Object.freeze(['ledger_has_club_profile']) }),
+    Object.freeze({ file: 'court_photos_postflight.sql', kind: 'courtPhotos', ignore: Object.freeze(['ledger_has_court_photos']) }),
+    // Opening hours are club data since the club profile screens went live: a club may set them,
+    // so "every venue open 0-24" no longer holds. This release does not touch venues.
+    Object.freeze({ file: 'court_marketplace_postflight.sql', kind: 'courtMarketplace',
+      ignore: Object.freeze(['ledger_has_court_marketplace', 'venues_open_all_day']) }),
+    Object.freeze({ file: 'supabase_advisor_followup_postflight.sql', kind: 'advisorFollowup',
+      ignore: Object.freeze(['ledger_has_followup']) }),
+    Object.freeze({ file: 'supabase_advisor_postflight.sql', kind: 'advisor',
+      ignore: Object.freeze(['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']) }),
+    Object.freeze({ file: 'club_platform_postflight.sql', kind: 'postflight', ignore: Object.freeze(['ledger_has_every_migration']) }),
+  ]),
+  isolation: Object.freeze({ file: 'two_club_isolation.sql', plan: 55 }),
+  dirs: Object.freeze({
+    capture: 'docs/release-private/staging-backup-20261116-r1',
+    restore: 'docs/release-private/staging-backup-restore-20261116-r1',
+    dryRun: 'docs/release-private/owner-onboarding-staging-dryrun-20261116-r1',
+    apply: 'docs/release-private/owner-onboarding-staging-apply-20261116-r1',
+  }),
+  databases: Object.freeze({ restore: 'rally_staging_backup_20261116_r1_restore', dryRun: 'rally_staging_backup_20261116_r1_dryrun' }),
+})
+
 export const releases = Object.freeze({ [advisorFixesRelease.id]: advisorFixesRelease,
   [advisorFollowupRelease.id]: advisorFollowupRelease, [courtMarketplaceRelease.id]: courtMarketplaceRelease,
-  [courtPhotosRelease.id]: courtPhotosRelease, [clubProfileRelease.id]: clubProfileRelease })
+  [courtPhotosRelease.id]: courtPhotosRelease, [clubProfileRelease.id]: clubProfileRelease,
+  [ownerOnboardingRelease.id]: ownerOnboardingRelease })
 
 export function getRelease(id) {
   assert.ok(Object.hasOwn(releases, id ?? ''), `Unknown release: ${id}. Known: ${Object.keys(releases).join(', ')}`)

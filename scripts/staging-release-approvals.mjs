@@ -16,4 +16,6 @@ export const releaseApprovals = Object.freeze({
   // Owner, 2026-11-16 (PH), after the capture, the r2 restore check and the dry run on a restored
   // copy of staging passed (all checks, isolation 55/55, schema matches the build): "yes".
   'club-profile-20261115': '2361081b6e4e958f4a7ff92e524d2b1f7051f9d8329f89092dbf6b257b1eb10f',
+  // Prepared 2026-11-16 (PH); the owner approves after the capture, the restore check and the dry run pass.
+  'owner-onboarding-20261116': null,
 })
