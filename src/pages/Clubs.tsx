@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Clock, Images, MapPin, Navigation, Search } from 'lucide-react'
 import { PublicFrame as Frame } from '../components/PublicFrame'
@@ -15,6 +15,7 @@ import {
 import { LoadingShapes } from '../components/Skeleton'
 import { stagger } from '../lib/motion'
 import { useAuth } from '../context/AuthContext'
+import LoginPage from './LoginPage'
 import { api } from '../lib/api'
 import type { PublicClubDetail, PublicClubListing, PublicClubProfile } from '../types'
 import { openingHoursLabel, peso } from '../types'
@@ -217,6 +218,8 @@ export function ClubDetailPage() {
   const [club, setClub] = useState<PublicClubDetail | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [busyVenue, setBusyVenue] = useState<string | null>(null)
+  const [bookingVenue, setBookingVenue] = useState<string | null>(null)
+  const [authDialogOpen, setAuthDialogOpen] = useState(false)
   // The club's business profile is extra: the page still shows courts if it cannot load.
   const [profile, setProfile] = useState<{ slug: string; data: PublicClubProfile } | null>(null)
 
@@ -234,12 +237,8 @@ export function ClubDetailPage() {
     return () => { cancelled = true }
   }, [slug])
 
-  async function book(venueId: string) {
+  const continueBooking = useCallback(async (venueId: string) => {
     if (!club) return
-    if (!user) {
-      nav('/login', { state: { returnTo: `/clubs/${club.slug}` } })
-      return
-    }
     setBusyVenue(venueId)
     setError(null)
     try {
@@ -250,6 +249,28 @@ export function ClubDetailPage() {
     } finally {
       setBusyVenue(null)
     }
+  }, [club, joinClub, nav])
+
+  function book(venueId: string) {
+    if (!club) return
+    if (!user) {
+      setBookingVenue(venueId)
+      setAuthDialogOpen(true)
+      return
+    }
+    void continueBooking(venueId)
+  }
+
+  useEffect(() => {
+    if (!user || authDialogOpen || !bookingVenue) return
+    const venueId = bookingVenue
+    setBookingVenue(null)
+    void continueBooking(venueId)
+  }, [user, authDialogOpen, bookingVenue, continueBooking])
+
+  function closeAuthDialog() {
+    setAuthDialogOpen(false)
+    setBookingVenue(null)
   }
 
   const back = <Link to="/clubs" className={textLink}><ChevronLeft size={18} aria-hidden /> All clubs</Link>
@@ -278,6 +299,13 @@ export function ClubDetailPage() {
 
   return (
     <Frame title={club.name} subtitle={placeLine(club) || undefined}>
+      {authDialogOpen ? (
+        <LoginPage
+          dialog
+          onClose={closeAuthDialog}
+          onAuthenticated={() => setAuthDialogOpen(false)}
+        />
+      ) : null}
       {back}
 
       {heroPhoto ? (
@@ -364,7 +392,7 @@ export function ClubDetailPage() {
                 className="btn-primary w-full"
                 disabled={!bookable || busyVenue !== null}
                 aria-busy={busyVenue === venue.id}
-                onClick={() => void book(venue.id)}
+                onClick={() => book(venue.id)}
               >
                 {busyVenue === venue.id ? 'Opening booking…' : bookable ? `Book a court at ${venue.name}` : 'No courts open for booking'}
               </button>

@@ -7,19 +7,38 @@ import { ClubDetailPage, ClubDirectory } from './Clubs'
 
 const auth = vi.hoisted(() => ({
   user: null as Profile | null,
+  listeners: new Set<() => void>(),
   joinClub: vi.fn(),
+  signIn: vi.fn(),
+  signUpMember: vi.fn(),
 }))
 
-vi.mock('../context/AuthContext', () => ({
-  useAuth: () => ({
-    user: auth.user,
-    joinClub: auth.joinClub,
-    activeClub: null,
-    clubs: [],
-    switchClub: vi.fn(),
-    signOut: vi.fn(),
-  }),
-}))
+vi.mock('../context/AuthContext', async () => {
+  const { useSyncExternalStore } = await import('react')
+  return {
+    useAuth: () => ({
+      user: useSyncExternalStore(
+        (listener) => {
+          auth.listeners.add(listener)
+          return () => auth.listeners.delete(listener)
+        },
+        () => auth.user,
+        () => auth.user,
+      ),
+      joinClub: auth.joinClub,
+      signIn: auth.signIn,
+      signUpMember: auth.signUpMember,
+      verifySignupCode: vi.fn(),
+      resendSignupCode: vi.fn(),
+      resetPassword: vi.fn(),
+      demo: false,
+      activeClub: null,
+      clubs: [],
+      switchClub: vi.fn(),
+      signOut: vi.fn(),
+    }),
+  }
+})
 
 vi.mock('../lib/api', () => ({
   api: { listPublicClubs: vi.fn(), publicClubDetail: vi.fn() },
@@ -68,7 +87,10 @@ function renderAt(path: string) {
 describe('Find a court', () => {
   beforeEach(() => {
     auth.user = null
+    auth.listeners.clear()
     auth.joinClub.mockReset()
+    auth.signIn.mockReset()
+    auth.signUpMember.mockReset()
     vi.mocked(api.listPublicClubs).mockReset().mockResolvedValue(clubs)
     vi.mocked(api.publicClubDetail).mockReset().mockResolvedValue(davao)
   })
@@ -123,13 +145,63 @@ describe('Find a court', () => {
     expect(api.publicClubDetail).toHaveBeenCalledWith('rally-point-davao')
   })
 
-  it('sends a visitor to log in and back to the club page before booking', async () => {
+  it('opens a login dialog for a visitor and closes it without leaving the club page', async () => {
     const user = userEvent.setup()
     renderAt('/clubs/rally-point-davao')
 
     await user.click(await screen.findByRole('button', { name: 'Book a court at Davao Main' }))
-    expect(await screen.findByText('At /login {"returnTo":"/clubs/rally-point-davao"}')).toBeInTheDocument()
+    const dialog = await screen.findByRole('dialog', { name: 'Log in' })
+    expect(within(dialog).getAllByRole('button', { name: 'Join as member' }).length).toBeGreaterThan(0)
     expect(auth.joinClub).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Close sign-in' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Book a court at Davao Main' })).toBeInTheDocument()
+  })
+
+  it('continues to the chosen venue after visitor login', async () => {
+    const user = userEvent.setup()
+    auth.joinClub.mockResolvedValue({ club_id: 'club-davao', slug: 'rally-point-davao', name: 'Rally Point Davao', role: 'member' })
+    auth.signIn.mockImplementation(async () => {
+      auth.user = player
+      auth.listeners.forEach((listener) => listener())
+      return player
+    })
+    renderAt('/clubs/rally-point-davao')
+
+    await user.click(await screen.findByRole('button', { name: 'Book a court at Davao Main' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Log in' })
+    await user.type(within(dialog).getByLabelText('Email'), player.email)
+    await user.type(within(dialog).getByLabelText('Password'), 'secret123')
+    const submit = within(dialog).getAllByRole('button', { name: 'Log in' })
+      .find((button) => button.getAttribute('type') === 'submit')
+    if (!submit) throw new Error('Could not find login submit button')
+    await user.click(submit)
+
+    await waitFor(() => expect(auth.joinClub).toHaveBeenCalledWith('rally-point-davao', { asPlayer: true }))
+    expect(await screen.findByText('At /member/book {"venueId":"venue-davao"}')).toBeInTheDocument()
+  })
+
+  it('continues to the chosen venue after visitor sign-up', async () => {
+    const user = userEvent.setup()
+    auth.joinClub.mockResolvedValue({ club_id: 'club-davao', slug: 'rally-point-davao', name: 'Rally Point Davao', role: 'member' })
+    auth.signUpMember.mockImplementation(async () => {
+      auth.user = player
+      auth.listeners.forEach((listener) => listener())
+      return { status: 'signed_in', profile: player }
+    })
+    renderAt('/clubs/rally-point-davao')
+
+    await user.click(await screen.findByRole('button', { name: 'Book a court at Davao Main' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Log in' })
+    await user.click(within(dialog).getAllByRole('button', { name: 'Join as member' })[0])
+    await user.type(within(dialog).getByLabelText('Full name'), player.full_name)
+    await user.type(within(dialog).getByLabelText('Email'), player.email)
+    await user.type(within(dialog).getByLabelText('Password'), 'secret123')
+    await user.click(within(dialog).getByRole('button', { name: 'Join Rally Point' }))
+
+    await waitFor(() => expect(auth.joinClub).toHaveBeenCalledWith('rally-point-davao', { asPlayer: true }))
+    expect(await screen.findByText('At /member/book {"venueId":"venue-davao"}')).toBeInTheDocument()
   })
 
   it('joins a signed-in player to the club and opens booking at that venue', async () => {

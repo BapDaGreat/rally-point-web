@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
   ArrowRight,
@@ -10,9 +11,10 @@ import {
   Shield,
   UserPlus,
   UserRound,
+  X,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import type { PublicClub, Role } from '../types'
+import type { Profile, PublicClub, Role } from '../types'
 import { RallyPointLogo } from '../components/RallyPointLogo'
 import { helpFaqs } from '../lib/helpContent'
 import { privacyNoticePath, type PrivacyNoticeState } from '../lib/privacyNotice'
@@ -122,7 +124,17 @@ function authenticationErrorMessage(mode: Mode, error: unknown) {
 }
 
 /** With `joinClub` (from a club's join link) the page signs up into that club. */
-export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) {
+export default function LoginPage({
+  joinClub,
+  dialog = false,
+  onClose,
+  onAuthenticated,
+}: {
+  joinClub?: PublicClub
+  dialog?: boolean
+  onClose?: () => void
+  onAuthenticated?: (profile: Profile) => void
+} = {}) {
   const { user, loading, signIn, signUpMember, verifySignupCode, resendSignupCode, resetPassword, demo } =
     useAuth()
   const nav = useNavigate()
@@ -151,6 +163,12 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
   const [codeNotice, setCodeNotice] = useState<string | null>(null)
   const codeInputRef = useRef<HTMLInputElement>(null)
   const emailInputRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const closeRef = useRef(onClose)
+  const busyRef = useRef(busy)
+  const authenticationReported = useRef(false)
+  closeRef.current = onClose
+  busyRef.current = busy
   // Set when leaving the code step from inside it, so focus returns to the email box.
   const focusEmailNext = useRef(false)
   const modeFade = modeSwitches === 0 ? undefined : modeSwitches % 2 ? 'enter-fade' : 'enter-fade-again'
@@ -178,11 +196,74 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
     }
   }, [codeEmail])
 
-  if (!loading && user) return <Navigate to={returnTo ?? homeFor(user.role)} replace />
+  useEffect(() => {
+    if (!dialog) return
+
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const appRoot = document.getElementById('root')
+    const wasInert = appRoot?.inert ?? false
+    const previousOverflow = document.body.style.overflow
+    if (appRoot) appRoot.inert = true
+    document.body.style.overflow = 'hidden'
+    emailInputRef.current?.focus()
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (!busyRef.current) closeRef.current?.()
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), a[href], summary, [tabindex]:not([tabindex="-1"])',
+      )
+      if (!focusable?.length) {
+        event.preventDefault()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+      if (!dialogRef.current?.contains(active)) {
+        event.preventDefault()
+        ;(event.shiftKey ? last : first).focus()
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      if (appRoot) appRoot.inert = wasInert
+      document.body.style.overflow = previousOverflow
+      if (trigger?.isConnected) trigger.focus()
+    }
+  }, [dialog])
+
+  useEffect(() => {
+    if (!dialog || loading || !user || !onAuthenticated || authenticationReported.current) return
+    authenticationReported.current = true
+    onAuthenticated(user)
+  }, [dialog, loading, user, onAuthenticated])
+
+  if (!loading && user) {
+    return onAuthenticated ? null : <Navigate to={returnTo ?? homeFor(user.role)} replace />
+  }
 
   /** Where a new member goes once signed in: back to the club page, or their home. */
-  function finishSignup(role: Role) {
-    nav(returnTo ?? homeFor(role), { replace: true })
+  function finishSignup(profile: Profile) {
+    if (onAuthenticated) {
+      if (!authenticationReported.current) {
+        authenticationReported.current = true
+        onAuthenticated(profile)
+      }
+      return
+    }
+    nav(returnTo ?? homeFor(profile.role), { replace: true })
   }
 
   function openCodeStep(sentTo: string) {
@@ -216,7 +297,7 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
     setBusy(true)
     try {
       const profile = await verifySignupCode(codeEmail, code)
-      finishSignup(profile.role)
+      finishSignup(profile)
     } catch (err) {
       const message = err instanceof Error ? err.message : ''
       if (ownerNotice.test(message)) {
@@ -280,7 +361,7 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
           setPasswordVisible(false)
           openCodeStep(result.email)
         } else {
-          finishSignup(result.profile.role)
+          finishSignup(result.profile)
         }
       } else if (mode === 'reset') {
         await resetPassword(email)
@@ -288,7 +369,13 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
       } else {
         const profile = await signIn(email, password)
         // From a join link, existing players come back to confirm joining the club.
-        nav(joinClub ? `/join/${joinClub.slug}` : returnTo ?? homeFor(profile.role), { replace: true })
+        if (onAuthenticated) {
+          if (!authenticationReported.current) {
+            authenticationReported.current = true
+            onAuthenticated(profile)
+          }
+        }
+        else nav(joinClub ? `/join/${joinClub.slug}` : returnTo ?? homeFor(profile.role), { replace: true })
       }
     } catch (err) {
       setError(authenticationErrorMessage(mode, err))
@@ -307,30 +394,43 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
     setResetSuccess(false)
   }
 
-  return (
-    <div className="app-shell app-shell-bleed relative min-h-[100dvh] text-white overflow-hidden">
-      {/* Cinematic pickleball video hero */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden>
-        <video
-          className="absolute inset-0 h-full w-full object-cover scale-105"
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="metadata"
-          poster={HERO_POSTER}
-        >
-          <source src={HERO_VIDEO} type="video/mp4" />
-        </video>
-        {/* Dark cinematic grade — readable text, sports-site feel */}
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-950/75 via-slate-900/55 to-teal-950/65" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_40%,transparent_0%,rgba(2,6,23,0.55)_70%)]" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/35" />
-      </div>
+  const page = (
+    <div
+      className={dialog
+        ? 'fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-slate-950/60 p-4'
+        : 'app-shell app-shell-bleed relative min-h-[100dvh] text-white overflow-hidden'}
+      onClick={dialog ? (event: MouseEvent<HTMLDivElement>) => {
+        if (event.target === event.currentTarget && !busyRef.current) closeRef.current?.()
+      } : undefined}
+    >
+      {!dialog ? (
+        <>
+          {/* Cinematic pickleball video hero */}
+          <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden>
+            <video
+              className="absolute inset-0 h-full w-full object-cover scale-105"
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              poster={HERO_POSTER}
+            >
+              <source src={HERO_VIDEO} type="video/mp4" />
+            </video>
+            {/* Dark cinematic grade — readable text, sports-site feel */}
+            <div className="absolute inset-0 bg-gradient-to-br from-slate-950/75 via-slate-900/55 to-teal-950/65" />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_40%,transparent_0%,rgba(2,6,23,0.55)_70%)]" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/35" />
+          </div>
+        </>
+      ) : null}
 
-      <div className="relative z-10 mx-auto grid min-h-[100dvh] w-full max-w-6xl grid-cols-1 lg:grid-cols-2 lg:items-center lg:gap-12 px-5 py-10 sm:px-8 lg:px-10">
+      <div className={dialog
+        ? 'relative z-10 mx-auto w-full max-w-md'
+        : 'relative z-10 mx-auto grid min-h-[100dvh] w-full max-w-6xl grid-cols-1 lg:grid-cols-2 lg:items-center lg:gap-12 px-5 py-10 sm:px-8 lg:px-10'}>
         {/* Brand panel */}
-        <div className="flex flex-col justify-center text-center lg:text-left pt-6 lg:pt-0 pb-8 lg:pb-0">
+        {!dialog ? <div className="flex flex-col justify-center text-center lg:text-left pt-6 lg:pt-0 pb-8 lg:pb-0">
           <div className="mb-5 inline-flex self-center lg:self-start items-center gap-2 rounded-full border border-white/20 bg-black/30 px-3.5 py-1.5 text-sm font-semibold text-white/95 backdrop-blur-md shadow-lg">
             <span aria-hidden>🏓</span>
             {demo ? 'Try it now · demo' : 'Pickleball club app'}
@@ -372,11 +472,30 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
               <p className="text-base font-semibold text-white">Desk, courts, club ops</p>
             </div>
           </div>
-        </div>
+        </div> : null}
 
         {/* Access card — glass over video */}
-        <div className="flex items-center justify-center lg:justify-end pb-8 lg:pb-0">
-          <div className="enter-rise w-full max-w-md rounded-3xl border border-white/25 bg-white/95 backdrop-blur-xl p-5 sm:p-7 text-slate-900 shadow-2xl shadow-black/50">
+        <div className={dialog ? 'flex w-full justify-center' : 'flex items-center justify-center lg:justify-end pb-8 lg:pb-0'}>
+          <div
+            ref={dialogRef}
+            role={dialog ? 'dialog' : undefined}
+            aria-modal={dialog ? true : undefined}
+            aria-labelledby={dialog ? (codeEmail ? 'signup-code-title' : 'login-dialog-title') : undefined}
+            className={dialog
+              ? 'enter-rise max-h-[calc(100dvh-2rem)] w-full overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-3xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl sm:p-7'
+              : 'enter-rise w-full max-w-md rounded-3xl border border-white/25 bg-white/95 backdrop-blur-xl p-5 sm:p-7 text-slate-900 shadow-2xl shadow-black/50'}
+          >
+            {dialog ? (
+              <button
+                type="button"
+                onClick={() => closeRef.current?.()}
+                disabled={busy}
+                className="control-feedback float-right inline-flex min-h-12 min-w-12 items-center justify-center rounded-xl text-slate-600"
+                aria-label="Close sign-in"
+              >
+                <X size={20} aria-hidden />
+              </button>
+            ) : null}
             <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1">
               <button
                 type="button"
@@ -516,7 +635,7 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
                   ? 'Forgot your password?'
                   : 'Welcome back'}
               </p>
-              <h2 className="mt-1 text-2xl font-extrabold text-slate-900">
+              <h2 id="login-dialog-title" className="mt-1 text-2xl font-extrabold text-slate-900">
                 {mode === 'join'
                   ? 'Create member account'
                   : mode === 'reset'
@@ -724,7 +843,7 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
             </div>
             )}
 
-            {demo ? (
+            {demo && !dialog ? (
               <div className="mt-6 pt-5 border-t border-slate-100">
                 <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
                   Quick demo logins
@@ -756,13 +875,13 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
                   ))}
                 </div>
               </div>
-            ) : (
+            ) : !dialog ? (
               <p className="mt-5 text-center text-sm text-slate-500">
                 Staff / admin accounts are created by the club — not by joining here.
               </p>
-            )}
+            ) : null}
 
-            <section className="mt-6 border-t border-slate-200 pt-5" aria-labelledby="login-faq-title">
+            {!dialog ? <section className="mt-6 border-t border-slate-200 pt-5" aria-labelledby="login-faq-title">
               <div className="flex items-baseline justify-between gap-3">
                 <h3 id="login-faq-title" className="text-lg font-extrabold text-slate-900">
                   Quick questions
@@ -782,9 +901,9 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
               <p className="mt-2 text-center text-xs text-slate-500">
                 More FAQs and Contact Us are available in Help after you sign in.
               </p>
-            </section>
+            </section> : null}
 
-            <section className="mt-5 border-t border-slate-200 pt-4" aria-labelledby="login-social-title">
+            {!dialog ? <section className="mt-5 border-t border-slate-200 pt-4" aria-labelledby="login-social-title">
               <h3 id="login-social-title" className="text-center text-sm font-bold text-slate-700">
                 Find us on social media
               </h3>
@@ -803,8 +922,8 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
               <p className="mt-2 text-center text-xs text-slate-500">
                 Social links will be added when the official pages are confirmed.
               </p>
-            </section>
-            <p className="mt-4 border-t border-slate-200 pt-3 text-center text-sm text-slate-600 flex flex-wrap justify-center gap-x-6">
+            </section> : null}
+            {!dialog ? <p className="mt-4 border-t border-slate-200 pt-3 text-center text-sm text-slate-600 flex flex-wrap justify-center gap-x-6">
               <Link
                 className="inline-flex min-h-12 items-center font-semibold text-brand-800 underline underline-offset-2"
                 to="/clubs"
@@ -818,10 +937,11 @@ export default function LoginPage({ joinClub }: { joinClub?: PublicClub } = {}) 
               >
                 Privacy Notice
               </Link>
-            </p>
+            </p> : null}
           </div>
         </div>
       </div>
     </div>
   )
+  return dialog ? createPortal(page, document.body) : page
 }
