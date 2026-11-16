@@ -359,8 +359,8 @@ describe('staging releases', () => {
       ['advisor', ['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']],
       ['postflight', ['ledger_has_every_migration']],
     ])
-    // Prepared, not approved: the owner approves after the capture, restore check and dry run pass.
-    expect(releaseApprovals['owner-onboarding-20261116']).toBeNull()
+    // Approved by the owner after the dry run passed (applied 2026-11-16).
+    expect(releaseApprovals['owner-onboarding-20261116']).toMatch(/^[a-f0-9]{64}$/)
     const earlier = Object.values(releases).filter(release => release !== ownerOnboardingRelease)
       .flatMap((release: { dirs: object, databases: object }) => [...Object.values(release.dirs), ...Object.values(release.databases)])
     expect([...Object.values(ownerOnboardingRelease.dirs), ...Object.values(ownerOnboardingRelease.databases)]
