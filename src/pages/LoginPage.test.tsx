@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -34,6 +34,17 @@ function renderLogin() {
   return render(
     <MemoryRouter>
       <LoginPage />
+    </MemoryRouter>,
+  );
+}
+
+function renderLoginDialog(props: {
+  onClose?: () => void;
+  onAuthenticated?: (profile: Profile) => void;
+} = {}) {
+  return render(
+    <MemoryRouter>
+      <LoginPage dialog onClose={props.onClose} onAuthenticated={props.onAuthenticated} />
     </MemoryRouter>,
   );
 }
@@ -411,6 +422,54 @@ describe("LoginPage return to a club page", () => {
     await user.click(loginSubmitButton());
     expect(await screen.findByText("At /member")).toBeInTheDocument();
   });
+
+  it("supports sign-in in an accessible dialog and reports success without navigating", async () => {
+    const user = userEvent.setup();
+    const profile: Profile = {
+      id: "u3",
+      email: "player@example.com",
+      full_name: "Pia Player",
+      role: "member",
+      created_at: "2026-09-01",
+    };
+    const onAuthenticated = vi.fn();
+    const onClose = vi.fn();
+    authState.signIn.mockResolvedValue(profile);
+    renderLoginDialog({ onAuthenticated, onClose });
+
+    const dialog = screen.getByRole("dialog", { name: "Log in" });
+    expect(screen.getByLabelText("Email")).toHaveFocus();
+    await user.type(screen.getByLabelText("Email"), profile.email);
+    await user.type(screen.getByLabelText("Password"), "secret123");
+    await user.click(loginSubmitButton());
+
+    expect(onAuthenticated).toHaveBeenCalledWith(profile);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Log in" })).toBe(dialog);
+  });
+
+  it("reports an existing session when it finishes loading in the dialog", async () => {
+    const profile: Profile = {
+      id: "u4",
+      email: "returning@example.com",
+      full_name: "Returning Player",
+      role: "member",
+      created_at: "2026-09-01",
+    };
+    const onAuthenticated = vi.fn();
+    authState.loading = true;
+    const view = renderLoginDialog({ onAuthenticated });
+
+    authState.user = profile;
+    authState.loading = false;
+    view.rerender(
+      <MemoryRouter>
+        <LoginPage dialog onAuthenticated={onAuthenticated} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith(profile));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 });
 
 describe("LoginPage sign-up code step", () => {
@@ -506,6 +565,26 @@ describe("LoginPage sign-up code step", () => {
 
     expect(authState.verifySignupCode).toHaveBeenCalledWith("new@example.com", "123456");
     expect(await screen.findByText("At /clubs/rally-point-davao")).toBeInTheDocument();
+  });
+
+  it("reports a confirmed sign-up to the booking dialog instead of navigating away", async () => {
+    const user = userEvent.setup();
+    const onAuthenticated = vi.fn();
+    authState.verifySignupCode.mockResolvedValue(newMember);
+    render(
+      <MemoryRouter>
+        <LoginPage dialog onAuthenticated={onAuthenticated} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await user.click(switchToJoin());
+    await fillAndJoin(user);
+    await user.type(await screen.findByLabelText("6-digit code"), "123456");
+    await user.click(screen.getByRole("button", { name: "Confirm and continue" }));
+
+    expect(authState.verifySignupCode).toHaveBeenCalledWith("new@example.com", "123456");
+    expect(onAuthenticated).toHaveBeenCalledWith(newMember);
+    expect(screen.getByRole("dialog", { name: "Check your email" })).toBeInTheDocument();
   });
 
   it("goes to the member home after confirming without a return path", async () => {
