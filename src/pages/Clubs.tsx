@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Clock, Images, MapPin, Navigation, Search } from 'lucide-react'
+import { Building2, ChevronLeft, ChevronRight, Clock, Images, MapPin, Navigation, RefreshCw, Search } from 'lucide-react'
 import { PublicFrame as Frame } from '../components/PublicFrame'
 import { CourtArt } from '../components/CourtArt'
 import { Photo } from '../components/Photo'
@@ -15,8 +15,8 @@ import {
 import { LoadingShapes } from '../components/Skeleton'
 import { stagger } from '../lib/motion'
 import { useAuth } from '../context/AuthContext'
-import LoginPage from './LoginPage'
 import { api } from '../lib/api'
+import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
 import type { PublicClubDetail, PublicClubListing, PublicClubProfile } from '../types'
 import { openingHoursLabel, peso } from '../types'
 import { directionsUrl, mapEmbedUrl, placeLine } from '../lib/maps'
@@ -91,6 +91,57 @@ function rateLine(regular: number | null, member: number | null) {
 
 type PublicCourt = PublicClubDetail['venues'][number]['courts'][number]
 
+function courtBookPath(clubSlug: string, venueId: string, courtId?: string) {
+  const params = new URLSearchParams({ venue: venueId })
+  if (courtId) params.set('court', courtId)
+  return `/clubs/${clubSlug}/book?${params.toString()}`
+}
+
+/** A single browseable court card; clicking in-service courts goes straight into its booking environment. */
+function CourtCard({
+  clubSlug,
+  venueId,
+  court,
+  canBook = true,
+}: {
+  clubSlug: string
+  venueId: string
+  court: PublicCourt
+  canBook?: boolean
+}) {
+  const target = courtBookPath(clubSlug, venueId, court.id)
+  return (
+    <li className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-brand-400 hover:shadow-xs">
+      <CourtPictures court={court} />
+      <div className="flex flex-1 flex-col justify-between p-3">
+        <div>
+          <p className="text-subtitle font-semibold text-slate-900">{court.name}</p>
+          {court.in_service ? (
+            <>
+              <p className="text-body font-normal text-slate-600">{peso(court.hourly_rate)} per hour</p>
+              {court.member_rate != null && court.member_rate < court.hourly_rate ? (
+                <p className="text-body font-normal text-brand-800">Members {peso(court.member_rate)}</p>
+              ) : null}
+              <span className="pill pill-ok mt-2">Available</span>
+            </>
+          ) : (
+            <span className="pill pill-warn mt-2">Out of service</span>
+          )}
+        </div>
+        {court.in_service && canBook ? (
+          <Link
+            to={target}
+            className="control-feedback mt-3 inline-flex min-h-11 items-center justify-between rounded-xl bg-brand-50 px-3 text-body font-semibold text-brand-800 hover:bg-brand-100"
+          >
+            <span>Book {court.name}</span>
+            <ChevronRight size={16} aria-hidden />
+          </Link>
+        ) : null}
+      </div>
+    </li>
+  )
+}
+
 /** A court's photos, swipeable when there are several; a sample drawing when there are none. */
 function CourtPictures({ court }: { court: PublicCourt }) {
   const photos = court.photos ?? []
@@ -123,32 +174,66 @@ function CourtPictures({ court }: { court: PublicCourt }) {
   )
 }
 
-export function ClubDirectory() {
+export function ClubDirectory({ landing = false }: { landing?: boolean }) {
   const [clubs, setClubs] = useState<PublicClubListing[] | null>(null)
+  const [featuredClub, setFeaturedClub] = useState<PublicClubDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [city, setCity] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
+
+  const loadDirectory = useCallback(() => {
+    setError(null)
+    setReloadKey((n) => n + 1)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
-    api.listPublicClubs()
-      .then((rows) => { if (!cancelled) setClubs(rows) })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load clubs') })
+    setError(null)
+    const fetchClubs = api.listPublicClubs()
+    const fetchFeatured =
+      typeof api.publicClubDetail === 'function'
+        ? api.publicClubDetail(DEFAULT_CLUB_SLUG).catch(() => null)
+        : Promise.resolve(null)
+
+    Promise.all([fetchClubs, fetchFeatured])
+      .then(([rows, featured]) => {
+        if (cancelled) return
+        setClubs(rows)
+        setFeaturedClub(featured && featured.slug === DEFAULT_CLUB_SLUG ? featured : null)
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load clubs')
+      })
     return () => { cancelled = true }
-  }, [])
+  }, [reloadKey])
 
   const cities = useMemo(
     () => [...new Set((clubs ?? []).flatMap((club) => club.cities))].sort(),
     [clubs],
   )
-  const shown = (clubs ?? []).filter((club) => {
+  // Prioritize Rally Point (DEFAULT_CLUB_SLUG) first, then alphabetical.
+  const orderedClubs = useMemo(() => {
+    if (!clubs) return []
+    return clubs.slice().sort((a, b) => {
+      if (a.slug === DEFAULT_CLUB_SLUG && b.slug !== DEFAULT_CLUB_SLUG) return -1
+      if (b.slug === DEFAULT_CLUB_SLUG && a.slug !== DEFAULT_CLUB_SLUG) return 1
+      return a.name.localeCompare(b.name)
+    })
+  }, [clubs])
+
+  const shown = orderedClubs.filter((club) => {
     const q = query.trim().toLowerCase()
     const matchesQuery = !q || [club.name, club.address, ...club.cities].some((field) => field?.toLowerCase().includes(q))
     return matchesQuery && (!city || club.cities.includes(city))
   })
+  const showFeaturedCourts = Boolean(featuredClub && !query.trim() && !city)
 
   return (
-    <Frame title="Find a court" subtitle="Pick a club to see its courts and book">
+    <Frame
+      title={landing ? 'Welcome to Rally Point' : 'Find a court'}
+      subtitle={landing ? 'Pick a court and book your play' : 'Pick a club or court to book'}
+    >
       <section className="enter-rise card p-4 grid grid-cols-1 sm:grid-cols-2 gap-3" aria-label="Search clubs">
         <div>
           <label className="label" htmlFor="club-search">Search</label>
@@ -172,8 +257,53 @@ export function ClubDirectory() {
         </div>
       </section>
 
-      {error ? <p role="alert" className="text-body text-red-700">{error}</p> : null}
+      {error ? (
+        <section role="alert" className="card border-red-200 bg-red-50 p-4 space-y-2">
+          <p className="text-body font-semibold text-red-800">{error}</p>
+          <p className="text-caption text-red-700">Check your connection and try again to load available courts.</p>
+          <button type="button" onClick={loadDirectory} className="control-feedback inline-flex min-h-11 items-center gap-2 rounded-xl border border-red-300 bg-white px-3 text-body font-semibold text-red-800">
+            <RefreshCw size={16} aria-hidden /> Try again
+          </button>
+        </section>
+      ) : null}
+
       {!clubs && !error ? <ClubCardsLoading /> : null}
+
+      {/* Prioritized Rally Point Court Environment: clickable court cards immediately on arrival */}
+      {showFeaturedCourts && featuredClub ? (
+        <section className="enter-rise card border-brand-200 bg-gradient-to-b from-brand-50/70 to-white p-4 space-y-3" aria-labelledby="featured-rally-point-heading">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-caption font-bold uppercase tracking-wider text-brand-800">Featured club · Primary court environment</p>
+              <h2 id="featured-rally-point-heading" className="text-title font-extrabold text-slate-900">{featuredClub.name}</h2>
+            </div>
+            <Link to={`/clubs/${featuredClub.slug}`} className={textLink}>
+              Full club profile <ChevronRight size={16} aria-hidden />
+            </Link>
+          </div>
+          {featuredClub.venues.map((venue) => (
+            <div key={venue.id} className="space-y-2 pt-1">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-body text-slate-600">
+                <p className="font-semibold text-slate-800">{venue.name}</p>
+                <p className="inline-flex items-center gap-1 text-caption">
+                  <Clock size={14} aria-hidden /> {openingHoursLabel(venue.open_hour, venue.close_hour)}
+                </p>
+              </div>
+              <ul className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                {venue.courts.map((court) => (
+                  <CourtCard
+                    key={court.id}
+                    clubSlug={featuredClub.slug}
+                    venueId={venue.id}
+                    court={court}
+                  />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </section>
+      ) : null}
+
       {clubs ? (
         <p className="enter-rise text-body font-normal text-slate-600" aria-live="polite">
           {shown.length === 0 ? 'No clubs match. Try another name or city.' : plural(shown.length, 'club')}
@@ -207,25 +337,38 @@ export function ClubDirectory() {
           </li>
         ))}
       </ul>
+
+      <section className="card border-slate-200 bg-slate-50/80 p-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-800" aria-hidden>
+            <Building2 size={22} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-subtitle font-bold text-slate-900">Own a pickleball club?</p>
+            <p className="text-body text-slate-600">List your courts on Rally Point and manage bookings online.</p>
+          </div>
+        </div>
+        <Link to="/owners" className="control-feedback inline-flex min-h-12 items-center gap-1.5 rounded-xl border-2 border-slate-200 bg-white px-4 text-body font-semibold text-slate-800">
+          I own a court <ChevronRight size={16} aria-hidden />
+        </Link>
+      </section>
     </Frame>
   )
 }
 
 export function ClubDetailPage() {
   const { slug = '' } = useParams()
-  const { user, joinClub } = useAuth()
+  const { user } = useAuth()
   const nav = useNavigate()
   const [club, setClub] = useState<PublicClubDetail | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
-  const [busyVenue, setBusyVenue] = useState<string | null>(null)
-  const [bookingVenue, setBookingVenue] = useState<string | null>(null)
-  const [authDialogOpen, setAuthDialogOpen] = useState(false)
   // The club's business profile is extra: the page still shows courts if it cannot load.
   const [profile, setProfile] = useState<{ slug: string; data: PublicClubProfile } | null>(null)
 
   useEffect(() => {
     let cancelled = false
     setClub(undefined)
+    setError(null)
     api.publicClubDetail(slug)
       .then((detail) => { if (!cancelled) setClub(detail) })
       .catch((e) => { if (!cancelled) { setClub(null); setError(e instanceof Error ? e.message : 'Could not load this club') } })
@@ -236,42 +379,6 @@ export function ClubDetailPage() {
     }
     return () => { cancelled = true }
   }, [slug])
-
-  const continueBooking = useCallback(async (venueId: string) => {
-    if (!club) return
-    setBusyVenue(venueId)
-    setError(null)
-    try {
-      await joinClub(club.slug, { asPlayer: true })
-      nav('/member/book', { state: { venueId } })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start a booking here')
-    } finally {
-      setBusyVenue(null)
-    }
-  }, [club, joinClub, nav])
-
-  function book(venueId: string) {
-    if (!club) return
-    if (!user) {
-      setBookingVenue(venueId)
-      setAuthDialogOpen(true)
-      return
-    }
-    void continueBooking(venueId)
-  }
-
-  useEffect(() => {
-    if (!user || authDialogOpen || !bookingVenue) return
-    const venueId = bookingVenue
-    setBookingVenue(null)
-    void continueBooking(venueId)
-  }, [user, authDialogOpen, bookingVenue, continueBooking])
-
-  function closeAuthDialog() {
-    setAuthDialogOpen(false)
-    setBookingVenue(null)
-  }
 
   const back = <Link to="/clubs" className={textLink}><ChevronLeft size={18} aria-hidden /> All clubs</Link>
 
@@ -288,7 +395,6 @@ export function ClubDetailPage() {
   const isPlatform = user?.role === 'superadmin'
   // Only this club's profile: a slower answer for a previous club page is never shown here.
   const info = profile?.slug === slug ? profile.data : null
-  const lead = info ? 2 : 0
   const courts = club.venues.flatMap((venue) => venue.courts)
   const openRates = courts.filter((court) => court.in_service).map((court) => court.hourly_rate)
   const fromRate = openRates.length ? Math.min(...openRates) : null
@@ -299,13 +405,6 @@ export function ClubDetailPage() {
 
   return (
     <Frame title={club.name} subtitle={placeLine(club) || undefined}>
-      {authDialogOpen ? (
-        <LoginPage
-          dialog
-          onClose={closeAuthDialog}
-          onAuthenticated={() => setAuthDialogOpen(false)}
-        />
-      ) : null}
       {back}
 
       {heroPhoto ? (
@@ -319,14 +418,9 @@ export function ClubDetailPage() {
         {fromRate != null ? ` · From ${peso(fromRate)} per hour` : ''}
       </p>
       <p className="text-body font-normal text-slate-600">
-        {user
-          ? `Booking here adds you to ${club.name} as a player. Membership is optional; members pay the member rate where a court has one.`
-          : 'Log in or create a free account to book. Membership is optional; members pay the member rate where a court has one.'}
+        Tap any available court to check times and pick your slot. You only need to sign in right before payment.
       </p>
       {error ? <p role="alert" className="text-body text-red-700">{error}</p> : null}
-
-      {info ? <ClubAboutCard clubName={club.name} profile={info} index={1} /> : null}
-      {info ? <ClubGallery clubName={club.name} profile={info} index={2} /> : null}
 
       {club.venues.map((venue, venueIndex) => {
         const bookable = venue.courts.some((court) => court.in_service)
@@ -334,7 +428,7 @@ export function ClubDetailPage() {
         const directions = directionsUrl(venue)
         const mapUrl = mapEmbedUrl(venue)
         return (
-          <section key={venue.id} className="enter-rise card p-4 space-y-3" style={stagger(venueIndex + 1 + lead)} aria-labelledby={`venue-${venue.id}`}>
+          <section key={venue.id} className="enter-rise card p-4 space-y-3" style={stagger(venueIndex + 1)} aria-labelledby={`venue-${venue.id}`}>
             {venue.cover_photo ? (
               <Photo src={venue.cover_photo} alt={`Cover photo of ${venue.name}`} className="block aspect-[16/9] max-h-64 w-full rounded-xl" lazy />
             ) : null}
@@ -355,23 +449,13 @@ export function ClubDetailPage() {
             {venue.courts.length === 0 ? <p className="text-body text-slate-600">No courts listed yet.</p> : (
               <ul className="grid grid-cols-2 gap-3 lg:grid-cols-3">
                 {venue.courts.map((court) => (
-                  <li key={court.id} className="overflow-hidden rounded-xl border border-slate-200">
-                    <CourtPictures court={court} />
-                    <div className="p-3">
-                      <p className="text-subtitle font-semibold text-slate-900">{court.name}</p>
-                      {court.in_service ? (
-                        <>
-                          <p className="text-body font-normal text-slate-600">{peso(court.hourly_rate)} per hour</p>
-                          {court.member_rate != null && court.member_rate < court.hourly_rate ? (
-                            <p className="text-body font-normal text-brand-800">Members {peso(court.member_rate)}</p>
-                          ) : null}
-                          <span className="pill pill-ok mt-2">Available</span>
-                        </>
-                      ) : (
-                        <span className="pill pill-warn mt-2">Out of service</span>
-                      )}
-                    </div>
-                  </li>
+                  <CourtCard
+                    key={court.id}
+                    clubSlug={club.slug}
+                    venueId={venue.id}
+                    court={court}
+                    canBook={!isPlatform}
+                  />
                 ))}
               </ul>
             )}
@@ -390,11 +474,10 @@ export function ClubDetailPage() {
               <button
                 type="button"
                 className="btn-primary w-full"
-                disabled={!bookable || busyVenue !== null}
-                aria-busy={busyVenue === venue.id}
-                onClick={() => book(venue.id)}
+                disabled={!bookable}
+                onClick={() => nav(courtBookPath(club.slug, venue.id))}
               >
-                {busyVenue === venue.id ? 'Opening booking…' : bookable ? `Book a court at ${venue.name}` : 'No courts open for booking'}
+                {bookable ? `Book a court at ${venue.name}` : 'No courts open for booking'}
               </button>
             )}
           </section>
@@ -403,10 +486,12 @@ export function ClubDetailPage() {
 
       {info ? (
         <>
-          <ClubAddonsCard profile={info} index={club.venues.length + 1 + lead} />
-          <ClubCoachesCard profile={info} index={club.venues.length + 2 + lead} />
-          <ClubPaymentCard clubName={club.name} profile={info} index={club.venues.length + 3 + lead} />
-          <ClubPoliciesCard profile={info} index={club.venues.length + 4 + lead} />
+          <ClubAboutCard clubName={club.name} profile={info} index={club.venues.length + 1} />
+          <ClubGallery clubName={club.name} profile={info} index={club.venues.length + 2} />
+          <ClubAddonsCard profile={info} index={club.venues.length + 3} />
+          <ClubCoachesCard profile={info} index={club.venues.length + 4} />
+          <ClubPaymentCard clubName={club.name} profile={info} index={club.venues.length + 5} />
+          <ClubPoliciesCard profile={info} index={club.venues.length + 6} />
         </>
       ) : null}
       {isPlatform ? <p className="text-body text-slate-600">Platform accounts can look but cannot book.</p> : null}

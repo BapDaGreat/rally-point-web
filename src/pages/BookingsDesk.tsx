@@ -4,7 +4,7 @@ import { LoadingShapes, SkeletonLine } from '../components/Skeleton'
 import { api } from '../lib/api'
 import { isDemoMode } from '../lib/supabase'
 import type { Booking, Role, Venue } from '../types'
-import { fmtDateTime, peso } from '../types'
+import { fmtDateTime, fmtTime, peso } from '../types'
 
 type DeskRole = 'staff' | 'admin'
 type VenueSelection = { role: DeskRole; venues: Venue[]; venueId: string; requestId: number }
@@ -107,8 +107,12 @@ export function BookingsDesk({ role }: { role: 'staff' | 'admin' }) {
                     {b.court?.name ?? 'Court'} · {b.member?.full_name ?? 'Member'}
                   </p>
                   <p className="text-xs text-slate-400">
-                    {fmtDateTime(b.start_at)} · {b.hours}h ·{' '}
-                    <span className="capitalize">{b.status.replace('_', ' ')}</span>
+                    {fmtDateTime(b.start_at)} – {fmtTime(b.end_at)} ·{' '}
+                    <span className={b.status === 'confirmed' ? 'font-semibold text-brand-800' : 'capitalize'}>
+                      {b.status === 'confirmed'
+                        ? `Booked · ${b.hours} ${b.hours === 1 ? 'hour' : 'hours'} (no refund)`
+                        : `${b.status.replace('_', ' ')} · ${b.hours}h`}
+                    </span>
                     {b.payment_method ? ` · ${b.payment_method}` : ''}
                   </p>
                   {b.payment_ref ? (
