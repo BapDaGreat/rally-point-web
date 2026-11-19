@@ -8,7 +8,7 @@ import { MemberBook } from './MemberBook'
 import { MemberPass } from './MemberPass'
 import { AdminBoard, ScheduleBoard, TvBoard } from './ScheduleBoard'
 import { AdminBookings, BookingsDesk } from './BookingsDesk'
-import { ymdLocal } from '../types'
+import { localRangeISO, ymdLocal } from '../types'
 
 const authState = vi.hoisted(() => ({
   user: {
@@ -48,6 +48,7 @@ const apiMock = vi.hoisted(() => ({
   myBookings: vi.fn(),
   createBooking: vi.fn(),
   payBooking: vi.fn(),
+  sendBookingConfirmationEmail: vi.fn(),
   ensureMemberQr: vi.fn(),
   daySchedule: vi.fn(),
   listBookings: vi.fn(),
@@ -280,6 +281,70 @@ describe('member booking and pass pages', () => {
     expect(apiMock.payBooking).toHaveBeenCalledWith(expect.objectContaining({ method: 'maya', user_id: memberUser.id }))
     await user.click(screen.getByRole('button', { name: 'Book another' }))
     expect(screen.getByText(/Available times/)).toBeInTheDocument()
+  })
+
+  it('reflects a 2h booking as booked for 2 hours (no refund) without redundant refetches', async () => {
+    const user = userEvent.setup()
+    const { start_at, end_at } = localRangeISO(ymdLocal(new Date(Date.now() + 86400000)), 12, 2)
+    const twoHourBooking: Booking = {
+      id: 'bk_2h',
+      court_id: court.id,
+      member_id: member.id,
+      start_at,
+      end_at,
+      hours: 2,
+      amount: 1000,
+      status: 'confirmed',
+      payment_method: 'gcash',
+      payment_ref: 'GC-2HR',
+      created_at: new Date().toISOString(),
+      court,
+      member,
+    }
+    apiMock.createBooking.mockResolvedValueOnce({ ...twoHourBooking, status: 'pending_payment', payment_method: null, payment_ref: null })
+    apiMock.payBooking.mockResolvedValueOnce(twoHourBooking)
+    apiMock.sendBookingConfirmationEmail.mockResolvedValueOnce({
+      sent: true,
+      preview: 'Receipt sent to member@rallypoint.local for Court B',
+    })
+
+    render(<MemoryRouter><MemberBook /></MemoryRouter>)
+    expect(await screen.findByText(/Available times/)).toBeInTheDocument()
+
+    // Switch to Tomorrow and select 2h duration
+    await user.click(screen.getByRole('button', { name: 'Tomorrow' }))
+    await user.click(screen.getByRole('button', { name: '2h' }))
+    await user.click(screen.getByRole('button', { name: /12:00/ }))
+    expect(screen.getByText(/Selected: 12:00 PM – 2:00 PM \(2 hours\) · No refund once booked/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Continue/ }))
+    expect(await screen.findByText(/Confirmed bookings are final \(no refund\)/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Pay Php 1,000/ }))
+
+    expect(await screen.findByText('Booking confirmed')).toBeInTheDocument()
+    expect(screen.getByText('Booked · 2 hours')).toBeInTheDocument()
+    expect(screen.getByText('No refund')).toBeInTheDocument()
+    expect(screen.getByText('Receipt sent to member@rallypoint.local for Court B')).toBeInTheDocument()
+    expect(apiMock.sendBookingConfirmationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      booking: twoHourBooking,
+      recipientEmail: memberUser.email,
+    }))
+
+    const availCallsBeforeReturn = apiMock.availability.mock.calls.length
+    const memberCallsBeforeReturn = apiMock.memberForUser.mock.calls.length
+    const myBookingsCallsBeforeReturn = apiMock.myBookings.mock.calls.length
+
+    await user.click(screen.getByRole('button', { name: 'Book another' }))
+    expect(screen.getByText('Your bookings')).toBeInTheDocument()
+    expect(screen.getByText('Booked · 2 hours')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /12:00 PM/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /1:00 PM/ })).toBeDisabled()
+
+    // Switching back to Today uses cached availability and does not re-fetch user/bookings
+    await user.click(screen.getByRole('button', { name: 'Today' }))
+    expect(apiMock.availability).toHaveBeenCalledTimes(availCallsBeforeReturn)
+    expect(apiMock.memberForUser).toHaveBeenCalledTimes(memberCallsBeforeReturn)
+    expect(apiMock.myBookings).toHaveBeenCalledTimes(myBookingsCallsBeforeReturn)
   })
 
   it('charges an active member the member rate and shows players what members pay', async () => {

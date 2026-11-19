@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { Route, Routes, MemoryRouter, useLocation } from 'react-router-dom'
+import { MemberBook } from './MemberBook'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Profile, PublicClubDetail, PublicClubListing } from '../types'
 import { ClubDetailPage, ClubDirectory } from './Clubs'
@@ -41,7 +42,18 @@ vi.mock('../context/AuthContext', async () => {
 })
 
 vi.mock('../lib/api', () => ({
-  api: { listPublicClubs: vi.fn(), publicClubDetail: vi.fn() },
+  api: {
+    listPublicClubs: vi.fn(),
+    publicClubDetail: vi.fn(),
+    publicClubAvailability: vi.fn(),
+    memberForUser: vi.fn(),
+    listVenues: vi.fn(),
+    availability: vi.fn(),
+    myBookings: vi.fn(),
+    createBooking: vi.fn(),
+    payBooking: vi.fn(),
+    sendBookingConfirmationEmail: vi.fn(),
+  },
 }))
 
 import { api } from '../lib/api'
@@ -50,6 +62,17 @@ const clubs: PublicClubListing[] = [
   { slug: 'rally-point-davao', name: 'Rally Point Davao', city: 'Davao City', address: 'Lanang', cities: ['Davao City'], venue_count: 1, court_count: 2, min_rate: 450, min_member_rate: 400 },
   { slug: 'rally-point-gensan', name: 'Rally Point Gensan', city: 'General Santos City', address: null, cities: ['General Santos City', 'Koronadal City'], venue_count: 2, court_count: 4, min_rate: 500, min_member_rate: 500 },
 ]
+
+const gensan: PublicClubDetail = {
+  slug: 'rally-point-gensan', name: 'Rally Point Gensan', city: 'General Santos City', address: 'General Santos City',
+  venues: [{
+    id: 'venue-gensan', name: 'Gensan Main', open_hour: 6, close_hour: 22,
+    address: 'Main Road, General Santos City', city: 'General Santos City', latitude: null, longitude: null,
+    courts: [
+      { id: 'cg1', name: 'Court A', hourly_rate: 500, member_rate: 450, in_service: true },
+    ],
+  }],
+}
 
 const davao: PublicClubDetail = {
   slug: 'rally-point-davao', name: 'Rally Point Davao', city: 'Davao City', address: 'Lanang',
@@ -69,15 +92,16 @@ const player: Profile = {
 
 function Where() {
   const location = useLocation()
-  return <p>At {location.pathname} {JSON.stringify(location.state)}</p>
+  return <p>At {location.pathname}{location.search} {JSON.stringify(location.state)}</p>
 }
 
-function renderAt(path: string) {
+function renderAt(path: string, withBookingScreen = false) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/clubs" element={<ClubDirectory />} />
         <Route path="/clubs/:slug" element={<ClubDetailPage />} />
+        {withBookingScreen ? <Route path="/clubs/:slug/book" element={<MemberBook />} /> : null}
         <Route path="*" element={<Where />} />
       </Routes>
     </MemoryRouter>,
@@ -139,38 +163,79 @@ describe('Find a court', () => {
     expect(court1.getByText('Members Php 400.00')).toBeInTheDocument()
     expect(court1.getByText('Available')).toBeInTheDocument()
     expect(court1.getByText('Sample')).toBeInTheDocument()
+    expect(court1.getByRole('link', { name: /Book Davao Court 1/ })).toHaveAttribute(
+      'href',
+      '/clubs/rally-point-davao/book?venue=venue-davao&court=c1',
+    )
     const court2 = within(venue.getByText('Davao Court 2').closest('li')!)
     expect(court2.getByText('Out of service')).toBeInTheDocument()
     expect(court2.queryByText(/per hour/)).not.toBeInTheDocument()
+    expect(court2.queryByRole('link')).not.toBeInTheDocument()
     expect(api.publicClubDetail).toHaveBeenCalledWith('rally-point-davao')
   })
 
-  it('opens a login dialog for a visitor and closes it without leaving the club page', async () => {
+  it('prioritizes Rally Point Gensan and shows featured courts with retry recovery on failure', async () => {
     const user = userEvent.setup()
-    renderAt('/clubs/rally-point-davao')
+    vi.mocked(api.listPublicClubs).mockRejectedValueOnce(new Error('Could not load clubs'))
+    vi.mocked(api.publicClubDetail).mockResolvedValueOnce(null)
+    renderAt('/clubs')
 
-    await user.click(await screen.findByRole('button', { name: 'Book a court at Davao Main' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Log in' })
-    expect(within(dialog).getAllByRole('button', { name: 'Join as member' }).length).toBeGreaterThan(0)
-    expect(auth.joinClub).not.toHaveBeenCalled()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load clubs')
+    vi.mocked(api.listPublicClubs).mockResolvedValueOnce(clubs)
+    vi.mocked(api.publicClubDetail).mockResolvedValueOnce(gensan)
 
-    await user.click(within(dialog).getByRole('button', { name: 'Close sign-in' }))
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Book a court at Davao Main' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('heading', { name: 'Rally Point Gensan' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Book Court A/ })).toHaveAttribute(
+      'href',
+      '/clubs/rally-point-gensan/book?venue=venue-gensan&court=cg1',
+    )
+
+    const clubLinks = screen.getAllByRole('link', { name: /Rally Point (Gensan|Davao)/ })
+    expect(clubLinks[0]).toHaveTextContent('Rally Point Gensan')
   })
 
-  it('continues to the chosen venue after visitor login', async () => {
+  it('lets a visitor browse courts, open the court booking screen, pick date/time, sign in at payment, and checkout', async () => {
     const user = userEvent.setup()
+    const slots = Array.from({ length: 16 }, (_, index) => ({ startHour: index + 6, label: `${index + 6}:00`, available: true }))
+    const bookingCourt = { id: 'c1', club_id: 'club-davao', venue_id: 'venue-davao', name: 'Davao Court 1', status: 'available' as const, hourly_rate: 450, member_rate: 400 }
+    vi.mocked(api.publicClubAvailability).mockResolvedValue([{ court: bookingCourt, slots }])
+    vi.mocked(api.availability).mockResolvedValue([{ court: bookingCourt, slots }])
+    vi.mocked(api.memberForUser).mockResolvedValue({
+      id: 'mem-p', user_id: player.id, member_code: 'RP-900', full_name: player.full_name,
+      email: player.email, membership_type: null, status: 'active', join_date: '2026-10-01', expiry_date: null, created_at: '2026-10-01',
+    })
+    vi.mocked(api.listVenues).mockResolvedValue([{
+      id: 'venue-davao', club_id: 'club-davao', slug: 'davao-main', name: 'Davao Main',
+      timezone: 'Asia/Manila', open_hour: 6, close_hour: 22, is_active: true,
+    }])
+    vi.mocked(api.myBookings).mockResolvedValue([])
+    vi.mocked(api.createBooking).mockResolvedValue({
+      id: 'bk-new', club_id: 'club-davao', venue_id: 'venue-davao', court_id: 'c1', member_id: 'mem-p',
+      start_at: '2099-09-20T04:00:00.000Z', end_at: '2099-09-20T05:00:00.000Z',
+      hours: 1, amount: 450, status: 'pending_payment', payment_method: null, payment_ref: null, created_at: '2099-09-19T00:00:00.000Z', court: bookingCourt,
+    })
+
     auth.joinClub.mockResolvedValue({ club_id: 'club-davao', slug: 'rally-point-davao', name: 'Rally Point Davao', role: 'member' })
     auth.signIn.mockImplementation(async () => {
       auth.user = player
       auth.listeners.forEach((listener) => listener())
       return player
     })
-    renderAt('/clubs/rally-point-davao')
 
-    await user.click(await screen.findByRole('button', { name: 'Book a court at Davao Main' }))
+    renderAt('/clubs/rally-point-davao', true)
+    await user.click(await screen.findByRole('link', { name: /Book Davao Court 1/ }))
+
+    expect(await screen.findByText(/Available times/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Tomorrow' }))
+    await user.click(screen.getByRole('button', { name: /12:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /Continue/ }))
+
     const dialog = await screen.findByRole('dialog', { name: 'Log in' })
+    expect(within(dialog).getByText('Login to continue')).toBeInTheDocument()
+    expect(within(dialog).getByText('By continuing, you confirm you are booking under your account.')).toBeInTheDocument()
+    expect(auth.joinClub).not.toHaveBeenCalled()
+
     await user.type(within(dialog).getByLabelText('Email'), player.email)
     await user.type(within(dialog).getByLabelText('Password'), 'secret123')
     const submit = within(dialog).getAllByRole('button', { name: 'Log in' })
@@ -179,50 +244,17 @@ describe('Find a court', () => {
     await user.click(submit)
 
     await waitFor(() => expect(auth.joinClub).toHaveBeenCalledWith('rally-point-davao', { asPlayer: true }))
-    expect(await screen.findByText('At /member/book {"venueId":"venue-davao"}')).toBeInTheDocument()
+    expect(await screen.findByText('Checkout')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Pay Php 450\.00/ })).toBeInTheDocument()
   })
 
-  it('continues to the chosen venue after visitor sign-up', async () => {
+  it('opens the booking environment when clicking the venue CTA', async () => {
     const user = userEvent.setup()
-    auth.joinClub.mockResolvedValue({ club_id: 'club-davao', slug: 'rally-point-davao', name: 'Rally Point Davao', role: 'member' })
-    auth.signUpMember.mockImplementation(async () => {
-      auth.user = player
-      auth.listeners.forEach((listener) => listener())
-      return { status: 'signed_in', profile: player }
-    })
-    renderAt('/clubs/rally-point-davao')
+    vi.mocked(api.publicClubAvailability).mockResolvedValue([])
+    renderAt('/clubs/rally-point-davao', true)
 
     await user.click(await screen.findByRole('button', { name: 'Book a court at Davao Main' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Log in' })
-    await user.click(within(dialog).getAllByRole('button', { name: 'Join as member' })[0])
-    await user.type(within(dialog).getByLabelText('Full name'), player.full_name)
-    await user.type(within(dialog).getByLabelText('Email'), player.email)
-    await user.type(within(dialog).getByLabelText('Password'), 'secret123')
-    await user.click(within(dialog).getByRole('button', { name: 'Join Rally Point' }))
-
-    await waitFor(() => expect(auth.joinClub).toHaveBeenCalledWith('rally-point-davao', { asPlayer: true }))
-    expect(await screen.findByText('At /member/book {"venueId":"venue-davao"}')).toBeInTheDocument()
-  })
-
-  it('joins a signed-in player to the club and opens booking at that venue', async () => {
-    const user = userEvent.setup()
-    auth.user = player
-    auth.joinClub.mockResolvedValue({ club_id: 'club-davao', slug: 'rally-point-davao', name: 'Rally Point Davao', role: 'member' })
-    renderAt('/clubs/rally-point-davao')
-
-    await user.click(await screen.findByRole('button', { name: 'Book a court at Davao Main' }))
-    await waitFor(() => expect(auth.joinClub).toHaveBeenCalledWith('rally-point-davao', { asPlayer: true }))
-    expect(await screen.findByText('At /member/book {"venueId":"venue-davao"}')).toBeInTheDocument()
-  })
-
-  it('shows why booking could not start', async () => {
-    const user = userEvent.setup()
-    auth.user = player
-    auth.joinClub.mockRejectedValue(new Error('This club is not taking bookings'))
-    renderAt('/clubs/rally-point-davao')
-
-    await user.click(await screen.findByRole('button', { name: 'Book a court at Davao Main' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('This club is not taking bookings')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Book at Rally Point Davao' })).toBeInTheDocument()
   })
 
   it('gives visitors log in and sign up, with sign up opening the sign-up tab', async () => {

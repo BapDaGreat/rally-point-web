@@ -438,6 +438,9 @@ describe("LoginPage return to a club page", () => {
     renderLoginDialog({ onAuthenticated, onClose });
 
     const dialog = screen.getByRole("dialog", { name: "Log in" });
+    expect(within(dialog).getByText("Login to continue")).toBeInTheDocument();
+    expect(within(dialog).getByText("Secure booking access")).toBeInTheDocument();
+    expect(within(dialog).getByText("By continuing, you confirm you are booking under your account.")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toHaveFocus();
     await user.type(screen.getByLabelText("Email"), profile.email);
     await user.type(screen.getByLabelText("Password"), "secret123");

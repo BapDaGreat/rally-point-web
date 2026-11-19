@@ -25,6 +25,8 @@ interface AuthState {
    */
   joinClub: (slug: string, options?: { asPlayer?: boolean }) => Promise<MyClub>
   signIn: (email: string, password: string) => Promise<Profile>
+  /** Optional Google OAuth sign-in when configured in Supabase Auth. */
+  signInWithGoogle?: () => Promise<void>
   /** Public join — always creates a member (never admin/staff). */
   signUpMember: (input: {
     email: string

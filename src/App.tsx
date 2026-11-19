@@ -74,9 +74,10 @@ function AppRoutes() {
       <Routes key={activeClub?.club_id ?? 'no-club'}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/privacy" element={<PrivacyNoticePage />} />
-        {/* Find a court: open to visitors; booking asks them to sign in. */}
+        {/* Find a court & court booking environment: open to visitors; payment asks them to sign in. */}
         <Route path="/clubs" element={<ClubDirectory />} />
         <Route path="/clubs/:slug" element={<ClubDetailPage />} />
+        <Route path="/clubs/:slug/book" element={<MemberBook />} />
         {/* Court owners: how listing works, and a request for a call. Open to visitors. */}
         <Route path="/owners" element={<OwnersPage />} />
         <Route path="/" element={<RootRedirect />} />
