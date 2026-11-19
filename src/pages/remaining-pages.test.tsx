@@ -8,7 +8,7 @@ import { MemberBook } from './MemberBook'
 import { MemberPass } from './MemberPass'
 import { AdminBoard, ScheduleBoard, TvBoard } from './ScheduleBoard'
 import { AdminBookings, BookingsDesk } from './BookingsDesk'
-import { ymdLocal } from '../types'
+import { localRangeISO, ymdLocal } from '../types'
 
 const authState = vi.hoisted(() => ({
   user: {
@@ -285,16 +285,13 @@ describe('member booking and pass pages', () => {
 
   it('reflects a 2h booking as booked for 2 hours (no refund) without redundant refetches', async () => {
     const user = userEvent.setup()
-    const tomorrow = new Date(Date.now() + 86400000)
-    const tomorrowStart = new Date(tomorrow)
-    tomorrowStart.setHours(12, 0, 0, 0)
-    const tomorrowEnd = new Date(tomorrowStart.getTime() + 2 * 3600000)
+    const { start_at, end_at } = localRangeISO(ymdLocal(new Date(Date.now() + 86400000)), 12, 2)
     const twoHourBooking: Booking = {
       id: 'bk_2h',
       court_id: court.id,
       member_id: member.id,
-      start_at: tomorrowStart.toISOString(),
-      end_at: tomorrowEnd.toISOString(),
+      start_at,
+      end_at,
       hours: 2,
       amount: 1000,
       status: 'confirmed',
