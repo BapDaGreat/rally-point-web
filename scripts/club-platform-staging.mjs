@@ -270,10 +270,60 @@ export const ownerOnboardingRelease = Object.freeze({
   databases: Object.freeze({ restore: 'rally_staging_backup_20261116_r1_restore', dryRun: 'rally_staging_backup_20261116_r1_dryrun' }),
 })
 
+// Member GCash checkout: a player holds court hours for 15 minutes (hold_court_booking), pays the
+// club's own GCash QR outside Rally Point and sends the reference (submit_booking_payment); the
+// club's staff or admin confirm it (booked) or reject it (released). One migration. It adds a
+// member write path into bookings and court_allocations through five checked definer functions;
+// the reservation-write pause on the paused tables and the nine paused booking functions stays.
+// No trigger is added to auth.users, so the capture's sign-up trigger step holds.
+export const memberGcashCheckoutRelease = Object.freeze({
+  id: 'member-gcash-checkout-20261122',
+  title: 'Member GCash checkout',
+  baseVersions: Object.freeze([...ownerOnboardingRelease.baseVersions, '20261116090000', '20261116090100'].sort()),
+  migrations: Object.freeze(['20261122090000_member_gcash_checkout.sql']),
+  // The SQL that runs and the code that runs it. Approval pins all of these bytes.
+  files: Object.freeze(['supabase/migrations/20261122090000_member_gcash_checkout.sql',
+    'supabase/verification/member_gcash_checkout_postflight.sql', 'supabase/verification/owner_onboarding_postflight.sql',
+    'supabase/verification/club_profile_postflight.sql', 'supabase/verification/court_photos_postflight.sql',
+    'supabase/verification/court_marketplace_postflight.sql', 'supabase/verification/supabase_advisor_followup_postflight.sql',
+    'supabase/verification/supabase_advisor_postflight.sql', 'supabase/verification/club_platform_postflight.sql',
+    'supabase/verification/two_club_isolation.sql', 'supabase/verification/schema_fingerprint.sql',
+    'supabase/verification/backup_content_inventory.sql', 'supabase/verification/reservation_write_pause_readonly.sql',
+    'supabase/verification/staging_privacy_readonly_preflight.sql', 'scripts/run-staging-release-apply.mjs',
+    'scripts/club-platform-staging.mjs', 'scripts/club-platform-checks.mjs', 'scripts/restore-catalog-checks.mjs',
+    'scripts/restore-data-checks.mjs']),
+  stateCheck: Object.freeze({ file: 'owner_onboarding_postflight.sql', kind: 'ownerOnboarding' }),
+  postChecks: Object.freeze([
+    Object.freeze({ file: 'member_gcash_checkout_postflight.sql', kind: 'memberGcashCheckout', ignore: Object.freeze([]) }),
+    // Earlier postflights count 22, 23, 26, 27, 28 or 30 migrations; this release brings staging to 31.
+    Object.freeze({ file: 'owner_onboarding_postflight.sql', kind: 'ownerOnboarding',
+      ignore: Object.freeze(['ledger_has_owner_onboarding']) }),
+    Object.freeze({ file: 'club_profile_postflight.sql', kind: 'clubProfile', ignore: Object.freeze(['ledger_has_club_profile']) }),
+    Object.freeze({ file: 'court_photos_postflight.sql', kind: 'courtPhotos', ignore: Object.freeze(['ledger_has_court_photos']) }),
+    // Clubs may set opening hours (club profile), so "every venue open 0-24" no longer holds.
+    // This release does not touch venues.
+    Object.freeze({ file: 'court_marketplace_postflight.sql', kind: 'courtMarketplace',
+      ignore: Object.freeze(['ledger_has_court_marketplace', 'venues_open_all_day']) }),
+    Object.freeze({ file: 'supabase_advisor_followup_postflight.sql', kind: 'advisorFollowup',
+      ignore: Object.freeze(['ledger_has_followup']) }),
+    Object.freeze({ file: 'supabase_advisor_postflight.sql', kind: 'advisor',
+      ignore: Object.freeze(['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']) }),
+    Object.freeze({ file: 'club_platform_postflight.sql', kind: 'postflight', ignore: Object.freeze(['ledger_has_every_migration']) }),
+  ]),
+  isolation: Object.freeze({ file: 'two_club_isolation.sql', plan: 55 }),
+  dirs: Object.freeze({
+    capture: 'docs/release-private/staging-backup-20261122-r1',
+    restore: 'docs/release-private/staging-backup-restore-20261122-r1',
+    dryRun: 'docs/release-private/member-gcash-checkout-staging-dryrun-20261122-r1',
+    apply: 'docs/release-private/member-gcash-checkout-staging-apply-20261122-r1',
+  }),
+  databases: Object.freeze({ restore: 'rally_staging_backup_20261122_r1_restore', dryRun: 'rally_staging_backup_20261122_r1_dryrun' }),
+})
+
 export const releases = Object.freeze({ [advisorFixesRelease.id]: advisorFixesRelease,
   [advisorFollowupRelease.id]: advisorFollowupRelease, [courtMarketplaceRelease.id]: courtMarketplaceRelease,
   [courtPhotosRelease.id]: courtPhotosRelease, [clubProfileRelease.id]: clubProfileRelease,
-  [ownerOnboardingRelease.id]: ownerOnboardingRelease })
+  [ownerOnboardingRelease.id]: ownerOnboardingRelease, [memberGcashCheckoutRelease.id]: memberGcashCheckoutRelease })
 
 export function getRelease(id) {
   assert.ok(Object.hasOwn(releases, id ?? ''), `Unknown release: ${id}. Known: ${Object.keys(releases).join(', ')}`)
