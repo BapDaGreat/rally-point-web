@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AdminClubProfile, ClubAddon } from '../types'
 import { emptyClubProfile } from '../lib/clubProfile'
 import { AdminProfile } from './AdminProfile'
@@ -37,6 +37,8 @@ vi.mock('../lib/api', () => ({
 
 import { api } from '../lib/api'
 
+const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+
 const paddles: ClubAddon = {
   id: 'addon-1', club_id: 'club-1', name: 'Paddle rental', description: null, price: 100,
   unit: 'per_hour', is_active: true, position: 0, created_at: '2026-11-15T00:00:00.000Z',
@@ -59,6 +61,11 @@ function renderPage() {
 }
 
 describe('AdminProfile', () => {
+  afterEach(() => {
+    if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
+    else Reflect.deleteProperty(navigator, 'clipboard')
+  })
+
   beforeEach(() => {
     vi.mocked(api.adminClubProfile).mockReset().mockResolvedValue(loaded)
     vi.mocked(api.updateClubProfile).mockReset().mockResolvedValue(undefined)
@@ -169,6 +176,32 @@ describe('AdminProfile', () => {
     expect(addons.getByText('Paddle rental')).toBeInTheDocument()
     expect(addons.getByText('Php 100.00 per hour')).toBeInTheDocument()
     expect(addons.getAllByText('Hidden')).toHaveLength(1)
+  })
+
+  it('shows and copies a direct public booking link for the active club', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    renderPage()
+
+    const link = 'https://brinely.info/#/clubs/club-one/book'
+    expect(await screen.findByLabelText('Booking link')).toHaveValue(link)
+    expect(screen.getByRole('link', { name: /Open booking page/ })).toHaveAttribute('href', '/clubs/club-one/book')
+
+    await user.click(screen.getByRole('button', { name: 'Copy link' }))
+    expect(writeText).toHaveBeenCalledWith(link)
+    expect(await screen.findByRole('status')).toHaveTextContent('Booking link copied.')
+  })
+
+  it('shows a useful error when copying the booking link fails', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockRejectedValue(new Error('Permission denied'))
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: 'Copy link' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not copy the booking link. Permission denied')
+    expect(screen.getByLabelText('Booking link')).toHaveValue('https://brinely.info/#/clubs/club-one/book')
   })
 
   it('saves business details, and refuses a Facebook link to another site before sending it', async () => {

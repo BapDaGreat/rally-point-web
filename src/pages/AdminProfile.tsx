@@ -17,6 +17,12 @@ import { PaymentCard } from './AdminProfilePayment'
 import { UnusedPicturesCard } from './AdminProfileUnused'
 import { linkStyle, sentence, type Notice, type Run } from './adminProfileShared'
 
+const PUBLIC_SITE_URL = 'https://brinely.info'
+
+function publicBookingUrl(slug: string) {
+  return `${PUBLIC_SITE_URL}/#/clubs/${encodeURIComponent(slug)}/book`
+}
+
 /**
  * The club's business profile: what players see about the club on its public page.
  * Club admins only (the route is admin-only, and every save is checked again in the database).
@@ -30,6 +36,7 @@ export function AdminProfile() {
   const [busy, setBusy] = useState<string | null>(null)
   const [message, setMessage] = useState<Notice | null>(null)
   const saving = useRef(false)
+  const bookingUrl = activeClub ? publicBookingUrl(activeClub.slug) : null
 
   // The first load fills the form.
   const load = useCallback(async () => {
@@ -118,6 +125,20 @@ export function AdminProfile() {
   const set = <K extends keyof ClubProfileFields>(key: K) => (value: ClubProfileFields[K]) =>
     setFields((now) => ({ ...now, [key]: value }))
 
+  async function copyBookingLink() {
+    if (!bookingUrl) return
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('Clipboard access is not available in this browser.')
+      }
+      await navigator.clipboard.writeText(bookingUrl)
+      setMessage({ text: 'Booking link copied. Paste it on your social media page.', tone: 'done' })
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Clipboard access was denied.'
+      setMessage({ text: `Could not copy the booking link. ${reason}`, tone: 'problem' })
+    }
+  }
+
   return (
     <AppShell role="admin">
       <AppHeader title="Business profile" subtitle="What players see about your club" right={<SignOutButton />} />
@@ -138,6 +159,32 @@ export function AdminProfile() {
             </Link>
           ) : null}
         </section>
+
+        {activeClub && bookingUrl ? (
+          <section className="card p-4 space-y-3" aria-labelledby="share-booking-link">
+            <div>
+              <h2 id="share-booking-link" className="text-subtitle font-semibold text-slate-900">Share your booking link</h2>
+              <p className="text-sm text-slate-600">Post this link on Facebook or other social media to take players straight to booking for {activeClub.name}.</p>
+            </div>
+            <label htmlFor="club-booking-link" className="label">Booking link</label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                id="club-booking-link"
+                className="input min-h-12 min-w-0 w-full flex-1 text-sm"
+                type="url"
+                readOnly
+                value={bookingUrl}
+                onFocus={(event) => event.currentTarget.select()}
+              />
+              <button type="button" className="btn-secondary min-h-12 sm:!w-auto sm:shrink-0" onClick={() => void copyBookingLink()}>
+                Copy link
+              </button>
+            </div>
+            <Link to={`/clubs/${activeClub.slug}/book`} className={`${linkStyle} gap-1`}>
+              Open booking page <ExternalLink size={14} aria-hidden />
+            </Link>
+          </section>
+        ) : null}
 
         {loading ? <ProfileLoading /> : loadFailed || !data ? (
           <section className="card p-4 space-y-3" role="alert">
