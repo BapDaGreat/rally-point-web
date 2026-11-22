@@ -279,6 +279,13 @@ export const demoStore = {
     const club = activeClub(db)
     return club && bookableClubBySlug(db, club.slug) ? publicClubProfileFor(db, club.id).payment_methods : []
   },
+  /** Visitor-safe court availability for any active club (no auth session required). */
+  publicClubAvailability(slug: string, dateYmd: string, venueId?: string) {
+    const db = load()
+    const club = bookableClubBySlug(db, slug)
+    if (!club) return []
+    return bookingOperations.availability(dateYmd, venueId, club.id)
+  },
   tenantContext(userId?: string, role?: Profile['role']) {
     const db = load()
     const resolvedUserId = userId ?? db.sessionUserId ?? undefined

@@ -49,19 +49,19 @@ describe('public routes', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Privacy Notice' })).toBeInTheDocument()
   })
 
-  it('welcomes visitors with a choice between playing and listing a club', () => {
+  it('renders the court-first landing page prioritizing courts while keeping owner onboarding reachable', async () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Welcome to Rally Point' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /I’m a player/ })).toHaveAttribute('href', '/clubs')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Welcome to bRineLy' })).toBeInTheDocument()
+    expect(api.listPublicClubs).toHaveBeenCalled()
+    expect(screen.getByLabelText('Search')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /I own a court/ })).toHaveAttribute('href', '/owners')
-    // The welcome page offers Log in only; players sign up from Find a court.
     expect(screen.getByRole('link', { name: 'Log in' })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Sign up' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Sign up' })).toBeInTheDocument()
   })
 
   it('opens Find a court from the player choice', async () => {
@@ -100,7 +100,7 @@ describe('public routes', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.queryByRole('heading', { name: 'Welcome to Rally Point' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Welcome to bRineLy' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1, name: 'Platform overview' })).toBeInTheDocument()
   })
 })

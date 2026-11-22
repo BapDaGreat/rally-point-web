@@ -123,9 +123,9 @@ function bookForGood(db: DemoDB, b: Booking, payment: { method: PaymentMethod; r
 }
 
 export const bookingOperations = {
-  availability(dateYmd: string, venueId?: string): CourtDayAvailability[] {
+  availability(dateYmd: string, venueId?: string, clubIdOverride?: string): CourtDayAvailability[] {
     const db = load()
-    const clubId = activeClubId(db)
+    const clubId = clubIdOverride ?? activeClubId(db)
     const now = new Date()
     return db.courts.filter((court) => court.club_id === clubId && (!venueId || court.venue_id === venueId)).map((court) => {
       const slots = []

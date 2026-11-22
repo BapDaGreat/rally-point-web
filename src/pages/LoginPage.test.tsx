@@ -22,8 +22,8 @@ vi.mock("../context/AuthContext", () => ({
   useAuth: () => authState,
 }));
 
-vi.mock("../components/RallyPointLogo", () => ({
-  RallyPointLogo: () => <div aria-label="Rally Point logo" />,
+vi.mock("../components/BrinelyLogo", () => ({
+  BrinelyLogo: () => <div aria-label="bRineLy logo" />,
 }));
 
 function Where() {
@@ -232,7 +232,7 @@ describe("LoginPage authentication form safety", () => {
     );
 
     const signupForm = screen
-      .getByRole("button", { name: "Join Rally Point" })
+      .getByRole("button", { name: "Join bRineLy" })
       .closest("form");
     if (!signupForm) throw new Error("Signup form is missing");
     const formLink = within(signupForm).getByRole("link", { name: "Privacy Notice" });
@@ -261,7 +261,7 @@ describe("LoginPage authentication form safety", () => {
       screen.getByText(/By registering, you acknowledge that you have read our/),
     ).toBeInTheDocument();
     const signupForm = screen
-      .getByRole("button", { name: "Join Rally Point" })
+      .getByRole("button", { name: "Join bRineLy" })
       .closest("form");
     if (!signupForm) throw new Error("Signup form is missing");
     expect(within(signupForm).getByRole("link", { name: "Privacy Notice" })).toHaveAttribute(
@@ -311,7 +311,7 @@ describe("LoginPage authentication form safety", () => {
     await user.type(screen.getByLabelText("Full name"), "Existing Player");
     await user.type(screen.getByLabelText("Email"), "existing@example.com");
     await user.type(screen.getByLabelText("Password"), "valid-passphrase");
-    await user.click(screen.getByRole("button", { name: "Join Rally Point" }));
+    await user.click(screen.getByRole("button", { name: "Join bRineLy" }));
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(
@@ -386,20 +386,20 @@ describe("LoginPage return to a club page", () => {
       </MemoryRouter>,
     );
     expect(switchToJoin()).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText(/Court owner\? Use the email you gave Rally Point\./)).toBeInTheDocument();
+    expect(screen.getByText(/Court owner\? Use the email you gave bRineLy\./)).toBeInTheDocument();
   });
 
   it("shows a court owner why they cannot log in while their club is being set up", async () => {
     const user = userEvent.setup();
     authState.signIn.mockRejectedValue(
-      new Error("Your owner account is ready. Cebu Hub is still being set up. You can log in as soon as Rally Point opens it."),
+      new Error("Your owner account is ready. Cebu Hub is still being set up. You can log in as soon as bRineLy opens it."),
     );
     renderLogin();
     await user.type(screen.getByLabelText("Email"), "owner@example.com");
     await user.type(screen.getByLabelText("Password"), "secret123");
     await user.click(loginSubmitButton());
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Your owner account is ready. Cebu Hub is still being set up. You can log in as soon as Rally Point opens it.",
+      "Your owner account is ready. Cebu Hub is still being set up. You can log in as soon as bRineLy opens it.",
     );
   });
 
@@ -438,6 +438,9 @@ describe("LoginPage return to a club page", () => {
     renderLoginDialog({ onAuthenticated, onClose });
 
     const dialog = screen.getByRole("dialog", { name: "Log in" });
+    expect(within(dialog).getByText("Login to continue")).toBeInTheDocument();
+    expect(within(dialog).getByText("Secure booking access")).toBeInTheDocument();
+    expect(within(dialog).getByText("By continuing, you confirm you are booking under your account.")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toHaveFocus();
     await user.type(screen.getByLabelText("Email"), profile.email);
     await user.type(screen.getByLabelText("Password"), "secret123");
@@ -520,7 +523,7 @@ describe("LoginPage sign-up code step", () => {
     await user.type(screen.getByLabelText("Mobile (optional)"), "09171234567");
     await user.type(screen.getByLabelText("Email"), "New@Example.com");
     await user.type(screen.getByLabelText("Password"), "secret-pass");
-    await user.click(screen.getByRole("button", { name: "Join Rally Point" }));
+    await user.click(screen.getByRole("button", { name: "Join bRineLy" }));
   }
 
   it("asks for the emailed code instead of showing an error", async () => {
@@ -653,7 +656,7 @@ describe("LoginPage sign-up code step", () => {
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret-pass" } });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Join Rally Point" }));
+      fireEvent.click(screen.getByRole("button", { name: "Join bRineLy" }));
     });
 
     expect(screen.getByRole("heading", { name: "Check your email" })).toBeInTheDocument();
@@ -685,7 +688,7 @@ describe("LoginPage sign-up code step", () => {
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret-pass" } });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Join Rally Point" }));
+      fireEvent.click(screen.getByRole("button", { name: "Join bRineLy" }));
     });
     advanceSeconds(60);
     await act(async () => {
@@ -735,7 +738,7 @@ describe("LoginPage sign-up code step", () => {
   it("tells a court owner what happens next once the code is confirmed", async () => {
     const user = userEvent.setup();
     authState.verifySignupCode.mockRejectedValue(
-      new Error("Your owner account is ready. Cebu Hub is still being set up. You can log in as soon as Rally Point opens it."),
+      new Error("Your owner account is ready. Cebu Hub is still being set up. You can log in as soon as bRineLy opens it."),
     );
     renderJoin();
     await fillAndJoin(user);
@@ -744,7 +747,7 @@ describe("LoginPage sign-up code step", () => {
     await user.click(screen.getByRole("button", { name: "Confirm and continue" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Your owner account is ready. Cebu Hub is still being set up. You can log in as soon as Rally Point opens it.",
+      "Your owner account is ready. Cebu Hub is still being set up. You can log in as soon as bRineLy opens it.",
     );
     expect(screen.queryByLabelText("6-digit code")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Full name")).not.toBeInTheDocument();

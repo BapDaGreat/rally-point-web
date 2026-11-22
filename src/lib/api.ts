@@ -59,10 +59,35 @@ import type {
   OwnerCallStatus,
   OwnerClub,
 } from '../types'
-import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, localRangeISO, timeSlot, venueHours } from '../types'
+import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, fmtDateTime, fmtTime, localRangeISO, timeSlot, venueHours } from '../types'
 import { CLUB_HEADER, getActiveClubId, notifyClubUnavailable, requireActiveClubId } from './clubContext'
 import { PHOTO_BUCKET, photoUrl, shrinkPhoto, shrinkPhotoToDataUrl } from './photos'
 import { emptyClubProfile, normalizeProfile } from './clubProfile'
+
+type OccupiedInterval = { court_id: string | null; start_at: string; end_at: string }
+
+function buildCourtAvailability(
+  courts: Court[],
+  hoursFor: (venueId: string | null | undefined) => { open: number; close: number },
+  occupied: OccupiedInterval[],
+  dateYmd: string,
+): CourtDayAvailability[] {
+  const now = new Date()
+  return courts.map((court) => {
+    const slots = []
+    const { open, close } = hoursFor(court.venue_id)
+    for (let h = open; h < close; h++) {
+      const { start_at, end_at } = localRangeISO(dateYmd, h, 1)
+      // Each hour says why it cannot be booked, so every hour of a booking reads "Booked".
+      slots.push(timeSlot(h, {
+        booked: occupied.some((s) => s.court_id === court.id && overlaps(start_at, end_at, s.start_at, s.end_at)),
+        outOfService: court.status === 'maintenance',
+        passed: new Date(start_at).getTime() < now.getTime() - 5 * 60000,
+      }))
+    }
+    return { court, slots }
+  })
+}
 
 /**
  * Deletes stored photo files; returns how many are gone. Storage answers a refused delete
@@ -345,20 +370,7 @@ export const api = {
     const { data: occupied, error } = await scheduleQuery
     if (error) throw error
 
-    const now = new Date()
-    return courts.map((court) => {
-      const slots = []
-      const { open, close } = hoursFor(court.venue_id)
-      for (let h = open; h < close; h++) {
-        const { start_at, end_at } = localRangeISO(dateYmd, h, 1)
-        slots.push(timeSlot(h, {
-          booked: (occupied ?? []).some((s) => s.court_id === court.id && overlaps(start_at, end_at, s.start_at, s.end_at)),
-          outOfService: court.status === 'maintenance',
-          passed: new Date(start_at).getTime() < now.getTime() - 5 * 60000,
-        }))
-      }
-      return { court, slots }
-    })
+    return buildCourtAvailability(courts, hoursFor, (occupied ?? []) as OccupiedInterval[], dateYmd)
   },
 
   // ---- GCash QR checkout: the player holds hours, pays the club's QR, and the club confirms ----
@@ -1387,6 +1399,84 @@ export const api = {
           photo_url: photo_path ? photoUrl(photo_path) : null,
         })),
         gallery: (row.gallery ?? []).map(({ path, ...photo }) => ({ ...photo, url: photoUrl(path) })),
+      }
+    },
+
+    /** Visitor-safe availability for any public club (reads public detail + public_schedule with x-club-id). */
+    async publicClubAvailability(slug: string, dateYmd: string, venueId?: string): Promise<CourtDayAvailability[]> {
+      if (isDemoMode) return demoStore.publicClubAvailability(slug, dateYmd, venueId)
+      const [club, detail] = await Promise.all([
+        this.publicClub(slug),
+        this.publicClubDetail(slug),
+      ])
+      if (!club || !detail) return []
+      const filteredVenues = venueId
+        ? detail.venues.filter((venue) => venue.id === venueId)
+        : detail.venues
+      const venueById = new Map(filteredVenues.map((venue) => [venue.id, venue]))
+      const courts: Court[] = filteredVenues.flatMap((venue) =>
+        venue.courts.map((ct) => ({
+          id: ct.id,
+          club_id: club.id,
+          venue_id: venue.id,
+          name: ct.name,
+          status: ct.in_service ? 'available' : 'maintenance',
+          hourly_rate: ct.hourly_rate,
+          member_rate: ct.member_rate,
+        })),
+      )
+      const dayStart = localRangeISO(dateYmd, CLUB_OPEN_HOUR, 1).start_at
+      const dayEnd = localRangeISO(dateYmd, CLUB_CLOSE_HOUR - 1, 1).end_at
+      let scheduleQuery = supabase!
+        .from('public_schedule')
+        .select('court_id, start_at, end_at')
+        .eq('club_id', club.id)
+        .setHeader(CLUB_HEADER, club.id)
+        .lt('start_at', dayEnd)
+        .gt('end_at', dayStart)
+      if (venueId) scheduleQuery = scheduleQuery.eq('venue_id', venueId)
+      const { data: occupied, error } = await scheduleQuery
+      if (error) throw error
+      return buildCourtAvailability(
+        courts,
+        (id) => {
+          const v = id ? venueById.get(id) : undefined
+          return v ? venueHours(v) : { open: 0, close: 0 }
+        },
+        (occupied ?? []) as OccupiedInterval[],
+        dateYmd,
+      )
+    },
+
+    /** Sends a confirmed booking receipt via the Resend Edge Function (or simulates cleanly in demo mode). */
+    async sendBookingConfirmationEmail(opts: {
+      booking: Booking
+      clubName: string
+      venueName?: string
+      recipientEmail: string
+    }): Promise<{ sent: boolean; preview: string }> {
+      const timeWindow = `${fmtDateTime(opts.booking.start_at)} – ${fmtTime(opts.booking.end_at)} (${opts.booking.hours}h)`
+      const preview = `Receipt sent to ${opts.recipientEmail} for ${opts.booking.court?.name ?? 'Court'} · ${timeWindow}`
+      if (isDemoMode) return { sent: true, preview }
+      try {
+        const { error } = await supabase!.functions.invoke('send-booking-email', {
+          body: {
+            bookingId: opts.booking.id,
+            clubName: opts.clubName,
+            venueName: opts.venueName ?? null,
+            courtName: opts.booking.court?.name ?? 'Court',
+            startAt: opts.booking.start_at,
+            endAt: opts.booking.end_at,
+            hours: opts.booking.hours,
+            amount: opts.booking.amount,
+            paymentRef: opts.booking.payment_ref ?? null,
+            recipientEmail: opts.recipientEmail,
+          },
+        })
+        if (error) return { sent: false, preview }
+        return { sent: true, preview }
+      } catch {
+        return { sent: false, preview }
       }
     },
 

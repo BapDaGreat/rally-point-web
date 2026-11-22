@@ -7,10 +7,8 @@ import type { PrivacyNoticeState } from '../lib/privacyNotice'
 import { homeFor } from '../lib/roleHome'
 import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
 
-// Gensan's support inbox is the only privacy contact supplied so far, so other
-// clubs are pointed to their own staff instead.
-const gensanPrivacyEmail = 'support@rallypointgensan.com'
-const gensanName = 'Rally Point Gensan'
+// Provisional contact pending confirmation of its role by the bRineLy team.
+const brinelyPrivacyEmail = 'admin@brinely.info'
 
 type NoticeClub = { isGensan: boolean; name: string | null }
 
@@ -22,10 +20,12 @@ function sections(club: NoticeClub): { title: string; content: ReactNode }[] {
       content: (
         <p>
           {club.isGensan
-            ? 'Rally Point Gensan is the club and app name used in this notice.'
-            : `${club.name ?? 'Your club'} is the club named in this notice, and Rally Point is the app it uses.`}{' '}
-          The legal registered entity operating the service has not yet been confirmed here. This
-          notice explains how information is handled when you use the Rally Point app and services.
+            ? 'bRineLy is the booking portal for club players.'
+            : `${club.name ?? 'Your club'} is the club named in this notice, and bRineLy is the booking portal it uses.`}{' '}
+          bRineLy is used by multiple clubs. The registered entities responsible for the portal
+          and each club, and whether they act as separate or joint personal information controllers
+          or processors, have not yet been confirmed. This is a working draft, not a final or
+          legally approved notice.
         </p>
       ),
     },
@@ -35,15 +35,37 @@ function sections(club: NoticeClub): { title: string; content: ReactNode }[] {
         <>
           <p>Depending on how you use the app, we may collect:</p>
           <ul className="mt-2 list-disc space-y-1 pl-5">
-            <li>Account details such as your name, email address, and optional phone number.</li>
-            <li>Membership, booking, open-play, check-in, and support inquiry details.</li>
-            <li>Payment and transaction records related to club services.</li>
+            <li>
+              Account details such as your name, email address, and optional phone number. For an
+              owner account, this can also include the email address used for an owner invitation
+              and whether that invitation was claimed or cancelled.
+            </li>
+            <li>
+              Club service details such as membership status, bookings, open-play sign-ups,
+              check-in times and QR identifiers, and support inquiry subjects and messages.
+            </li>
+            <li>
+              Payment and transaction details recorded for club services, such as amounts,
+              payment method, and references. Online checkout in the app is currently simulated;
+              the app does not have a live online payment processor.
+            </li>
             <li>
               If you ask us to call you about listing your club: your name, your club or venue name and
               city, how many courts it has, your mobile number or email, when you would like the call,
-              and any message. Only the Rally Point platform team sees these requests.
+              and any message. Only authorized platform superadmins can view these requests.
+            </li>
+            <li>
+              Information club admins enter to operate or list a club, such as venue addresses and
+              map pins, court and venue details, rates, business contact details, coach names,
+              biographies and contact details, and uploaded photos. Some of this information may
+              identify a person.
             </li>
           </ul>
+          <p className="mt-2">
+            We receive account and owner-request details from the person using the app. Club staff
+            and admins may enter member, invitation, coach, and business-listing details. Club
+            admins choose which club information to publish publicly.
+          </p>
           <p className="mt-2">
             Do not send sensitive personal information unless it is needed for a specific service
             and we explain why it is required.
@@ -57,29 +79,71 @@ function sections(club: NoticeClub): { title: string; content: ReactNode }[] {
         <>
           <p>
             We use information to create and manage accounts, provide memberships and bookings,
-            support check-in and transactions, respond to questions, call court owners back about
-            listing their club, maintain the service, and meet legal requirements.
+            support open-play and check-in, record transactions, respond to support inquiries,
+            contact court owners who ask about listing, manage owner invitations, publish club
+            listings at the club's direction, maintain the service, and meet legal requirements.
           </p>
           <p className="mt-2">
-            Under the Philippine Data Privacy Act of 2012 (RA 10173), processing is based, as
-            applicable, on your consent, steps you request before or to perform a service
-            agreement, compliance with a legal obligation, or a legitimate interest that does
-            not override your rights. If sensitive personal information is processed, we will
-            rely on a basis permitted by the Act.
+            The Philippine Data Privacy Act of 2012 (RA 10173) allows processing only on a
+            permitted legal basis. Depending on the purpose, possible bases include your consent,
+            steps you request before a service or performance of a contract, a legal obligation,
+            or a legitimate interest that does not override your rights. The responsible entity
+            must confirm the basis for each purpose before this draft is used as the official
+            notice. If sensitive personal information is processed, an applicable basis under the
+            Act must be confirmed.
           </p>
         </>
       ),
     },
     {
-      title: 'Sharing and service providers',
+      title: 'Who can see information',
+      content: (
+        <>
+          <p>
+            Club staff and admins with the required club role can access information needed to run
+            that club, such as member, booking, check-in, and support records. Authorized platform
+            superadmins can see owner call requests and owner-invitation details.
+          </p>
+          <p className="mt-2">
+            A superadmin may also open a reason-recorded, time-limited, read-only support view of
+            one club. It shows club settings, counts, today's schedule, and open inquiry subjects
+            and status. It does not show member names, contact details, or payment records. Opening
+            and reading the support view is recorded in an audit log.
+          </p>
+          <p className="mt-2">
+            We use Supabase for account, database, and photo-storage services. The app is currently
+            served through GitHub Pages. Where a club page has a map, it embeds OpenStreetMap;
+            choosing “Get directions,” when available, opens Google Maps with the public venue
+            address or map pin. Those map services may receive your browser or network information
+            when their content is loaded or opened. The full provider list, provider locations, and
+            any cross-border access have not been confirmed.
+          </p>
+          <p className="mt-2">
+            The app includes a server-side integration for booking confirmation emails through
+            Resend. When email sending is enabled, Resend receives the recipient's email address
+            and the booking details included in the confirmation, such as the club, court, schedule,
+            amount, and any payment reference. The intended sender is no-reply@brinely.info, but the
+            sender address is controlled by deployment configuration and its live setting has not
+            been verified. If email sending is not configured, the app does not send the message.
+          </p>
+          <p className="mt-2">
+            We may also disclose information when required by law. This is not yet a complete,
+            verified list of service providers or recipients.
+          </p>
+        </>
+      ),
+    },
+    {
+      title: 'Club pages and public information',
       content: (
         <p>
-          We may share information with service providers that help operate the app, including
-          Supabase for account and database services. The current payment journey uses simulated
-          flows and is not a completed live payment integration. If a payment provider is
-          connected, this notice should be updated with its name and the information shared.
-          Information may also be disclosed when required by law. This is not a complete
-          provider list; details may be updated as services are confirmed.
+          Club admins choose what to publish on public club pages. This can include club contact
+          details, venue locations, court rates, amenities, coaches' names, biographies, contact
+          details and photos, and club, venue, or court photos. A club may also publish payment
+          instructions, including an account name or number and a QR image, so players can pay the
+          club directly. These details and images may be visible to anyone on the internet. bRineLy
+          does not take, hold, or verify those direct-to-club payments. Clubs should only
+          publish information and images they are authorized to share.
         </p>
       ),
     },
@@ -89,14 +153,43 @@ function sections(club: NoticeClub): { title: string; content: ReactNode }[] {
         <>
           <p>
             We keep personal information only for as long as needed for the purposes above and
-            applicable legal or operational requirements. A specific retention schedule has not
-            yet been set out in this notice.
+            applicable legal or operational requirements. Specific retention periods, including
+            for closed owner requests, account records, backups, and support audit logs, have not
+            been confirmed. A documented retention schedule is needed before this notice is final.
           </p>
           <p className="mt-2">
             We aim to use reasonable organizational, physical, and technical safeguards to
             protect information from unauthorized access, use, or disclosure. No method of
             storage or transmission can be guaranteed completely secure. Demo-mode information
             is stored in your browser and is separate from live club records.
+          </p>
+        </>
+      ),
+    },
+    {
+      title: 'Details to confirm before this notice is official',
+      content: (
+        <>
+          <p>
+            The current app does not yet have confirmed notice details for:
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li>
+              The legal name and contact details of each responsible organization, and how the
+              clubs and platform divide privacy responsibilities.
+            </li>
+            <li>A verified privacy contact and a process for receiving, verifying, and answering requests.</li>
+            <li>Purpose-by-purpose legal bases and retention periods, including deletion and backup schedules.</li>
+            <li>The complete provider and recipient list, hosting locations, and any international transfers or access.</li>
+            <li>
+              Whether automated decisions, analytics, or other tracking are used, and how the
+              service handles information about minors, if they may use it.
+            </li>
+            <li>The approved security, incident response, and notice-change procedures.</li>
+          </ul>
+          <p className="mt-2">
+            Confirm these details with the responsible organizations and have the final notice
+            reviewed by a qualified Philippine privacy professional before treating it as official.
           </p>
         </>
       ),
@@ -126,12 +219,13 @@ function sections(club: NoticeClub): { title: string; content: ReactNode }[] {
           For a privacy question or request, email{' '}
           <a
             className="inline-flex min-h-12 items-center font-semibold text-brand-800 underline"
-            href={`mailto:${gensanPrivacyEmail}`}
+            href={`mailto:${brinelyPrivacyEmail}`}
           >
-            {gensanPrivacyEmail}
+            {brinelyPrivacyEmail}
           </a>
-          . This is a temporary support contact and has not been confirmed as a dedicated
-          Data Protection Officer contact.
+          . This is a provisional contact pending confirmation that it is the correct address for
+          privacy questions and requests. It has not been confirmed as a dedicated Data Protection
+          Officer contact.
         </p>
       ) : (
         <p>
@@ -146,12 +240,11 @@ function sections(club: NoticeClub): { title: string; content: ReactNode }[] {
 /** The club this notice is for: the join link's club, the signed-in club, or the default club. */
 function useNoticeClub(slug: string): NoticeClub {
   const { activeClub } = useAuth()
-  const knownName =
-    slug === DEFAULT_CLUB_SLUG ? gensanName : slug === activeClub?.slug ? activeClub.name : null
+  const knownName = slug === activeClub?.slug ? activeClub.name : null
   const [lookedUp, setLookedUp] = useState<{ slug: string; name: string | null } | null>(null)
 
   useEffect(() => {
-    if (knownName) return
+    if (slug === DEFAULT_CLUB_SLUG || knownName) return
     let cancelled = false
     api
       .publicClub(slug)
@@ -197,10 +290,10 @@ export function PrivacyNoticePage() {
     (user ? homeFor(user.role) : clubParam ? `/join/${encodeURIComponent(clubParam)}` : '/login')
 
   const subtitle = club.isGensan
-    ? 'For Rally Point Gensan app users'
+    ? 'For bRineLy booking portal users'
     : club.name
-      ? `For ${club.name} players on the Rally Point app`
-      : 'For Rally Point app users'
+      ? `For ${club.name} players on the bRineLy booking portal`
+      : 'For bRineLy booking portal users'
 
   const content = (
     <main className="app-content-rail safe-bottom mx-auto w-full py-6 sm:py-10">
@@ -216,8 +309,9 @@ export function PrivacyNoticePage() {
             Privacy Notice
           </h1>
           <p className="mt-2 text-body text-slate-600">{subtitle}</p>
+          <p className="mt-1 text-caption text-slate-500">Stay in the brine. Play more.</p>
           <p className="mt-1 text-caption text-slate-500">
-            Last updated: November 15, 2026
+            Last updated: November 22, 2026
           </p>
         </header>
 

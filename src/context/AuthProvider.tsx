@@ -68,7 +68,7 @@ async function loadAccess(identity: Profile, preferredClubId?: string | null): P
     const waiting = ownerClubs.filter((club) => club.status === 'provisioning')
     if (waiting.length) {
       throw new OwnerNotice(
-        `Your owner account is ready. ${ownerNames(waiting)} ${waiting.length === 1 ? 'is' : 'are'} still being set up. You can log in as soon as Rally Point opens ${waiting.length === 1 ? 'it' : 'them'}.`,
+        `Your owner account is ready. ${ownerNames(waiting)} ${waiting.length === 1 ? 'is' : 'are'} still being set up. You can log in as soon as bRineLy opens ${waiting.length === 1 ? 'it' : 'them'}.`,
       )
     }
     return null
@@ -371,6 +371,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error
   }, [])
 
+  const signInWithGoogle = useCallback(async () => {
+    if (isDemoMode) {
+      throw new Error('Google sign-in is available in live mode. Use a quick demo account or email below.')
+    }
+    if (!supabase) throw new Error('Supabase not configured')
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.href },
+    })
+    if (error) throw error
+  }, [])
+
   const signOut = useCallback(async () => {
     if (isDemoMode) {
       demoStore.logout()
@@ -391,6 +403,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       switchClub,
       joinClub,
       signIn,
+      signInWithGoogle,
       signUpMember,
       verifySignupCode,
       resendSignupCode,
@@ -398,7 +411,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       refresh,
     }),
-    [user, loading, clubs, activeClub, switchClub, joinClub, signIn, signUpMember, verifySignupCode, resendSignupCode, resetPassword, signOut, refresh],
+    [user, loading, clubs, activeClub, switchClub, joinClub, signIn, signInWithGoogle, signUpMember, verifySignupCode, resendSignupCode, resetPassword, signOut, refresh],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

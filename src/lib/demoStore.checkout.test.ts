@@ -10,9 +10,9 @@ import { DEMO_CLUB_ID, DEMO_DAVAO_CLUB_ID, DEMO_VENUE_ID } from './tenant'
 /** Two days ahead (Philippine time), so none of its hours are over yet. */
 const dayAhead = () => ymdLocal(new Date(Date.now() + 2 * 86400000))
 
-const MEMBER = ['member@rallypoint.local', 'member123'] as const
-const STAFF = ['staff@rallypoint.local', 'staff123'] as const
-const ADMIN = ['admin@rallypoint.local', 'admin123'] as const
+const MEMBER = ['member@brinely.info', 'member123'] as const
+const STAFF = ['staff@brinely.info', 'staff123'] as const
+const ADMIN = ['admin@brinely.info', 'admin123'] as const
 
 function signIn([email, password]: readonly [string, string]) {
   demoStore.logout()

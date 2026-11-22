@@ -15,34 +15,33 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import type { Profile, PublicClub, Role } from '../types'
-import { RallyPointLogo } from '../components/RallyPointLogo'
+import { BrinelyLogo } from '../components/BrinelyLogo'
 import { helpFaqs } from '../lib/helpContent'
 import { privacyNoticePath, type PrivacyNoticeState } from '../lib/privacyNotice'
 import { homeFor } from '../lib/roleHome'
-import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
 
 const demos: { role: Role; email: string; password: string; label: string }[] = [
   {
     role: 'superadmin',
-    email: 'superadmin@rallypoint.local',
+    email: 'superadmin@brinely.info',
     password: 'superadmin123',
     label: 'Superadmin',
   },
   {
     role: 'admin',
-    email: 'admin@rallypoint.local',
+    email: 'admin@brinely.info',
     password: 'admin123',
     label: 'Admin',
   },
   {
     role: 'staff',
-    email: 'staff@rallypoint.local',
+    email: 'staff@brinely.info',
     password: 'staff123',
     label: 'Staff',
   },
   {
     role: 'member',
-    email: 'member@rallypoint.local',
+    email: 'member@brinely.info',
     password: 'member123',
     label: 'Member',
   },
@@ -60,6 +59,12 @@ function errorDetail(error: unknown, key: 'code' | 'status') {
   if (!error || typeof error !== 'object' || !(key in error)) return undefined
   const value = (error as Record<string, unknown>)[key]
   return typeof value === 'string' || typeof value === 'number' ? String(value) : undefined
+}
+
+function isEmailNotConfirmedError(error: unknown) {
+  const message = error instanceof Error ? error.message : ''
+  const code = errorDetail(error, 'code')
+  return code === 'email_not_confirmed' || /email not confirmed/i.test(message)
 }
 
 /** Plain-English messages for the "Check your email" code step. */
@@ -126,16 +131,18 @@ function authenticationErrorMessage(mode: Mode, error: unknown) {
 /** With `joinClub` (from a club's join link) the page signs up into that club. */
 export default function LoginPage({
   joinClub,
+  clubName,
   dialog = false,
   onClose,
   onAuthenticated,
 }: {
   joinClub?: PublicClub
+  clubName?: string
   dialog?: boolean
   onClose?: () => void
   onAuthenticated?: (profile: Profile) => void
 } = {}) {
-  const { user, loading, signIn, signUpMember, verifySignupCode, resendSignupCode, resetPassword, demo } =
+  const { user, loading, signIn, signInWithGoogle, signUpMember, verifySignupCode, resendSignupCode, resetPassword, demo } =
     useAuth()
   const nav = useNavigate()
   // A club page sends visitors here to sign in, then expects them back to finish booking.
@@ -266,11 +273,11 @@ export default function LoginPage({
     nav(returnTo ?? homeFor(profile.role), { replace: true })
   }
 
-  function openCodeStep(sentTo: string) {
+  function openCodeStep(sentTo: string, options?: { cooldownSeconds?: number; notice?: string | null }) {
     setCodeEmail(sentTo)
     setCode('')
-    setCodeNotice(null)
-    setResendIn(RESEND_COOLDOWN_SECONDS)
+    setCodeNotice(options?.notice ?? null)
+    setResendIn(options?.cooldownSeconds ?? RESEND_COOLDOWN_SECONDS)
   }
 
   function leaveCodeStep(focusEmail = false) {
@@ -378,7 +385,29 @@ export default function LoginPage({
         else nav(joinClub ? `/join/${joinClub.slug}` : returnTo ?? homeFor(profile.role), { replace: true })
       }
     } catch (err) {
-      setError(authenticationErrorMessage(mode, err))
+      if (mode === 'login' && isEmailNotConfirmedError(err)) {
+        setPassword('')
+        setPasswordVisible(false)
+        openCodeStep(email.trim().toLowerCase(), {
+          cooldownSeconds: 0,
+          notice: 'Your email is not verified yet. Enter your 6-digit code below or send a new code.',
+        })
+      } else {
+        setError(authenticationErrorMessage(mode, err))
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onGoogleClick() {
+    if (!signInWithGoogle) return
+    setBusy(true)
+    setError(null)
+    try {
+      await signInWithGoogle()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to sign in with Google right now.')
     } finally {
       setBusy(false)
     }
@@ -436,24 +465,27 @@ export default function LoginPage({
             {demo ? 'Try it now · demo' : 'Pickleball club app'}
           </div>
 
-          <div className="mb-5 flex justify-center lg:justify-start">
-            {/* The logo artwork says "Gensan"; other clubs' join links show their own name instead. */}
-            {joinClub && joinClub.slug !== DEFAULT_CLUB_SLUG ? (
-              <p className="text-3xl sm:text-4xl font-extrabold text-white drop-shadow-lg">{joinClub.name}</p>
-            ) : (
-              <RallyPointLogo
+          <div className="mb-5 flex flex-col items-center lg:items-start gap-3">
+            <div className="inline-flex rounded-3xl border border-white/30 bg-white/95 px-5 py-3 shadow-[0_14px_40px_rgba(0,0,0,0.45)]">
+              <BrinelyLogo
                 variant="color"
-                className="h-28 sm:h-36 w-auto max-w-[min(100%,320px)] object-contain drop-shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
-                title="Rally Point"
+                className="h-24 sm:h-32 w-auto max-w-[min(100%,280px)] object-contain"
+                title="bRineLy"
               />
-            )}
+            </div>
+            {joinClub ? (
+              <p className="text-2xl sm:text-3xl font-extrabold text-white drop-shadow-lg">{joinClub.name}</p>
+            ) : null}
           </div>
 
-          <h1 className="sr-only">Rally Point</h1>
+          <h1 className="sr-only">bRineLy</h1>
+          <p className="mb-2 text-sm font-bold tracking-wider text-teal-200 uppercase text-center lg:text-left">
+            brinely.info
+          </p>
           <p className="text-4xl sm:text-5xl xl:text-6xl font-extrabold leading-[1.05] tracking-tight text-center lg:text-left drop-shadow-lg">
-            <span className="block text-white">PICKLEBALL</span>
+            <span className="block text-white">STAY IN THE BRINE.</span>
             <span className="mt-1 block bg-gradient-to-r from-teal-200 via-cyan-200 to-white bg-clip-text text-transparent">
-              PASSION
+              PLAY MORE.
             </span>
           </p>
 
@@ -482,19 +514,35 @@ export default function LoginPage({
             aria-modal={dialog ? true : undefined}
             aria-labelledby={dialog ? (codeEmail ? 'signup-code-title' : 'login-dialog-title') : undefined}
             className={dialog
-              ? 'enter-rise max-h-[calc(100dvh-2rem)] w-full overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-3xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl sm:p-7'
+              ? 'enter-rise max-h-[calc(100dvh-2rem)] w-full overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-3xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl sm:p-6'
               : 'enter-rise w-full max-w-md rounded-3xl border border-white/25 bg-white/95 backdrop-blur-xl p-5 sm:p-7 text-slate-900 shadow-2xl shadow-black/50'}
           >
             {dialog ? (
-              <button
-                type="button"
-                onClick={() => closeRef.current?.()}
-                disabled={busy}
-                className="control-feedback float-right inline-flex min-h-12 min-w-12 items-center justify-center rounded-xl text-slate-600"
-                aria-label="Close sign-in"
-              >
-                <X size={20} aria-hidden />
-              </button>
+              <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+                <p className="text-lg font-extrabold text-slate-900">Login to continue</p>
+                <button
+                  type="button"
+                  onClick={() => closeRef.current?.()}
+                  disabled={busy}
+                  className="control-feedback inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                  aria-label="Close sign-in"
+                >
+                  <X size={20} aria-hidden />
+                </button>
+              </div>
+            ) : null}
+            {dialog ? (
+              <div className="mb-4 flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 px-3.5 py-2.5">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-[#f0f9ff] shadow-xs">
+                  <BrinelyLogo variant="mark" className="h-8 w-8 object-contain" />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-extrabold uppercase tracking-wide text-slate-900">
+                    {clubName ?? joinClub?.name ?? 'bRineLy'}
+                  </p>
+                  <p className="text-xs font-medium text-slate-500">Secure booking access</p>
+                </div>
+              </div>
             ) : null}
             <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1">
               <button
@@ -655,10 +703,34 @@ export default function LoginPage({
               </p>
               {mode === 'join' && ownerSignup ? (
                 <p className="mt-2 rounded-xl bg-brand-50 p-3 text-base text-brand-900">
-                  Court owner? Use the email you gave Rally Point. Your account becomes your club’s admin, not a player membership.
+                  Court owner? Use the email you gave bRineLy. Your account becomes your club’s admin, not a player membership.
                 </p>
               ) : null}
             </div>
+
+            {dialog && mode !== 'reset' && signInWithGoogle ? (
+              <div className="mb-4 space-y-3">
+                <button
+                  type="button"
+                  onClick={() => void onGoogleClick()}
+                  disabled={busy}
+                  className="control-feedback inline-flex min-h-12 w-full items-center justify-center gap-2.5 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-800 shadow-xs transition hover:bg-slate-50"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4.5 w-4.5 shrink-0" aria-hidden>
+                    <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.44a5.5 5.5 0 0 1-2.39 3.61v3h3.87c2.26-2.08 3.57-5.15 3.57-8.85z" />
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.94-2.9l-3.87-3c-1.07.72-2.44 1.14-4.07 1.14-3.13 0-5.78-2.11-6.73-4.96H1.28v3.1A12 12 0 0 0 12 24z" />
+                    <path fill="#FBBC05" d="M5.27 14.28A7.2 7.2 0 0 1 4.9 12c0-.79.14-1.56.37-2.28v-3.1H1.28a12 12 0 0 0 0 10.76l3.99-3.1z" />
+                    <path fill="#EA4335" d="M12 4.76c1.76 0 3.34.61 4.58 1.8l3.44-3.44C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.69 1.28 6.62l3.99 3.1c.95-2.85 3.6-4.96 6.73-4.96z" />
+                  </svg>
+                  Continue with Google
+                </button>
+                <div className="relative flex items-center justify-center">
+                  <span className="w-full border-t border-slate-200" />
+                  <span className="bg-white px-2.5 text-xs font-semibold text-slate-400">or</span>
+                  <span className="w-full border-t border-slate-200" />
+                </div>
+              </div>
+            ) : null}
 
             <form onSubmit={onSubmit} className="space-y-3.5">
               {mode === 'join' ? (
@@ -713,9 +785,20 @@ export default function LoginPage({
 
               {mode !== 'reset' ? (
                 <div>
-                  <label className="label" htmlFor="password">
-                    Password
-                  </label>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <label className="label mb-0" htmlFor="password">
+                      Password
+                    </label>
+                    {mode === 'login' ? (
+                      <button
+                        type="button"
+                        className="text-sm font-semibold text-brand-800 hover:text-brand-900"
+                        onClick={() => switchMode('reset')}
+                      >
+                        Forgot password?
+                      </button>
+                    ) : null}
+                  </div>
                   <div className="relative">
                     <input
                       id="password"
@@ -743,18 +826,6 @@ export default function LoginPage({
                       )}
                     </button>
                   </div>
-                </div>
-              ) : null}
-
-              {mode === 'login' ? (
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    className="text-sm font-semibold text-slate-500 hover:text-slate-700"
-                    onClick={() => switchMode('reset')}
-                  >
-                    Forgot password?
-                  </button>
                 </div>
               ) : null}
 
@@ -798,7 +869,7 @@ export default function LoginPage({
                 {busy
                   ? 'Please wait…'
                   : mode === 'join'
-                  ? 'Join Rally Point'
+                  ? 'Join bRineLy'
                   : mode === 'reset'
                   ? 'Send reset link'
                   : 'Log in'}
@@ -840,6 +911,26 @@ export default function LoginPage({
                 </button>
               </p>
             )}
+            {dialog && demo ? (
+              <div className="mt-3 flex justify-center">
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-brand-800 underline underline-offset-2"
+                  onClick={() => {
+                    switchMode('login')
+                    setEmail('member@brinely.info')
+                    setPassword('member123')
+                  }}
+                >
+                  Fill demo member account
+                </button>
+              </div>
+            ) : null}
+            {dialog ? (
+              <p className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-600">
+                By continuing, you confirm you are booking under your account.
+              </p>
+            ) : null}
             </div>
             )}
 

@@ -1,30 +1,47 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Booking, CheckoutPaymentMethod, Court, CourtSession, Member, Profile, ScheduleBlock, TimeSlot, Transaction, Venue } from '../types'
+import type {
+  Booking,
+  CheckoutPaymentMethod,
+  Court,
+  CourtSession,
+  Member,
+  MyClub,
+  Profile,
+  PublicClubDetail,
+  ScheduleBlock,
+  TimeSlot,
+  Transaction,
+  Venue,
+} from '../types'
 import { AdminHome, AdminMemberForm, AdminMembers, AdminOps, AdminTransactions, AdminUsers } from './admin'
 import { MemberBook } from './MemberBook'
 import { MemberPass } from './MemberPass'
 import { AdminBoard, ScheduleBoard, TvBoard } from './ScheduleBoard'
 import { AdminBookings, BookingsDesk } from './BookingsDesk'
-import { ymdLocal } from '../types'
+import { localRangeISO, ymdLocal } from '../types'
 
 const authState = vi.hoisted(() => ({
   user: {
     id: 'user_admin',
-    email: 'admin@rallypoint.local',
+    email: 'admin@brinely.info',
     full_name: 'Alex Admin',
     role: 'admin',
     phone: null,
     created_at: '2026-01-01T00:00:00.000Z',
-  } as Profile,
+  } as Profile | null,
+  activeClub: null as MyClub | null,
+  joinClub: vi.fn(),
+  signIn: vi.fn(),
+  listeners: new Set<() => void>(),
 }))
-const adminUser = authState.user
+const adminUser = authState.user as Profile
 const memberUser: Profile = {
   ...adminUser,
   id: 'user_member',
-  email: 'member@rallypoint.local',
+  email: 'member@brinely.info',
   full_name: 'Mia Member',
   role: 'member',
 }
@@ -54,24 +71,47 @@ const apiMock = vi.hoisted(() => ({
   paymentsToConfirm: vi.fn(),
   confirmBookingPayment: vi.fn(),
   rejectBookingPayment: vi.fn(),
+  sendBookingConfirmationEmail: vi.fn(),
+  publicClubDetail: vi.fn(),
+  publicClubAvailability: vi.fn(),
   ensureMemberQr: vi.fn(),
   daySchedule: vi.fn(),
   listBookings: vi.fn(),
   listVenues: vi.fn(),
 }))
 
-vi.mock('../context/AuthContext', () => ({
-  useAuth: () => ({
-    user: authState.user,
-    loading: false,
-    demo: true,
-    signIn: vi.fn(),
-    signUpMember: vi.fn(),
-    resetPassword: vi.fn(),
-    signOut: vi.fn(),
-    refresh: vi.fn(),
-  }),
-}))
+// The signed-in person can change during a test (signing in from the booking screen).
+vi.mock('../context/AuthContext', async () => {
+  const { useSyncExternalStore } = await import('react')
+  const subscribe = (listener: () => void) => {
+    authState.listeners.add(listener)
+    return () => {
+      authState.listeners.delete(listener)
+    }
+  }
+  const currentUser = () => authState.user
+  return {
+    useAuth: () => ({
+      user: useSyncExternalStore(subscribe, currentUser, currentUser),
+      loading: false,
+      demo: true,
+      activeClub: authState.activeClub,
+      joinClub: authState.joinClub,
+      signIn: authState.signIn,
+      signUpMember: vi.fn(),
+      verifySignupCode: vi.fn(),
+      resendSignupCode: vi.fn(),
+      resetPassword: vi.fn(),
+      signOut: vi.fn(),
+      refresh: vi.fn(),
+    }),
+  }
+})
+
+function signInAs(profile: Profile) {
+  authState.user = profile
+  authState.listeners.forEach((listener) => listener())
+}
 
 vi.mock('../lib/api', () => ({ api: apiMock }))
 
@@ -80,7 +120,7 @@ const member: Member = {
   user_id: 'user_member',
   member_code: 'RP-1001',
   full_name: 'Mia Member',
-  email: 'member@rallypoint.local',
+  email: 'member@brinely.info',
   phone: '+63 917 555 0101',
   membership_type: 'premium',
   status: 'active',
@@ -121,6 +161,46 @@ const gcash: CheckoutPaymentMethod = {
   qr_url: 'https://example.test/gcash-qr.png',
 }
 const REFERENCE = '1234567890123'
+const RECEIPT = 'Receipt sent to member@brinely.info for Court B'
+const BOOKING_INTENT_KEY = 'brinely_booking_intent'
+/** Another club, opened from Find a court at /clubs/rally-point-davao/book. */
+const davaoClub: MyClub = { club_id: 'club-davao', slug: 'rally-point-davao', name: 'Rally Point Davao', role: 'member' }
+const davaoDetail: PublicClubDetail = {
+  slug: 'rally-point-davao',
+  name: 'Rally Point Davao',
+  city: 'Davao City',
+  address: 'Lanang',
+  venues: [{
+    id: venue.id,
+    name: venue.name,
+    open_hour: 6,
+    close_hour: 22,
+    address: null,
+    city: 'Davao City',
+    latitude: null,
+    longitude: null,
+    courts: [{ id: court.id, name: court.name, hourly_rate: 500, member_rate: null, in_service: true }],
+  }],
+}
+
+function openSlots(): TimeSlot[] {
+  return Array.from({ length: 16 }, (_, index) => ({ startHour: index + 6, label: `${index + 6}:00`, available: true }))
+}
+
+/** Tomorrow on the club's (Philippine) calendar, as the booking screen's date buttons count it. */
+function tomorrowPh() {
+  return ymdLocal(new Date(Date.now() + 86400000))
+}
+
+function renderClubBooking(path = `/clubs/${davaoClub.slug}/book?venue=${venue.id}&court=${court.id}`) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/clubs/:slug/book" element={<MemberBook />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
 /** The booking once the player has sent their reference: the club now has 15 minutes to check it. */
 function sentBooking(reference = REFERENCE): Booking {
   return {
@@ -190,6 +270,9 @@ function resetMocks() {
   apiMock.paymentsToConfirm.mockResolvedValue([])
   apiMock.confirmBookingPayment.mockResolvedValue(booking)
   apiMock.rejectBookingPayment.mockResolvedValue({ ...booking, status: 'cancelled' })
+  apiMock.sendBookingConfirmationEmail.mockResolvedValue({ sent: true, preview: RECEIPT })
+  apiMock.publicClubDetail.mockResolvedValue(davaoDetail)
+  apiMock.publicClubAvailability.mockResolvedValue([{ court, slots: openSlots() }])
   apiMock.ensureMemberQr.mockResolvedValue(member)
   apiMock.daySchedule.mockResolvedValue(scheduleBlocks)
   apiMock.listBookings.mockResolvedValue([booking])
@@ -198,6 +281,11 @@ function resetMocks() {
 
 beforeEach(() => {
   authState.user = adminUser
+  authState.activeClub = null
+  authState.listeners.clear()
+  authState.joinClub.mockReset().mockResolvedValue(davaoClub)
+  authState.signIn.mockReset()
+  sessionStorage.clear()
   resetMocks()
 })
 
@@ -309,6 +397,7 @@ describe('member booking and pass pages', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      apiMock.sendBookingConfirmationEmail.mockResolvedValueOnce({ sent: false, preview: RECEIPT })
       render(<MemoryRouter><MemberBook /></MemoryRouter>)
       expect(await screen.findByText(/Available times/)).toBeInTheDocument()
       await user.click(screen.getByRole('button', { name: /Court B/ }))
@@ -349,6 +438,9 @@ describe('member booking and pass pages', () => {
       expect(screen.getByText(/This hour now shows as Booked\.\s+No refunds\./)).toBeInTheDocument()
       expect(screen.getByText(REFERENCE)).toBeInTheDocument()
       expect(apiMock.releaseBookingHold).not.toHaveBeenCalled()
+      // An email that could not be sent is not shown as sent.
+      await waitFor(() => expect(apiMock.sendBookingConfirmationEmail).toHaveBeenCalledTimes(1))
+      expect(screen.queryByText(RECEIPT)).not.toBeInTheDocument()
 
       await user.click(screen.getByRole('button', { name: 'Book another' }))
       expect(screen.getByText(/Available times/)).toBeInTheDocument()
@@ -573,6 +665,8 @@ describe('member booking and pass pages', () => {
       const sent = { ...sentBooking(), id: 'sent' }
       apiMock.myBookings.mockResolvedValue([sent])
       apiMock.myBooking.mockResolvedValue(sent)
+      // The receipt email fails: the booking still shows as confirmed.
+      apiMock.sendBookingConfirmationEmail.mockRejectedValueOnce(new Error('Email service down'))
       render(<MemoryRouter><MemberBook /></MemoryRouter>)
       await user.click(await screen.findByRole('button', { name: 'Check status' }))
 
@@ -585,9 +679,260 @@ describe('member booking and pass pages', () => {
       apiMock.myBooking.mockResolvedValue({ ...sent, status: 'confirmed' })
       await act(async () => { await vi.advanceTimersByTimeAsync(15000) })
       expect(await screen.findByText('Booking confirmed')).toBeInTheDocument()
+      await waitFor(() => expect(apiMock.sendBookingConfirmationEmail).toHaveBeenCalledTimes(1))
+      expect(screen.queryByText(RECEIPT)).not.toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Book another' }))
+      expect(screen.getByText(/Available times/)).toBeInTheDocument()
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('reflects a confirmed 2h booking as booked for 2 hours (no refund), emails the receipt once, without redundant refetches', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      const { start_at, end_at } = localRangeISO(tomorrowPh(), 12, 2)
+      const twoHourBooking: Booking = {
+        id: 'bk_2h',
+        court_id: court.id,
+        member_id: member.id,
+        start_at,
+        end_at,
+        hours: 2,
+        amount: 1000,
+        status: 'confirmed',
+        payment_method: 'gcash',
+        payment_ref: null,
+        payment_reference: REFERENCE,
+        created_at: new Date().toISOString(),
+        court,
+        member,
+      }
+      const held: Booking = {
+        ...twoHourBooking,
+        status: 'pending_payment',
+        payment_method: null,
+        payment_reference: null,
+        hold_expires_at: new Date(Date.now() + 15 * 60000).toISOString(),
+      }
+      const sent: Booking = { ...held, payment_reference: REFERENCE, payment_submitted_at: new Date().toISOString() }
+      apiMock.createBooking.mockResolvedValueOnce(held)
+      apiMock.submitBookingPayment.mockResolvedValueOnce(sent)
+      apiMock.myBooking.mockResolvedValue(sent)
+
+      render(<MemoryRouter><MemberBook /></MemoryRouter>)
+      expect(await screen.findByText(/Available times/)).toBeInTheDocument()
+
+      // Tomorrow, 2 hours from 12:00 PM.
+      await user.click(screen.getByRole('button', { name: 'Tomorrow' }))
+      await user.click(screen.getByRole('button', { name: '2h' }))
+      await user.click(await screen.findByRole('button', { name: /^12:00 PM/ }))
+      expect(screen.getByText('12:00 PM – 2:00 PM · 2 hours')).toBeInTheDocument()
+      expect(screen.getByText('No refund once booked.')).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: /Continue/ }))
+      expect(apiMock.createBooking).toHaveBeenCalledWith(expect.objectContaining({ dateYmd: tomorrowPh(), startHour: 12, hours: 2 }))
+      await user.type(await screen.findByLabelText('GCash reference number'), REFERENCE)
+      await user.click(screen.getByRole('button', { name: /I.ve paid/ }))
+      await screen.findByRole('heading', { name: 'Waiting for the club to confirm' })
+      // Nothing is emailed while the club is still checking the payment.
+      expect(apiMock.sendBookingConfirmationEmail).not.toHaveBeenCalled()
+
+      apiMock.myBooking.mockResolvedValue(twoHourBooking)
+      await act(async () => { await vi.advanceTimersByTimeAsync(15000) })
+      expect(await screen.findByText('Booking confirmed')).toBeInTheDocument()
+      expect(screen.getByText('Booked · 2 hours')).toBeInTheDocument()
+      expect(screen.getByText(/These 2 hours now show as Booked\.\s+No refunds\./)).toBeInTheDocument()
+      expect(await screen.findByText(RECEIPT)).toBeInTheDocument()
+      expect(apiMock.sendBookingConfirmationEmail).toHaveBeenCalledTimes(1)
+      expect(apiMock.sendBookingConfirmationEmail).toHaveBeenCalledWith(expect.objectContaining({
+        // The receipt carries the GCash reference the player sent.
+        booking: expect.objectContaining({ id: twoHourBooking.id, hours: 2, payment_ref: REFERENCE }),
+        recipientEmail: memberUser.email,
+        venueName: venue.name,
+      }))
+
+      const availCallsBeforeReturn = apiMock.availability.mock.calls.length
+      const memberCallsBeforeReturn = apiMock.memberForUser.mock.calls.length
+      const myBookingsCallsBeforeReturn = apiMock.myBookings.mock.calls.length
+
+      await user.click(screen.getByRole('button', { name: 'Book another' }))
+      expect(screen.getByText('Your bookings')).toBeInTheDocument()
+      expect(screen.getByText('All bookings are non-refundable')).toBeInTheDocument()
+      expect(screen.getAllByText('No refund').length).toBeGreaterThan(0)
+      // Both hours of the player's own booking say so, and cannot be picked again.
+      expect(screen.getAllByText('Booked · yours')).toHaveLength(2)
+      expect(screen.queryByRole('button', { name: /^12:00 PM/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /^1:00 PM/ })).not.toBeInTheDocument()
+
+      // Switching back to Today uses cached availability and does not re-fetch user/bookings
+      await user.click(screen.getByRole('button', { name: 'Today' }))
+      expect(apiMock.availability).toHaveBeenCalledTimes(availCallsBeforeReturn)
+      expect(apiMock.memberForUser).toHaveBeenCalledTimes(memberCallsBeforeReturn)
+      expect(apiMock.myBookings).toHaveBeenCalledTimes(myBookingsCallsBeforeReturn)
+
+      // The email went once: later ticks do not send it again.
+      await act(async () => { await vi.advanceTimersByTimeAsync(30000) })
+      expect(apiMock.sendBookingConfirmationEmail).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('marks the player’s own booked and held hours in the grid, so they are not offered again', async () => {
+    const user = userEvent.setup()
+    const day = tomorrowPh()
+    apiMock.myBookings.mockResolvedValue([
+      { ...booking, id: 'own-paid', ...localRangeISO(day, 10, 1), hours: 1 },
+      { ...heldBooking(10), id: 'own-held', ...localRangeISO(day, 15, 2), hours: 2 },
+    ])
+    render(<MemoryRouter><MemberBook /></MemoryRouter>)
+    await user.click(await screen.findByRole('button', { name: 'Tomorrow' }))
+
+    expect(await screen.findAllByText('Booked · yours')).toHaveLength(1)
+    expect(screen.getAllByText('Held for you')).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: /^10:00 AM/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^3:00 PM/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^4:00 PM/ })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '2h' }))
+    // 9 AM runs into the player's own 10 AM booking, 2 PM into their held hours, and 9 PM is the last hour.
+    expect(screen.getAllByText('Only 1h free')).toHaveLength(3)
+  })
+
+  it('lets a visitor pick a time on a club page and holds the hours only after they sign in, then takes the GCash payment', async () => {
+    authState.user = null
+    authState.signIn.mockImplementation(async () => {
+      signInAs(memberUser)
+      return memberUser
+    })
+    // The club confirms at its first check, so the booking shows straight away.
+    apiMock.myBooking.mockResolvedValue({ ...booking, payment_ref: null, payment_reference: REFERENCE })
+    const user = userEvent.setup()
+    renderClubBooking()
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Book at Rally Point Davao' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Back to Rally Point Davao/ })).toHaveAttribute('href', `/clubs/${davaoClub.slug}`)
+    await user.click(screen.getByRole('button', { name: 'Tomorrow' }))
+    await user.click(await screen.findByRole('button', { name: /^12:00 PM/ }))
+    // Visitors see the club's public times; nothing of a player's is read yet.
+    expect(apiMock.publicClubAvailability).toHaveBeenCalledWith(davaoClub.slug, tomorrowPh(), venue.id)
+    expect(apiMock.availability).not.toHaveBeenCalled()
+    expect(apiMock.memberForUser).not.toHaveBeenCalled()
+    expect(apiMock.checkoutPaymentMethods).not.toHaveBeenCalled()
+    expect(screen.getByText('You log in before you pay. The 15 minutes to pay start after that.')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Continue/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Log in' })
+    expect(within(dialog).getByText('By continuing, you confirm you are booking under your account.')).toBeInTheDocument()
+    // No hold yet: the 15 minutes start only once the visitor has signed in.
+    expect(apiMock.createBooking).not.toHaveBeenCalled()
+    expect(authState.joinClub).not.toHaveBeenCalled()
+    expect(JSON.parse(sessionStorage.getItem(BOOKING_INTENT_KEY) ?? 'null')).toMatchObject({
+      clubSlug: davaoClub.slug,
+      venueId: venue.id,
+      courtId: court.id,
+      dateYmd: tomorrowPh(),
+      startHour: 12,
+      hours: 1,
+      autoCheckout: true,
+    })
+
+    await user.type(within(dialog).getByLabelText('Email'), memberUser.email)
+    await user.type(within(dialog).getByLabelText('Password'), 'secret123')
+    const submit = within(dialog).getAllByRole('button', { name: 'Log in' })
+      .find((button) => button.getAttribute('type') === 'submit')
+    if (!submit) throw new Error('Could not find the log in button')
+    await user.click(submit)
+
+    // Signed in: the player joins the club as a player, then the picked hours are held.
+    expect(await screen.findByText('Checkout')).toBeInTheDocument()
+    expect(authState.joinClub).toHaveBeenCalledWith(davaoClub.slug, { asPlayer: true })
+    expect(apiMock.createBooking).toHaveBeenCalledTimes(1)
+    expect(apiMock.createBooking).toHaveBeenCalledWith(expect.objectContaining({
+      court_id: court.id,
+      dateYmd: tomorrowPh(),
+      startHour: 12,
+      hours: 1,
+      member_id: member.id,
+      user_id: memberUser.id,
+    }))
+    expect(screen.getByText('Time left to pay')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'GCash QR code to pay Rally Point Gensan' })).toBeInTheDocument()
+    expect(sessionStorage.getItem(BOOKING_INTENT_KEY)).toBeNull()
+
+    await user.type(screen.getByLabelText('GCash reference number'), REFERENCE)
+    await user.click(screen.getByRole('button', { name: /I.ve paid/ }))
+    expect(await screen.findByText('Booking confirmed')).toBeInTheDocument()
+    expect(await screen.findByText(RECEIPT)).toBeInTheDocument()
+    expect(apiMock.sendBookingConfirmationEmail).toHaveBeenCalledTimes(1)
+    expect(apiMock.sendBookingConfirmationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      clubName: 'Rally Point Davao',
+      recipientEmail: memberUser.email,
+    }))
+  })
+
+  it('carries on into checkout with the saved pick when the screen reloads after signing in', async () => {
+    authState.user = memberUser
+    authState.activeClub = davaoClub
+    sessionStorage.setItem(BOOKING_INTENT_KEY, JSON.stringify({
+      clubSlug: davaoClub.slug,
+      venueId: venue.id,
+      courtId: court.id,
+      dateYmd: tomorrowPh(),
+      startHour: 15,
+      hours: 2,
+      autoCheckout: true,
+    }))
+    const first = renderClubBooking(`/clubs/${davaoClub.slug}/book`)
+
+    expect(await screen.findByText('Checkout')).toBeInTheDocument()
+    expect(apiMock.createBooking).toHaveBeenCalledTimes(1)
+    expect(apiMock.createBooking).toHaveBeenCalledWith(expect.objectContaining({
+      court_id: court.id,
+      venue_id: venue.id,
+      dateYmd: tomorrowPh(),
+      startHour: 15,
+      hours: 2,
+      user_id: memberUser.id,
+    }))
+    expect(screen.getByText('Time left to pay')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Book at Rally Point Davao' })).toBeInTheDocument()
+    // Already in this club: no joining again, and the player's own times are used.
+    expect(authState.joinClub).not.toHaveBeenCalled()
+    expect(apiMock.publicClubAvailability).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem(BOOKING_INTENT_KEY)).toBeNull()
+    first.unmount()
+
+    // A pick saved for a day the screen no longer offers is not carried on.
+    apiMock.createBooking.mockClear()
+    sessionStorage.setItem(BOOKING_INTENT_KEY, JSON.stringify({
+      clubSlug: davaoClub.slug,
+      venueId: venue.id,
+      courtId: court.id,
+      dateYmd: '2020-01-01',
+      startHour: 15,
+      hours: 2,
+      autoCheckout: true,
+    }))
+    renderClubBooking(`/clubs/${davaoClub.slug}/book`)
+    expect(await screen.findByText('Tap a start time')).toBeInTheDocument()
+    expect(apiMock.createBooking).not.toHaveBeenCalled()
+  })
+
+  it('does not let a platform superadmin book from a club page', async () => {
+    authState.user = { ...adminUser, id: 'user_platform', role: 'superadmin' }
+    const user = userEvent.setup()
+    renderClubBooking()
+    await user.click(await screen.findByRole('button', { name: /^12:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /Continue/ }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Only member accounts can book courts online.')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(apiMock.createBooking).not.toHaveBeenCalled()
+    expect(authState.joinClub).not.toHaveBeenCalled()
+    expect(apiMock.checkoutPaymentMethods).not.toHaveBeenCalled()
   })
 
   it('charges an active member the member rate and shows players what members pay', async () => {
@@ -905,7 +1250,7 @@ describe('schedule and booking desk pages', () => {
       && element.textContent?.includes('Member') === true
     ))).toBeInTheDocument()
     // An unpaid desk booking (no online hold) reads in the desk's words.
-    expect(screen.getByText(/· Unpaid/)).toBeInTheDocument()
+    expect(screen.getByText('Unpaid · 1h')).toBeInTheDocument()
     await user.selectOptions(screen.getByRole('combobox', { name: 'Venue' }), secondVenue.id)
     await waitFor(() => expect(apiMock.listBookings).toHaveBeenLastCalledWith(secondVenue.id))
 
