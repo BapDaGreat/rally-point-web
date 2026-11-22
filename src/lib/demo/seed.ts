@@ -523,6 +523,19 @@ export function seed(): DemoDB {
     notifications: [...notifications.map((notification) => ({ ...notification, club_id })), ...davaoNotifications],
     inquiries: [],
     walkins: [],
+    // Players pay the club's own GCash at checkout. The admin uploads the QR picture on the business profile.
+    clubPaymentMethods: [{
+      id: 'pay_gensan_gcash',
+      club_id,
+      label: 'GCash',
+      account_name: 'Rally Point Gensan',
+      account_number: '0917 000 0000',
+      qr_path: null,
+      qr_url: null,
+      is_active: true,
+      position: 0,
+      created_at: todayISO(),
+    }],
     sessionUserId: null,
   }
 

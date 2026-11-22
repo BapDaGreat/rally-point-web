@@ -544,14 +544,54 @@ export interface Booking {
   payment_ref?: string | null
   session_id?: string | null
   created_at: string
+  /** An online checkout holds its hours until then; unpaid desk bookings have none. */
+  hold_expires_at?: string | null
+  /** The GCash reference number the player entered after paying the club's QR. */
+  payment_reference?: string | null
+  /** When the player said they paid. From then the hours stay held until the club decides. */
+  payment_submitted_at?: string | null
+  /** When the club should have checked the payment; after it the request shows as overdue. */
+  confirm_by?: string | null
   court?: Court
   member?: Member
 }
+
+/** Minutes a player has to pay before the hours they picked are released. */
+export const BOOKING_HOLD_MINUTES = 15
+
+/** Minutes the club has to check a GCash payment before the request shows as overdue. */
+export const CONFIRM_PAYMENT_MINUTES = 15
+
+/**
+ * Where an online checkout stands. A payment the player has sent is never released by
+ * the clock: the club confirms it (booked) or says it was not received (released).
+ */
+export type CheckoutState = 'holding' | 'awaiting_confirmation' | 'booked' | 'released'
+
+export function checkoutState(
+  booking: Pick<Booking, 'status' | 'payment_submitted_at' | 'hold_expires_at'>,
+  now = Date.now(),
+): CheckoutState {
+  if (booking.status === 'confirmed' || booking.status === 'completed' || booking.status === 'no_show') return 'booked'
+  if (booking.status !== 'pending_payment') return 'released'
+  if (booking.payment_submitted_at) return 'awaiting_confirmation'
+  // The database clears a lapsed hold only when the next hold comes in, so the time decides.
+  if (booking.hold_expires_at && new Date(booking.hold_expires_at).getTime() <= now) return 'released'
+  return 'holding'
+}
+
+/** A club's way to be paid, as a player sees it at checkout. */
+export type CheckoutPaymentMethod = Pick<ClubPaymentMethod, 'id' | 'label' | 'account_name' | 'account_number' | 'qr_url'>
+
+/** Why an hour cannot be booked: someone has it, it is over, or the court is out of service. */
+export type SlotBlock = 'booked' | 'passed' | 'out_of_service'
 
 export interface TimeSlot {
   startHour: number
   label: string
   available: boolean
+  /** Set whenever `available` is false. */
+  blocked?: SlotBlock
 }
 
 export interface CourtDayAvailability {
@@ -780,6 +820,23 @@ export function hourLabel(h: number) {
   const hour = ((h % 24) + 24) % 24
   const twelve = hour % 12 === 0 ? 12 : hour % 12
   return `${twelve}:00 ${hour < 12 ? 'AM' : 'PM'}`
+}
+
+/**
+ * One hour of a court's day. A booked hour reads "Booked" even once it has started,
+ * so every hour of a booking shows as taken.
+ */
+export function timeSlot(startHour: number, state: { booked: boolean; outOfService: boolean; passed: boolean }): TimeSlot {
+  const blocked: SlotBlock | undefined = state.booked
+    ? 'booked'
+    : state.outOfService
+      ? 'out_of_service'
+      : state.passed
+        ? 'passed'
+        : undefined
+  return blocked
+    ? { startHour, label: hourLabel(startHour), available: false, blocked }
+    : { startHour, label: hourLabel(startHour), available: true }
 }
 
 /** "Open 24 hours", or "Open 6:00 AM to 10:00 PM" for a venue with set hours. */

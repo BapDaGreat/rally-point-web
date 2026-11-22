@@ -1,10 +1,11 @@
 import { demoStore } from './demoStore'
 import { isDemoMode, supabase } from './supabase'
-import { paymentConfig, simulateCheckout, startCheckout } from './payments'
+import { paymentConfig } from './payments'
 import type {
   AdminClubProfile,
   Booking,
   CheckIn,
+  CheckoutPaymentMethod,
   Club,
   ClubAddon,
   ClubAddonInput,
@@ -30,7 +31,6 @@ import type {
   MemberStatus,
   Notification,
   OpenPlaySession,
-  PaymentMethod,
   Profile,
   Role,
   ScheduleBlock,
@@ -59,7 +59,7 @@ import type {
   OwnerCallStatus,
   OwnerClub,
 } from '../types'
-import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, hourLabel, localRangeISO, venueHours } from '../types'
+import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, localRangeISO, timeSlot, venueHours } from '../types'
 import { CLUB_HEADER, getActiveClubId, notifyClubUnavailable, requireActiveClubId } from './clubContext'
 import { PHOTO_BUCKET, photoUrl, shrinkPhoto, shrinkPhotoToDataUrl } from './photos'
 import { emptyClubProfile, normalizeProfile } from './clubProfile'
@@ -351,17 +351,23 @@ export const api = {
       const { open, close } = hoursFor(court.venue_id)
       for (let h = open; h < close; h++) {
         const { start_at, end_at } = localRangeISO(dateYmd, h, 1)
-        let available = court.status !== 'maintenance'
-        if (new Date(start_at).getTime() < now.getTime() - 5 * 60000) available = false
-        for (const s of occupied ?? []) {
-          if (s.court_id === court.id && overlaps(start_at, end_at, s.start_at, s.end_at)) available = false
-        }
-        slots.push({ startHour: h, label: hourLabel(h), available })
+        slots.push(timeSlot(h, {
+          booked: (occupied ?? []).some((s) => s.court_id === court.id && overlaps(start_at, end_at, s.start_at, s.end_at)),
+          outOfService: court.status === 'maintenance',
+          passed: new Date(start_at).getTime() < now.getTime() - 5 * 60000,
+        }))
       }
       return { court, slots }
     })
   },
 
+  // ---- GCash QR checkout: the player holds hours, pays the club's QR, and the club confirms ----
+
+  /**
+   * A player's own checkout: holds the hours for BOOKING_HOLD_MINUTES while they pay. The
+   * database finds the caller's own player record in the active club, so `member_id` and
+   * `user_id` are not sent.
+   */
   async createBooking(opts: {
     court_id: string
     venue_id?: string
@@ -371,8 +377,117 @@ export const api = {
     hours: number
     user_id: string
   }): Promise<Booking> {
-    if (isDemoMode) return demoStore.createBooking(opts)
-    throw new Error('Online checkout is not available yet. Ask the desk to reserve this court.')
+    if (isDemoMode) return demoStore.createBooking({ ...opts, checkoutHold: true })
+    const clubId = requireActiveClubId()
+    // Read first: the checkout shows the court, and a player looking at every venue sends none.
+    const { data: court, error: courtError } = await supabase!
+      .from('courts')
+      .select('*')
+      .eq('club_id', clubId)
+      .eq('id', opts.court_id)
+      .maybeSingle()
+    if (courtError) throw checkoutError(courtError)
+    if (!court) throw new Error('Court not found')
+    const { data, error } = await supabase!.rpc('hold_court_booking', {
+      p_club_id: clubId,
+      p_venue_id: opts.venue_id ?? court.venue_id,
+      p_court_id: opts.court_id,
+      p_date: opts.dateYmd,
+      p_start_hour: opts.startHour,
+      p_hours: opts.hours,
+    })
+    if (error) throw checkoutError(error)
+    return { ...bookingRow(data), court: court as Court }
+  },
+
+  /** Releases an unpaid checkout's hours (Back, or the time to pay ran out). Refused once a payment was sent. */
+  async releaseBookingHold(bookingId: string): Promise<void> {
+    if (isDemoMode) return demoStore.releaseBookingHold(bookingId)
+    const { error } = await supabase!.rpc('release_booking_hold', { p_booking_id: bookingId })
+    if (error) throw checkoutError(error)
+  },
+
+  /**
+   * The player says they paid the club's GCash QR and gives the reference number. From then
+   * the hours stay held until the club confirms or rejects the payment.
+   */
+  async submitBookingPayment(opts: { booking_id: string; reference: string }): Promise<Booking> {
+    // Spaces and line breaks a person types or pastes are dropped; the database checks the rest.
+    const reference = opts.reference.replace(/\s+/g, '')
+    if (isDemoMode) return demoStore.submitBookingPayment({ booking_id: opts.booking_id, reference })
+    const { data, error } = await supabase!.rpc('submit_booking_payment', { p_booking_id: opts.booking_id, p_reference: reference })
+    if (error) throw checkoutError(error)
+    return bookingRow(data)
+  },
+
+  /** One booking of the player's own (staff may read their venues' too), for checking on a checkout. */
+  async myBooking(bookingId: string): Promise<Booking | null> {
+    if (isDemoMode) return demoStore.myBooking(bookingId)
+    const { data, error } = await supabase!
+      .from('bookings')
+      .select('*, court:courts(*)')
+      .eq('club_id', requireActiveClubId())
+      .eq('id', bookingId)
+      .maybeSingle()
+    if (error) throw checkoutError(error)
+    return data ? ({ ...data, court: data.court as Court } as Booking) : null
+  },
+
+  /** The active club's ways to pay at checkout: the same active methods its public club page shows. */
+  async checkoutPaymentMethods(): Promise<CheckoutPaymentMethod[]> {
+    if (isDemoMode) return demoStore.checkoutPaymentMethods()
+    const { data: club, error } = await supabase!.from('clubs').select('slug').eq('id', requireActiveClubId()).maybeSingle()
+    if (error) throw checkoutError(error)
+    if (!club) return []
+    let profile: PublicClubProfile | null
+    try {
+      profile = await api.publicClubProfile(club.slug as string)
+    } catch (profileError) {
+      throw checkoutError(profileError)
+    }
+    return (profile?.payment_methods ?? []).map(({ id, label, account_name, account_number, qr_url }) => ({
+      id, label, account_name, account_number, qr_url,
+    }))
+  },
+
+  /** Staff and admins: payments players have sent that nobody has checked yet, oldest first. */
+  async paymentsToConfirm(venueId?: string): Promise<Booking[]> {
+    if (isDemoMode) return demoStore.paymentsToConfirm(venueId)
+    let query = supabase!
+      .from('bookings')
+      .select('*, court:courts(*)')
+      .eq('club_id', requireActiveClubId())
+      .eq('status', 'pending_payment')
+      .not('payment_submitted_at', 'is', null)
+      .order('payment_submitted_at', { ascending: true })
+      .limit(100)
+    if (venueId) query = query.eq('venue_id', venueId)
+    const { data, error } = await query
+    if (error) throw checkoutError(error, PAYMENT_CHECKS_UNAVAILABLE)
+    const roster = await this.memberRoster().catch(() => [] as Member[])
+    return (data ?? []).map((b) => ({
+      ...b,
+      court: b.court as Court,
+      member: roster.find((member) => member.id === b.member_id),
+    })) as Booking[]
+  },
+
+  /** Staff and admins: the club found the player's GCash payment, so the hours are booked. */
+  async confirmBookingPayment(bookingId: string): Promise<Booking> {
+    if (isDemoMode) return demoStore.staffConfirmBookingPayment(bookingId)
+    const { data, error } = await supabase!.rpc('staff_confirm_booking_payment', { p_booking_id: bookingId })
+    if (error) throw checkoutError(error, PAYMENT_CHECKS_UNAVAILABLE)
+    return bookingRow(data)
+  },
+
+  /** Staff and admins: the payment was not received, so the hours are released and the player is told why. */
+  async rejectBookingPayment(bookingId: string, reason: string): Promise<Booking> {
+    const why = reason.trim()
+    if (isDemoMode) return demoStore.staffRejectBookingPayment(bookingId, why)
+    if (why.length < 1 || why.length > 200) throw new Error('Say why in 1 to 200 characters, so the player knows what to do.')
+    const { data, error } = await supabase!.rpc('staff_reject_booking_payment', { p_booking_id: bookingId, p_reason: why })
+    if (error) throw checkoutError(error, PAYMENT_CHECKS_UNAVAILABLE)
+    return bookingRow(data)
   },
 
   async createDeskBooking(opts: {
@@ -396,26 +511,6 @@ export const api = {
     })
     if (error) throw error
     return data as Booking
-  },
-
-  async payBooking(opts: {
-    booking_id: string
-    method: PaymentMethod
-    user_id: string
-  }): Promise<Booking> {
-    if (isDemoMode) {
-      const intent = await startCheckout({
-        bookingId: opts.booking_id,
-        amount: 1,
-        method: opts.method,
-        description: 'Court booking',
-      })
-      const paid = await simulateCheckout(intent)
-      if (paid.status !== 'paid') throw new Error('Payment failed')
-      return demoStore.confirmBookingPayment(opts)
-    }
-    throw new Error('Online checkout is not available yet. Ask the desk to reserve this court.')
-
   },
 
   async myBookings(memberId: string, venueId?: string): Promise<Booking[]> {
@@ -1493,6 +1588,36 @@ export const api = {
 function isMissingFunction(error: unknown) {
   const code = (error as { code?: unknown } | null)?.code
   return code === 'PGRST202' || code === '42883'
+}
+
+const CHECKOUT_UNAVAILABLE = 'Online checkout is not available yet. Ask the desk to reserve this court.'
+const PAYMENT_CHECKS_UNAVAILABLE = 'Payment checks are not available yet. Please try again later.'
+
+/**
+ * A checkout answer from the database as an Error a screen can show. PostgREST hands back
+ * plain objects, and screens show only an Error's message. The checkout functions raise
+ * messages written for players and staff, so those are kept as they are.
+ */
+function checkoutError(error: unknown, unavailable = CHECKOUT_UNAVAILABLE): Error {
+  const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown }
+  const text = typeof message === 'string' ? message.trim() : ''
+  // Not on this database yet (function or column missing), or paused (execute revoked).
+  if (isMissingFunction(error) || code === '42703' || (code === '42501' && /permission denied for function/i.test(text))) {
+    return new Error(unavailable)
+  }
+  // The court_allocations no-overlap rule: someone else got those hours first.
+  if (code === '23P01') return new Error('Someone else just took those hours. Pick another time.')
+  if (/failed to fetch|networkerror|load failed/i.test(text)) {
+    return new Error('Could not reach Rally Point. Check your connection and try again.')
+  }
+  return new Error(text || 'Something went wrong. Please try again.')
+}
+
+/** A function that returns one public.bookings row; PostgREST may send it inside a list. */
+function bookingRow(data: unknown): Booking {
+  const row = (Array.isArray(data) ? data[0] : data) as Booking | null | undefined
+  if (!row) throw new Error('Something went wrong. Please try again.')
+  return { ...row, amount: Number(row.amount) }
 }
 
 /** Postgres numerics can arrive as strings; the portal works with numbers. */

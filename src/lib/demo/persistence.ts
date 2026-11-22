@@ -1,6 +1,7 @@
 import type { ClubAccount, ClubStaffRole, Court } from '../../types'
 import type { DemoDB, DemoPlatformRole } from './model'
 import { seed } from './seed'
+import { retireLapsedHolds } from './common'
 import { hasDemoPassword, normalizeDemoEmail } from './credentials'
 import { defaultClubAccount } from './commissions'
 import { DEMO_CLUB_ID, DEMO_VENUE_ID, demoClub } from '../tenant'
@@ -165,7 +166,9 @@ export function load(): DemoDB {
     if (raw) {
       const stored = JSON.parse(raw) as StoredDemo
       const { db, repaired } = normalizeStored(stored, hasDemoPassword)
-      if (repaired) save(db)
+      // Unpaid checkouts whose time ran out read as cancelled everywhere, even if the player just left.
+      const holdsRetired = retireLapsedHolds(db)
+      if (repaired || holdsRetired) save(db)
       return db
     }
   } catch {
