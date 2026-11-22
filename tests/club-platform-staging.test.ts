@@ -373,6 +373,39 @@ describe('staging releases', () => {
     expect(postflight).toContain("version = '20261116090100'")
   })
 
+  it('builds the member GCash checkout release on the 30-migration state and re-runs every earlier check', async () => {
+    const { ownerOnboardingRelease, memberGcashCheckoutRelease, releaseManifest, releases } = await load()
+    const { memberGcashCheckoutChecks } = await import('../scripts/club-platform-checks.mjs')
+    const { releaseApprovals } = await import('../scripts/staging-release-approvals.mjs')
+    expect(memberGcashCheckoutRelease.baseVersions)
+      .toEqual([...ownerOnboardingRelease.baseVersions, '20261116090000', '20261116090100'])
+    expect(memberGcashCheckoutRelease.baseVersions).toHaveLength(30)
+    expect(memberGcashCheckoutRelease.migrations).toEqual(['20261122090000_member_gcash_checkout.sql'])
+    expect(memberGcashCheckoutRelease.stateCheck).toEqual({ file: 'owner_onboarding_postflight.sql', kind: 'ownerOnboarding' })
+    expect(memberGcashCheckoutRelease.postChecks.map((check: { kind: string, ignore: string[] }) => [check.kind, [...check.ignore]])).toEqual([
+      ['memberGcashCheckout', []],
+      ['ownerOnboarding', ['ledger_has_owner_onboarding']],
+      ['clubProfile', ['ledger_has_club_profile']],
+      ['courtPhotos', ['ledger_has_court_photos']],
+      ['courtMarketplace', ['ledger_has_court_marketplace', 'venues_open_all_day']],
+      ['advisorFollowup', ['ledger_has_followup']],
+      ['advisor', ['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']],
+      ['postflight', ['ledger_has_every_migration']],
+    ])
+    // Approved after the capture, restore check and dry run passed, and applied to staging.
+    expect(releaseApprovals['member-gcash-checkout-20261122']).toMatch(/^[a-f0-9]{64}$/)
+    const earlier = Object.values(releases).filter(release => release !== memberGcashCheckoutRelease)
+      .flatMap((release: { dirs: object, databases: object }) => [...Object.values(release.dirs), ...Object.values(release.databases)])
+    expect([...Object.values(memberGcashCheckoutRelease.dirs), ...Object.values(memberGcashCheckoutRelease.databases)]
+      .filter(name => earlier.includes(name))).toEqual([])
+    const { contents } = releaseManifest(memberGcashCheckoutRelease)
+    for (const migration of memberGcashCheckoutRelease.migrations) expect(contents.has(`supabase/migrations/${migration}`)).toBe(true)
+    const postflight = contents.get('supabase/verification/member_gcash_checkout_postflight.sql')?.toString('utf8') ?? ''
+    expect([...postflight.matchAll(/select \d+, '([a-z_]+)'/g)].map(match => match[1])).toEqual([...memberGcashCheckoutChecks])
+    expect(postflight).toContain("version = '20261122090000'")
+    expect(postflight).toContain('= 31')
+  })
+
   it('hashes the release definition and every file, and returns the bytes it hashed', async () => {
     const { releaseManifest } = await load()
     const { dir, release } = releaseFixture()

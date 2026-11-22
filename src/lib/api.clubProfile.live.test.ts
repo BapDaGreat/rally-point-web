@@ -140,4 +140,22 @@ describe('court availability (live)', () => {
     expect(byCourt.get('court-a')?.map((slot) => slot.startHour)).toEqual(Array.from({ length: 16 }, (_, i) => i + 6))
     expect(byCourt.get('court-b')).toEqual([])
   })
+
+  it('says why an hour cannot be booked: taken, out of service, or already over', async () => {
+    live.tables.set('courts', [court('court-a', 'venue-open'), { ...court('court-m', 'venue-open'), status: 'maintenance' }])
+    live.tables.set('venues', [{ id: 'venue-open', open_hour: 6, close_hour: 22 }])
+    // 10 AM to noon, Philippine time, on court A.
+    live.tables.set('public_schedule', [{ court_id: 'court-a', start_at: '2099-01-01T02:00:00.000Z', end_at: '2099-01-01T04:00:00.000Z' }])
+
+    const byCourt = new Map((await api.availability('2099-01-01')).map((day) => [day.court.id, day.slots]))
+    const courtA = byCourt.get('court-a') ?? []
+    expect(courtA.filter((slot) => slot.blocked === 'booked').map((slot) => slot.startHour)).toEqual([10, 11])
+    expect(courtA.find((slot) => slot.startHour === 12)).toEqual({ startHour: 12, label: '12:00 PM', available: true })
+    expect(byCourt.get('court-m')?.every((slot) => !slot.available && slot.blocked === 'out_of_service')).toBe(true)
+
+    live.tables.set('public_schedule', [])
+    const pastA = (await api.availability('2000-01-01')).find((day) => day.court.id === 'court-a')
+    expect(pastA?.slots.length).toBe(16)
+    expect(pastA?.slots.every((slot) => !slot.available && slot.blocked === 'passed')).toBe(true)
+  })
 })

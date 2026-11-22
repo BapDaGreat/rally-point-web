@@ -184,6 +184,7 @@ describe('api live tenant adapter', () => {
     const availability = await api.availability('2099-09-20', live.venueId)
     const occupied = availability[0].slots.filter((slot) => !slot.available)
     expect(occupied).not.toHaveLength(0)
+    expect(occupied.every((slot) => slot.blocked === 'booked')).toBe(true)
     expect(live.calls.some((call) => ['bookings', 'court_sessions', 'court_allocations'].includes(call.table))).toBe(false)
     expect(live.calls).toContainEqual({ table: 'public_schedule', op: 'eq', args: ['venue_id', live.venueId] })
   })
@@ -220,8 +221,7 @@ describe('api live tenant adapter', () => {
   })
 
   it('blocks live online payment and sends operational writes to scoped RPCs', async () => {
-    await expect(api.createBooking({ court_id: live.court.id, venue_id: live.venueId, member_id: live.member.id, dateYmd: '2099-09-20', startHour: 14, hours: 1, user_id: live.profile.id })).rejects.toThrow('Online checkout')
-    await expect(api.payBooking({ booking_id: live.booking.id, method: 'gcash', user_id: live.profile.id })).rejects.toThrow('Online checkout')
+    // Live member checkout (hold_court_booking and the GCash steps) is covered in api.checkout.live.test.ts.
     await expect(api.payMembership(live.member.id, 2500, live.profile.id)).rejects.toThrow('Online renewal')
     expect(startCheckout).not.toHaveBeenCalled()
     expect(simulateCheckout).not.toHaveBeenCalled()

@@ -19,4 +19,9 @@ export const releaseApprovals = Object.freeze({
   // Owner, 2026-11-16 (PH), after the capture (r2), the restore check and the dry run on a restored
   // copy of staging passed (all checks, isolation 55/55, schema matches the build): "Approve and apply".
   'owner-onboarding-20261116': 'ae14186dfa94b95ef07df79e4a0f6c41b4de40ceeac2abc97af211d59a73cd41',
+  // Owner, 2026-11-22 (PH): "approve", given while the capture ran, on the condition that the
+  // capture, the restore check and the dry run on a restored copy of staging all pass. They did
+  // (all checks, isolation 55/55, schema matches the build). It also lets members write bookings
+  // through the five checkout functions.
+  'member-gcash-checkout-20261122': '0646d001621961f753e7ed66350c702e4d07280d1a8f0b492ac4a26ebfa95b24',
 })

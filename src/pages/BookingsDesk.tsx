@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
+import { PaymentConfirmations } from '../components/PaymentConfirmations'
 import { AppHeader, AppShell, SignOutButton } from '../components/Shell'
 import { LoadingShapes, SkeletonLine } from '../components/Skeleton'
 import { api } from '../lib/api'
 import { isDemoMode } from '../lib/supabase'
 import type { Booking, Role, Venue } from '../types'
-import { fmtDateTime, fmtTime, peso } from '../types'
+import { checkoutState, fmtDateTime, fmtTime, peso } from '../types'
 
 type DeskRole = 'staff' | 'admin'
 type VenueSelection = { role: DeskRole; venues: Venue[]; venueId: string; requestId: number }
@@ -27,6 +28,19 @@ function BookingsLoading() {
       </div>
     </LoadingShapes>
   )
+}
+
+/** A booking's state in the desk's words. */
+function deskStatusWord(b: Booking) {
+  if (b.status === 'pending_payment') {
+    const state = checkoutState(b)
+    if (state === 'awaiting_confirmation') return 'GCash payment sent: check it above'
+    if (state === 'released') return 'Time to pay ran out'
+    return b.hold_expires_at ? 'Held while the player pays' : 'Unpaid'
+  }
+  if (b.status === 'confirmed') return 'Booked'
+  if (b.status === 'no_show') return 'No show'
+  return b.status.charAt(0).toUpperCase() + b.status.slice(1)
 }
 
 export function BookingsDesk({ role }: { role: 'staff' | 'admin' }) {
@@ -76,7 +90,7 @@ export function BookingsDesk({ role }: { role: 'staff' | 'admin' }) {
     <AppShell role={role as Role}>
       <AppHeader
         title="Online bookings"
-        subtitle="Member self-service court holds"
+        subtitle="Confirm GCash payments and see player bookings"
         right={<SignOutButton />}
       />
       <main className="safe-bottom px-4 pt-4 space-y-3">
@@ -91,6 +105,14 @@ export function BookingsDesk({ role }: { role: 'staff' | 'admin' }) {
               {currentSelection.venues.map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}
             </select>
           </section>
+        ) : null}
+        {/* A decided payment changes its booking's status, so the list below reloads. */}
+        {currentSelection && venueId ? (
+          <PaymentConfirmations
+            key={`${role}:${venueId}`}
+            venueId={venueId}
+            onDecided={() => setSelection((current) => current?.role === role ? { ...current, requestId: current.requestId + 1 } : current)}
+          />
         ) : null}
         {loading ? (
           <BookingsLoading />
@@ -108,10 +130,10 @@ export function BookingsDesk({ role }: { role: 'staff' | 'admin' }) {
                   </p>
                   <p className="text-xs text-slate-400">
                     {fmtDateTime(b.start_at)} – {fmtTime(b.end_at)} ·{' '}
-                    <span className={b.status === 'confirmed' ? 'font-semibold text-brand-800' : 'capitalize'}>
+                    <span className={b.status === 'confirmed' ? 'font-semibold text-brand-800' : undefined}>
                       {b.status === 'confirmed'
                         ? `Booked · ${b.hours} ${b.hours === 1 ? 'hour' : 'hours'} (no refund)`
-                        : `${b.status.replace('_', ' ')} · ${b.hours}h`}
+                        : `${deskStatusWord(b)} · ${b.hours}h`}
                     </span>
                     {b.payment_method ? ` · ${b.payment_method}` : ''}
                   </p>

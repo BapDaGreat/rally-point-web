@@ -51,7 +51,10 @@ vi.mock('../lib/api', () => ({
     availability: vi.fn(),
     myBookings: vi.fn(),
     createBooking: vi.fn(),
-    payBooking: vi.fn(),
+    checkoutPaymentMethods: vi.fn(),
+    releaseBookingHold: vi.fn(),
+    submitBookingPayment: vi.fn(),
+    myBooking: vi.fn(),
     sendBookingConfirmationEmail: vi.fn(),
   },
 }))
@@ -210,6 +213,9 @@ describe('Find a court', () => {
       timezone: 'Asia/Manila', open_hour: 6, close_hour: 22, is_active: true,
     }])
     vi.mocked(api.myBookings).mockResolvedValue([])
+    vi.mocked(api.checkoutPaymentMethods).mockResolvedValue([
+      { id: 'pay-davao', label: 'GCash', account_name: 'Rally Point Davao', account_number: '0917 000 0000', qr_url: null },
+    ])
     vi.mocked(api.createBooking).mockResolvedValue({
       id: 'bk-new', club_id: 'club-davao', venue_id: 'venue-davao', court_id: 'c1', member_id: 'mem-p',
       start_at: '2099-09-20T04:00:00.000Z', end_at: '2099-09-20T05:00:00.000Z',
@@ -235,6 +241,8 @@ describe('Find a court', () => {
     expect(within(dialog).getByText('Login to continue')).toBeInTheDocument()
     expect(within(dialog).getByText('By continuing, you confirm you are booking under your account.')).toBeInTheDocument()
     expect(auth.joinClub).not.toHaveBeenCalled()
+    // The 15-minute hold starts only once the visitor has signed in.
+    expect(api.createBooking).not.toHaveBeenCalled()
 
     await user.type(within(dialog).getByLabelText('Email'), player.email)
     await user.type(within(dialog).getByLabelText('Password'), 'secret123')
@@ -245,7 +253,9 @@ describe('Find a court', () => {
 
     await waitFor(() => expect(auth.joinClub).toHaveBeenCalledWith('rally-point-davao', { asPlayer: true }))
     expect(await screen.findByText('Checkout')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Pay Php 450\.00/ })).toBeInTheDocument()
+    expect(api.createBooking).toHaveBeenCalledWith(expect.objectContaining({ court_id: 'c1', startHour: 12, hours: 1, member_id: 'mem-p', user_id: player.id }))
+    expect(screen.getByText('Time left to pay')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /I.ve paid/ })).toBeInTheDocument()
   })
 
   it('opens the booking environment when clicking the venue CTA', async () => {

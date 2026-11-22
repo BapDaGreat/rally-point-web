@@ -1,6 +1,6 @@
 import type {
-  Court, CourtInput, MyClub, Profile, PublicClub, PublicClubDetail, PublicClubListing, PublicClubProfile, StaffVenueGrant, Venue,
-  VenueLocationInput,
+  CheckoutPaymentMethod, Court, CourtInput, MyClub, Profile, PublicClub, PublicClubDetail, PublicClubListing, PublicClubProfile,
+  StaffVenueGrant, Venue, VenueLocationInput,
 } from '../types'
 import { daysFromNow, todayISO, uid } from './demo/common'
 import { getDemoPassword, normalizeDemoEmail, resetDemoPasswords, setDemoPassword } from './demo/credentials'
@@ -272,6 +272,12 @@ export const demoStore = {
     const db = load()
     const club = bookableClubBySlug(db, slug)
     return club ? publicClubProfileFor(db, club.id) : null
+  },
+  /** The active club's ways to pay at checkout: what its public club page shows (active methods only). */
+  checkoutPaymentMethods(): CheckoutPaymentMethod[] {
+    const db = load()
+    const club = activeClub(db)
+    return club && bookableClubBySlug(db, club.slug) ? publicClubProfileFor(db, club.id).payment_methods : []
   },
   /** Visitor-safe court availability for any active club (no auth session required). */
   publicClubAvailability(slug: string, dateYmd: string, venueId?: string) {

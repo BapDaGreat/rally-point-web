@@ -80,10 +80,11 @@ describe('demo club business profile (mirrors the club_business_profile function
 
     const shown = demoStore.publicClubProfile('rally-point-gensan')
     expect(shown?.coaches).toEqual([expect.objectContaining({ full_name: 'Coach Ana', photo_url: pic(1) })])
-    expect(shown?.payment_methods).toEqual([expect.objectContaining({ label: 'GCash', qr_url: pic(2) })])
+    // The demo club starts with its own GCash method (for checkout), so look for the new one.
+    expect(shown?.payment_methods.find((method) => method.id === gcash.id)).toEqual(expect.objectContaining({ label: 'GCash', qr_url: pic(2) }))
 
     demoStore.setClubPaymentQr(gcash.id, null)
-    expect(demoStore.publicClubProfile('rally-point-gensan')?.payment_methods[0].qr_url).toBeNull()
+    expect(demoStore.publicClubProfile('rally-point-gensan')?.payment_methods.find((method) => method.id === gcash.id)?.qr_url).toBeNull()
   })
 
   it('limits the gallery to 12 photos and keeps captions', () => {

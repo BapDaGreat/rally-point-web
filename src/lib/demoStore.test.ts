@@ -238,6 +238,75 @@ describe('demoStore booking and payment behavior', () => {
     demoStore.cancelBooking(booking.id, 'user_member')
   })
 
+  it('marks every hour of a paid booking as booked, and hours already over as passed', () => {
+    const date = futureDate()
+    const courtSlots = (dateYmd: string) => demoStore.availability(dateYmd).find((row) => row.court.id === 'court_2')?.slots ?? []
+    const at = (dateYmd: string, hour: number) => courtSlots(dateYmd).find((slot) => slot.startHour === hour)
+    expect(at(ymd(date), 15)).toEqual({ startHour: 15, label: '3:00 PM', available: true })
+    expect(at(ymd(date), 16)?.available).toBe(true)
+
+    const booking = demoStore.createBooking({
+      court_id: 'court_2',
+      member_id: 'mem_001',
+      dateYmd: ymd(date),
+      startHour: 15,
+      hours: 2,
+      user_id: 'user_member',
+    })
+    demoStore.confirmBookingPayment({ booking_id: booking.id, method: 'gcash', user_id: 'user_member' })
+
+    expect(at(ymd(date), 15)).toEqual({ startHour: 15, label: '3:00 PM', available: false, blocked: 'booked' })
+    expect(at(ymd(date), 16)).toEqual({ startHour: 16, label: '4:00 PM', available: false, blocked: 'booked' })
+
+    const yesterday = ymdLocal(new Date(Date.now() - 86400000))
+    expect(courtSlots(yesterday).every((slot) => !slot.available && (slot.blocked === 'passed' || slot.blocked === 'booked'))).toBe(true)
+    expect(courtSlots(yesterday).some((slot) => slot.blocked === 'passed')).toBe(true)
+  })
+
+  it('holds an online checkout for 15 minutes, then frees the hours and refuses payment', () => {
+    // Only the player who holds the hours can let them go.
+    demoStore.login('member@brinely.info', 'member123')
+    const date = futureDate()
+    const slotAt18 = () => demoStore.availability(ymd(date)).find((row) => row.court.id === 'court_2')?.slots.find((slot) => slot.startHour === 18)
+    const book = (checkoutHold?: boolean) => demoStore.createBooking({
+      court_id: 'court_2', member_id: 'mem_001', dateYmd: ymd(date), startHour: 18, hours: 1, user_id: 'user_member', checkoutHold,
+    })
+    const statusOf = (id: string) => demoStore.get().bookings.find((row) => row.id === id)?.status
+
+    const held = book(true)
+    const holdMs = new Date(held.hold_expires_at ?? 0).getTime() - Date.now()
+    expect(holdMs).toBeGreaterThan(14 * 60000)
+    expect(holdMs).toBeLessThanOrEqual(15 * 60000)
+    expect(slotAt18()?.blocked).toBe('booked')
+
+    // Time runs out: the hours are free again and the late payment is refused.
+    updateDb((db) => {
+      const row = db.bookings.find((item) => item.id === held.id)
+      if (row) row.hold_expires_at = new Date(Date.now() - 1000).toISOString()
+    })
+    expect(slotAt18()?.available).toBe(true)
+    // Every list agrees, even though nobody tried to pay or pressed Back.
+    expect(demoStore.myBookings('mem_001').find((row) => row.id === held.id)?.status).toBe('cancelled')
+    const chargesBefore = demoStore.get().transactions.length
+    expect(() => demoStore.confirmBookingPayment({ booking_id: held.id, method: 'gcash', user_id: 'user_member' }))
+      .toThrow('Your 15 minutes to pay ran out')
+    expect(statusOf(held.id)).toBe('cancelled')
+    expect(demoStore.get().transactions).toHaveLength(chargesBefore)
+
+    // Going back releases a hold at once.
+    const again = book(true)
+    demoStore.releaseBookingHold(again.id)
+    expect(statusOf(again.id)).toBe('cancelled')
+    expect(slotAt18()?.available).toBe(true)
+
+    // An unpaid desk booking has no checkout hold: it neither lapses nor is released.
+    const desk = book()
+    expect(desk.hold_expires_at).toBeUndefined()
+    demoStore.releaseBookingHold(desk.id)
+    expect(statusOf(desk.id)).toBe('pending_payment')
+    expect(slotAt18()?.blocked).toBe('booked')
+  })
+
   it('rejects invalid, occupied, and maintenance booking requests', () => {
     const date = futureDate()
     const base = {
