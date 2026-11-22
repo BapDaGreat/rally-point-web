@@ -54,7 +54,7 @@ describe('PrivacyNoticePage', () => {
     renderNotice()
 
     expect(screen.getByRole('heading', { level: 1, name: 'Privacy Notice' })).toBeInTheDocument()
-    expect(screen.getByText('For Brinely booking portal users')).toBeInTheDocument()
+    expect(screen.getByText('For bRineLy booking portal users')).toBeInTheDocument()
     expect(screen.getByText('Stay in the brine. Play more.')).toBeInTheDocument()
     expect(screen.getByText('Last updated: November 22, 2026')).toBeInTheDocument()
     expect(screen.queryByText(/Rally Point Gensan/)).not.toBeInTheDocument()
@@ -69,6 +69,9 @@ describe('PrivacyNoticePage', () => {
     expect(screen.getByRole('heading', { name: 'Details to confirm before this notice is official' })).toBeInTheDocument()
     expect(screen.getByText(/whether that invitation was claimed or cancelled/)).toBeInTheDocument()
     expect(screen.getByText(/embeds OpenStreetMap/)).toBeInTheDocument()
+    expect(screen.getByText(/through Resend/)).toBeInTheDocument()
+    expect(screen.getByText(/no-reply@brinely\.info/)).toBeInTheDocument()
+    expect(screen.getByText(/live setting has not been verified/)).toBeInTheDocument()
     expect(screen.getByText(/payment instructions, including an account name or number and a QR image/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'admin@brinely.info' })).toHaveAttribute(
       'href',
@@ -82,7 +85,7 @@ describe('PrivacyNoticePage', () => {
   it("names a join link's club, leaves out Gensan's email, and goes back to that join link", async () => {
     renderNotice('/privacy?club=rally-point-davao')
 
-    expect(await screen.findByText('For Rally Point Davao players on the Brinely booking portal')).toBeInTheDocument()
+    expect(await screen.findByText('For Rally Point Davao players on the bRineLy booking portal')).toBeInTheDocument()
     expect(api.publicClub).toHaveBeenCalledWith('rally-point-davao')
     expect(screen.queryByText(/Gensan/)).not.toBeInTheDocument()
     expect(screen.getByText(/ask the staff at Rally Point Davao/)).toBeInTheDocument()
@@ -94,7 +97,7 @@ describe('PrivacyNoticePage', () => {
     renderNotice('/privacy?club=missing-club')
 
     expect(await screen.findByText(/ask the staff at your club/)).toBeInTheDocument()
-    expect(screen.getByText('For Brinely booking portal users')).toBeInTheDocument()
+    expect(screen.getByText('For bRineLy booking portal users')).toBeInTheDocument()
     expect(screen.queryByText(/Gensan/)).not.toBeInTheDocument()
   })
 
@@ -103,7 +106,7 @@ describe('PrivacyNoticePage', () => {
     auth.activeClub = davao
     renderNotice({ pathname: '/privacy', state: { from: '/member/help' } })
 
-    expect(screen.getByText('For Rally Point Davao players on the Brinely booking portal')).toBeInTheDocument()
+    expect(screen.getByText('For Rally Point Davao players on the bRineLy booking portal')).toBeInTheDocument()
     expect(screen.getAllByRole('navigation', { name: 'Main menu' }).length).toBeGreaterThan(0)
     expect(screen.getByRole('link', { name: 'Back to Help' })).toHaveAttribute('href', '/member/help')
     expect(screen.queryByRole('link', { name: 'Back to login' })).not.toBeInTheDocument()

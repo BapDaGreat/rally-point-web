@@ -7,7 +7,7 @@ import type { PrivacyNoticeState } from '../lib/privacyNotice'
 import { homeFor } from '../lib/roleHome'
 import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
 
-// Provisional contact pending confirmation of its role by the Brinely team.
+// Provisional contact pending confirmation of its role by the bRineLy team.
 const brinelyPrivacyEmail = 'admin@brinely.info'
 
 type NoticeClub = { isGensan: boolean; name: string | null }
@@ -20,9 +20,9 @@ function sections(club: NoticeClub): { title: string; content: ReactNode }[] {
       content: (
         <p>
           {club.isGensan
-            ? 'Brinely is the booking portal for club players.'
-            : `${club.name ?? 'Your club'} is the club named in this notice, and Brinely is the booking portal it uses.`}{' '}
-          Brinely is used by multiple clubs. The registered entities responsible for the portal
+            ? 'bRineLy is the booking portal for club players.'
+            : `${club.name ?? 'Your club'} is the club named in this notice, and bRineLy is the booking portal it uses.`}{' '}
+          bRineLy is used by multiple clubs. The registered entities responsible for the portal
           and each club, and whether they act as separate or joint personal information controllers
           or processors, have not yet been confirmed. This is a working draft, not a final or
           legally approved notice.
@@ -119,6 +119,14 @@ function sections(club: NoticeClub): { title: string; content: ReactNode }[] {
             any cross-border access have not been confirmed.
           </p>
           <p className="mt-2">
+            The app includes a server-side integration for booking confirmation emails through
+            Resend. When email sending is enabled, Resend receives the recipient's email address
+            and the booking details included in the confirmation, such as the club, court, schedule,
+            amount, and any payment reference. The intended sender is no-reply@brinely.info, but the
+            sender address is controlled by deployment configuration and its live setting has not
+            been verified. If email sending is not configured, the app does not send the message.
+          </p>
+          <p className="mt-2">
             We may also disclose information when required by law. This is not yet a complete,
             verified list of service providers or recipients.
           </p>
@@ -133,7 +141,7 @@ function sections(club: NoticeClub): { title: string; content: ReactNode }[] {
           details, venue locations, court rates, amenities, coaches' names, biographies, contact
           details and photos, and club, venue, or court photos. A club may also publish payment
           instructions, including an account name or number and a QR image, so players can pay the
-          club directly. These details and images may be visible to anyone on the internet. Brinely
+          club directly. These details and images may be visible to anyone on the internet. bRineLy
           does not take, hold, or verify those direct-to-club payments. Clubs should only
           publish information and images they are authorized to share.
         </p>
@@ -282,10 +290,10 @@ export function PrivacyNoticePage() {
     (user ? homeFor(user.role) : clubParam ? `/join/${encodeURIComponent(clubParam)}` : '/login')
 
   const subtitle = club.isGensan
-    ? 'For Brinely booking portal users'
+    ? 'For bRineLy booking portal users'
     : club.name
-      ? `For ${club.name} players on the Brinely booking portal`
-      : 'For Brinely booking portal users'
+      ? `For ${club.name} players on the bRineLy booking portal`
+      : 'For bRineLy booking portal users'
 
   const content = (
     <main className="app-content-rail safe-bottom mx-auto w-full py-6 sm:py-10">
