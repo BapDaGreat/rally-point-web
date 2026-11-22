@@ -392,8 +392,8 @@ describe('staging releases', () => {
       ['advisor', ['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']],
       ['postflight', ['ledger_has_every_migration']],
     ])
-    // Prepared, not approved: the owner approves after the capture, restore check and dry run pass.
-    expect(releaseApprovals['member-gcash-checkout-20261122']).toBeNull()
+    // Approved after the capture, restore check and dry run passed, and applied to staging.
+    expect(releaseApprovals['member-gcash-checkout-20261122']).toMatch(/^[a-f0-9]{64}$/)
     const earlier = Object.values(releases).filter(release => release !== memberGcashCheckoutRelease)
       .flatMap((release: { dirs: object, databases: object }) => [...Object.values(release.dirs), ...Object.values(release.databases)])
     expect([...Object.values(memberGcashCheckoutRelease.dirs), ...Object.values(memberGcashCheckoutRelease.databases)]
