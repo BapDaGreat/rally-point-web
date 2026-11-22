@@ -50,24 +50,31 @@ describe('PrivacyNoticePage', () => {
     vi.mocked(api.publicClub).mockReset().mockResolvedValue({ id: 'club-davao', slug: 'rally-point-davao', name: 'Rally Point Davao' })
   })
 
-  it('shows the requested privacy topics and temporary contact details', () => {
+  it('shows the requested privacy topics and provisional contact details', () => {
     renderNotice()
 
     expect(screen.getByRole('heading', { level: 1, name: 'Privacy Notice' })).toBeInTheDocument()
-    expect(screen.getByText('For Rally Point Gensan players on the bRineLy app')).toBeInTheDocument()
-    expect(screen.getByText('Last updated: November 15, 2026')).toBeInTheDocument()
+    expect(screen.getByText('For Brinely booking portal users')).toBeInTheDocument()
+    expect(screen.getByText('Stay in the brine. Play more.')).toBeInTheDocument()
+    expect(screen.getByText('Last updated: November 22, 2026')).toBeInTheDocument()
+    expect(screen.queryByText(/Rally Point Gensan/)).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Who we are' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Personal information we collect' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Why we use information and lawful bases' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Sharing and service providers' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Who can see information' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Club pages and public information' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Retention and security' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Your rights under RA 10173' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Privacy contact' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'support@rallypointgensan.com' })).toHaveAttribute(
+    expect(screen.getByRole('heading', { name: 'Details to confirm before this notice is official' })).toBeInTheDocument()
+    expect(screen.getByText(/whether that invitation was claimed or cancelled/)).toBeInTheDocument()
+    expect(screen.getByText(/embeds OpenStreetMap/)).toBeInTheDocument()
+    expect(screen.getByText(/payment instructions, including an account name or number and a QR image/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'admin@brinely.info' })).toHaveAttribute(
       'href',
-      'mailto:support@rallypointgensan.com',
+      'mailto:admin@brinely.info',
     )
-    expect(screen.getByText(/temporary support contact/)).toBeInTheDocument()
+    expect(screen.getByText(/provisional contact pending confirmation/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back to login' })).toHaveAttribute('href', '/login')
     expect(api.publicClub).not.toHaveBeenCalled()
   })
@@ -75,7 +82,7 @@ describe('PrivacyNoticePage', () => {
   it("names a join link's club, leaves out Gensan's email, and goes back to that join link", async () => {
     renderNotice('/privacy?club=rally-point-davao')
 
-    expect(await screen.findByText('For Rally Point Davao players on the bRineLy app')).toBeInTheDocument()
+    expect(await screen.findByText('For Rally Point Davao players on the Brinely booking portal')).toBeInTheDocument()
     expect(api.publicClub).toHaveBeenCalledWith('rally-point-davao')
     expect(screen.queryByText(/Gensan/)).not.toBeInTheDocument()
     expect(screen.getByText(/ask the staff at Rally Point Davao/)).toBeInTheDocument()
@@ -87,7 +94,7 @@ describe('PrivacyNoticePage', () => {
     renderNotice('/privacy?club=missing-club')
 
     expect(await screen.findByText(/ask the staff at your club/)).toBeInTheDocument()
-    expect(screen.getByText('For bRineLy app users')).toBeInTheDocument()
+    expect(screen.getByText('For Brinely booking portal users')).toBeInTheDocument()
     expect(screen.queryByText(/Gensan/)).not.toBeInTheDocument()
   })
 
@@ -96,7 +103,7 @@ describe('PrivacyNoticePage', () => {
     auth.activeClub = davao
     renderNotice({ pathname: '/privacy', state: { from: '/member/help' } })
 
-    expect(screen.getByText('For Rally Point Davao players on the bRineLy app')).toBeInTheDocument()
+    expect(screen.getByText('For Rally Point Davao players on the Brinely booking portal')).toBeInTheDocument()
     expect(screen.getAllByRole('navigation', { name: 'Main menu' }).length).toBeGreaterThan(0)
     expect(screen.getByRole('link', { name: 'Back to Help' })).toHaveAttribute('href', '/member/help')
     expect(screen.queryByRole('link', { name: 'Back to login' })).not.toBeInTheDocument()
