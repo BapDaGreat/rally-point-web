@@ -139,6 +139,17 @@ const live = vi.hoisted(() => {
     if (name === 'list_my_clubs') return { data: [{ club_id: clubId, slug: 'rally-point-gensan', name: 'Rally Point Gensan', role: 'admin' }], error: null }
     if (name === 'get_platform_access') return { data: 'superadmin', error: null }
     if (name === 'get_public_club') return { data: [{ id: clubId, slug: 'rally-point-gensan', name: 'Rally Point Gensan' }], error: null }
+    if (name === 'member_list_coach_slots') {
+      return {
+        data: [{
+          slot_id: 'coach-slot-live', coach_id: 'coach-live', club_id: clubId, coach_name: 'Coach Ana',
+          headline: 'Beginner lessons', photo_path: null, starts_at: '2099-09-20T12:00:00.000Z',
+          ends_at: '2099-09-20T13:00:00.000Z', lesson_type: 'private', pricing_model: 'per_student',
+          rate: '600.00', max_students: 1, remaining_students: 1, booking_policy: null,
+        }],
+        error: null,
+      }
+    }
     if (name === 'join_club') return { data: 'club-joined', error: null }
     if (name === 'platform_provision_club') return { data: 'club-new', error: null }
     if (name === 'platform_assign_club_admin') return { data: 'user-admin', error: null }
@@ -203,6 +214,34 @@ describe('api live tenant adapter', () => {
     await expect(api.listOpenPlays()).rejects.toThrow('counts unavailable')
     live.setFailure('open_play_signups', new Error('signups unavailable'))
     await expect(api.listOpenPlays()).rejects.toThrow('signups unavailable')
+  })
+
+  it('treats coach slot commands as writes and does not map incomplete RPC rows as full slots', async () => {
+    await expect(api.coachUpsertBookingSlot({
+      coach_id: 'coach-live',
+      starts_at: '2099-09-20T12:00:00.000Z',
+      ends_at: '2099-09-20T13:00:00.000Z',
+      lesson_type: 'private',
+      pricing_model: 'per_student',
+      rate: 600,
+      max_students: 1,
+    })).resolves.toBeUndefined()
+    await expect(api.coachSetBookingSlotOpen('slot-live', false)).resolves.toBeUndefined()
+    expect(live.calls.filter((call) => call.table === 'rpc').map((call) => call.op)).toEqual([
+      'coach_upsert_booking_slot',
+      'coach_set_booking_slot_open',
+    ])
+  })
+
+  it('maps public coach details and numeric rates from available booking slots', async () => {
+    const [slot] = await api.memberListCoachSlots('2099-09-20T00:00:00.000Z', '2099-09-21T00:00:00.000Z')
+    expect(slot).toMatchObject({
+      slot_id: 'coach-slot-live',
+      coach_name: 'Coach Ana',
+      coach_headline: 'Beginner lessons',
+      coach_photo_url: null,
+      rate: 600,
+    })
   })
 
   it('reads only the active club and resolves accessible venues', async () => {

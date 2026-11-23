@@ -1,4 +1,4 @@
-import type { Booking, CheckIn, Club, ClubAccount, ClubAddon, ClubCoach, ClubGalleryPhoto, ClubPaymentMethod, ClubProfileFields, ClubStaffRole, Court, CourtSession, Member, Notification, OpenPlaySession, OpenPlaySignup, OwnerCallRequest, Profile, Reminder, StaffVenueGrant, SupportInquiry, Transaction, Venue, WalkIn } from '../../types'
+import type { Booking, CheckIn, Club, ClubAccount, ClubAddon, ClubCoach, CoachBookingRequest, CoachBookingSlot, CoachRequestMessage, ClubGalleryPhoto, ClubPaymentMethod, ClubProfileFields, ClubStaffRole, Court, CourtSession, Member, Notification, OpenPlaySession, OpenPlaySignup, OwnerCallRequest, Profile, Reminder, StaffVenueGrant, SupportInquiry, Transaction, Venue, WalkIn } from '../../types'
 
 /** Platform role, granted by trusted provisioning only. */
 export interface DemoPlatformRole {
@@ -92,6 +92,10 @@ export interface DemoDB {
   clubProfiles?: DemoClubProfile[]
   clubAddons?: ClubAddon[]
   clubCoaches?: ClubCoach[]
+  /** Optional coach-booking records, for demo browser data created before this feature. */
+  coachBookingSlots?: CoachBookingSlot[]
+  coachBookingRequests?: CoachBookingRequest[]
+  coachRequestMessages?: CoachRequestMessage[]
   clubPaymentMethods?: ClubPaymentMethod[]
   clubGallery?: ClubGalleryPhoto[]
   /** Court owners asking for a call (mirrors public.owner_call_requests). Optional so older browser data still loads. */

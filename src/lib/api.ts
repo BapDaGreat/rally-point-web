@@ -11,6 +11,10 @@ import type {
   ClubAddonInput,
   ClubCoach,
   ClubCoachInput,
+  CoachBookingRequest,
+  CoachBookingSlot,
+  CoachProfileAccess,
+  CoachRequestMessage,
   ClubGalleryPhoto,
   PictureCleanup,
   ClubPaymentMethod,
@@ -169,6 +173,27 @@ function toCoach(row: StoredCoach): ClubCoach {
     hourly_rate: row.hourly_rate == null ? null : Number(row.hourly_rate),
     photo_url: row.photo_path ? photoUrl(row.photo_path) : null,
   }
+}
+
+function toCoachProfile(row: CoachProfileAccess): CoachProfileAccess {
+  return { ...row, hourly_rate: row.hourly_rate == null ? null : Number(row.hourly_rate) }
+}
+
+function toCoachSlot(row: CoachBookingSlot): CoachBookingSlot {
+  const raw = row as CoachBookingSlot & { id?: string; headline?: string | null; photo_path?: string | null }
+  const slotId = raw.slot_id || raw.id
+  if (!slotId) throw new Error('Coach slot response is missing its id')
+  return {
+    ...raw,
+    slot_id: slotId,
+    rate: Number(raw.rate),
+    coach_headline: raw.headline ?? raw.coach_headline ?? null,
+    coach_photo_url: raw.photo_path ? photoUrl(raw.photo_path) : raw.coach_photo_url ?? null,
+  }
+}
+
+function toCoachRequest(row: CoachBookingRequest): CoachBookingRequest {
+  return { ...row, rate: Number(row.rate), quoted_amount: Number(row.quoted_amount) }
 }
 
 function toPaymentMethod(row: StoredPaymentMethod): ClubPaymentMethod {
@@ -1014,6 +1039,176 @@ export const api = {
     const { data, error } = await supabase!.rpc('admin_remove_club_coach', { p_coach_id: coachId })
     if (error) throw error
     return deleteReplacedPicture(data)
+  },
+
+  async linkClubCoachAccount(coachId: string, email: string | null): Promise<void> {
+    if (isDemoMode) return demoStore.linkClubCoachAccount(coachId, email)
+    const { error } = await supabase!.rpc('admin_link_club_coach_account', {
+      p_coach_id: coachId,
+      p_email: email,
+    })
+    if (error) throw error
+  },
+
+  async coachMyProfiles(): Promise<CoachProfileAccess[]> {
+    if (isDemoMode) return demoStore.coachMyProfiles()
+    const { data, error } = await supabase!.rpc('coach_my_profiles')
+    if (error) throw error
+    return ((data ?? []) as CoachProfileAccess[]).map(toCoachProfile)
+  },
+
+  async coachSetBookingPolicy(coachId: string, policy: string): Promise<void> {
+    if (isDemoMode) return demoStore.coachSetBookingPolicy(coachId, policy)
+    const { error } = await supabase!.rpc('coach_set_booking_policy', {
+      p_coach_id: coachId,
+      p_policy: policy.trim(),
+    })
+    if (error) throw error
+  },
+
+  async coachListMySlots(): Promise<CoachBookingSlot[]> {
+    if (isDemoMode) return demoStore.coachListMySlots()
+    const { data, error } = await supabase!.rpc('coach_list_my_slots')
+    if (error) throw error
+    return ((data ?? []) as CoachBookingSlot[]).map(toCoachSlot)
+  },
+
+  async coachUpsertBookingSlot(input: {
+    id?: string
+    coach_id: string
+    starts_at: string
+    ends_at: string
+    lesson_type: 'private' | 'group'
+    pricing_model: 'per_student' | 'per_session'
+    rate: number
+    max_students: number
+  }): Promise<void> {
+    if (isDemoMode) {
+      demoStore.coachUpsertBookingSlot(input)
+      return
+    }
+    const { error } = await supabase!.rpc('coach_upsert_booking_slot', {
+      p_slot_id: input.id ?? null,
+      p_coach_id: input.coach_id,
+      p_starts_at: input.starts_at,
+      p_ends_at: input.ends_at,
+      p_lesson_type: input.lesson_type,
+      p_pricing_model: input.pricing_model,
+      p_rate: input.rate,
+      p_max_students: input.max_students,
+    })
+    if (error) throw error
+  },
+
+  async coachSetBookingSlotOpen(slotId: string, isOpen: boolean): Promise<void> {
+    if (isDemoMode) {
+      demoStore.coachSetBookingSlotOpen(slotId, isOpen)
+      return
+    }
+    const { error } = await supabase!.rpc('coach_set_booking_slot_open', {
+      p_slot_id: slotId,
+      p_is_open: isOpen,
+    })
+    if (error) throw error
+  },
+
+  async memberListCoachSlots(from: string, until: string): Promise<CoachBookingSlot[]> {
+    if (isDemoMode) return demoStore.memberListCoachSlots(from, until)
+    const { data, error } = await supabase!.rpc('member_list_coach_slots', {
+      p_from: from,
+      p_until: until,
+    })
+    if (error) throw error
+    return ((data ?? []) as CoachBookingSlot[]).map(toCoachSlot)
+  },
+
+  async memberRequestCoachSlot(input: {
+    slot: CoachBookingSlot
+    student_count: number
+    message: string
+  }): Promise<CoachBookingRequest> {
+    if (isDemoMode) return demoStore.memberRequestCoachSlot(input)
+    const { data, error } = await supabase!.rpc('member_request_coach_slot', {
+      p_slot_id: input.slot.slot_id,
+      p_student_count: input.student_count,
+      p_message: input.message,
+    })
+    if (error) throw error
+    const row = data as {
+      id: string
+      slot_id: string
+      club_id: string
+      student_count: number
+      quoted_amount: number
+      message: string | null
+      status: CoachBookingRequest['status']
+      created_at: string
+    }
+    return {
+      request_id: row.id,
+      slot_id: row.slot_id,
+      club_id: row.club_id,
+      coach_id: input.slot.coach_id,
+      coach_name: input.slot.coach_name,
+      starts_at: input.slot.starts_at,
+      ends_at: input.slot.ends_at,
+      lesson_type: input.slot.lesson_type,
+      pricing_model: input.slot.pricing_model,
+      rate: input.slot.rate,
+      student_count: row.student_count,
+      quoted_amount: Number(row.quoted_amount),
+      message: row.message,
+      status: row.status,
+      created_at: row.created_at,
+    }
+  },
+
+  async coachListMyRequests(): Promise<CoachBookingRequest[]> {
+    if (isDemoMode) return demoStore.coachListMyRequests()
+    const { data, error } = await supabase!.rpc('coach_list_my_requests')
+    if (error) throw error
+    return ((data ?? []) as CoachBookingRequest[]).map(toCoachRequest)
+  },
+
+  async memberListMyCoachRequests(): Promise<CoachBookingRequest[]> {
+    if (isDemoMode) return demoStore.memberListMyCoachRequests()
+    const { data, error } = await supabase!.rpc('member_list_my_coach_requests')
+    if (error) throw error
+    return ((data ?? []) as CoachBookingRequest[]).map(toCoachRequest)
+  },
+
+  async coachRespondToBookingRequest(requestId: string, accept: boolean): Promise<void> {
+    if (isDemoMode) return demoStore.coachRespondToBookingRequest(requestId, accept)
+    const { error } = await supabase!.rpc('coach_respond_to_booking_request', {
+      p_request_id: requestId,
+      p_accept: accept,
+    })
+    if (error) throw error
+  },
+
+  async memberCancelCoachRequest(requestId: string): Promise<void> {
+    if (isDemoMode) return demoStore.memberCancelCoachRequest(requestId)
+    const { error } = await supabase!.rpc('member_cancel_coach_request', { p_request_id: requestId })
+    if (error) throw error
+  },
+
+  async coachSendRequestMessage(requestId: string, body: string): Promise<CoachRequestMessage> {
+    if (isDemoMode) return demoStore.coachSendRequestMessage(requestId, body)
+    const { data, error } = await supabase!.rpc('coach_send_request_message', {
+      p_request_id: requestId,
+      p_body: body.trim(),
+    })
+    if (error) throw error
+    return data as CoachRequestMessage
+  },
+
+  async coachListRequestMessages(requestId: string): Promise<CoachRequestMessage[]> {
+    if (isDemoMode) return demoStore.coachListRequestMessages(requestId)
+    const { data, error } = await supabase!.rpc('coach_list_request_messages', {
+      p_request_id: requestId,
+    })
+    if (error) throw error
+    return (data ?? []) as CoachRequestMessage[]
   },
 
   async upsertClubPaymentMethod(input: ClubPaymentMethodInput): Promise<ClubPaymentMethod> {

@@ -408,10 +408,13 @@ export interface ClubAddonInput {
 export interface ClubCoach {
   id: string
   club_id: string
+  /** Linked through trusted club-admin provisioning; never supplied by public signup. */
+  account_user_id?: string | null
   full_name: string
   headline: string | null
   bio: string | null
   hourly_rate: number | null
+  booking_policy?: string | null
   contact_phone: string | null
   contact_url: string | null
   photo_path: string | null
@@ -431,6 +434,77 @@ export interface ClubCoachInput {
   contact_phone: string | null
   contact_url: string | null
   is_active: boolean
+}
+
+export type CoachLessonType = 'private' | 'group'
+export type CoachPricingModel = 'per_student' | 'per_session'
+export type CoachRequestStatus = 'requested' | 'accepted' | 'declined' | 'cancelled' | 'completed' | 'no_show'
+
+/** One future time a linked coach makes available for a private or group lesson. */
+export interface CoachBookingSlot {
+  slot_id: string
+  coach_id: string
+  club_id: string
+  coach_name: string
+  coach_headline?: string | null
+  coach_photo_url?: string | null
+  starts_at: string
+  ends_at: string
+  lesson_type: CoachLessonType
+  pricing_model: CoachPricingModel
+  rate: number
+  max_students: number
+  remaining_students?: number
+  is_open?: boolean
+  active_students?: number
+  club_name?: string
+  booking_policy?: string | null
+}
+
+export interface CoachProfileAccess {
+  coach_id: string
+  club_id: string
+  club_slug: string
+  club_name: string
+  full_name: string
+  headline: string | null
+  bio: string | null
+  hourly_rate: number | null
+  photo_path: string | null
+  is_active: boolean
+  booking_policy: string | null
+}
+
+/** A player's request for available coach time. The court is arranged separately. */
+export interface CoachBookingRequest {
+  request_id: string
+  slot_id: string
+  club_id: string
+  coach_id?: string
+  coach_name: string
+  player_user_id?: string
+  player_name?: string
+  player_email?: string
+  starts_at: string
+  ends_at: string
+  lesson_type: CoachLessonType
+  pricing_model: CoachPricingModel
+  rate: number
+  student_count: number
+  quoted_amount: number
+  message: string | null
+  status: CoachRequestStatus
+  created_at: string
+  updated_at?: string
+  club_name?: string
+}
+
+export interface CoachRequestMessage {
+  id: string
+  request_id: string
+  sender_user_id: string
+  body: string
+  created_at: string
 }
 
 /** A way to pay the club directly (GCash, Maya, a bank). Rally Point does not take or check these payments. */

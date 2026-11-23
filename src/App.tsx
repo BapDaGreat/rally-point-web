@@ -11,6 +11,8 @@ import {
   MemberTransactions,
 } from './pages/member'
 import { MemberBook } from './pages/MemberBook'
+import { MemberCoaches } from './pages/MemberCoaches'
+import { CoachPortal } from './pages/CoachPortal'
 import { MemberPass } from './pages/MemberPass'
 import { AdminOpenPlay, MemberOpenPlay, StaffOpenPlay } from './pages/OpenPlay'
 import { AdminBoard, StaffBoard, TvBoard } from './pages/ScheduleBoard'
@@ -97,6 +99,14 @@ function AppRoutes() {
           <Route path="/member/notifications" element={<MemberNotifications />} />
           <Route path="/member/profile" element={<MemberProfile />} />
           <Route path="/member/help" element={<HelpPage />} />
+        </Route>
+
+        <Route element={<Protected roles={['member']} />}>
+          <Route path="/member/coaches" element={<MemberCoaches />} />
+        </Route>
+
+        <Route element={<Protected roles={['member', 'staff', 'admin']} />}>
+          <Route path="/coach" element={<CoachPortal />} />
         </Route>
 
         <Route element={<Protected roles={['staff', 'admin']} />}>

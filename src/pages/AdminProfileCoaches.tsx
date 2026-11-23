@@ -62,6 +62,7 @@ export function CoachesCard({ index, coaches, busy, run }: { index: number; coac
                     </button>
                   ) : null}
                 </div>
+                <CoachAccountLink coach={coach} busy={busy} run={run} />
                 <div className="flex flex-wrap gap-x-4">
                   <button type="button" id={`coach-${coach.id}-edit`} className={linkStyle}
                     onClick={() => open(coach.id, `coach-${coach.id}-edit`, 'profile-coaches')} aria-label={`Edit ${coach.full_name}`}>
@@ -100,6 +101,66 @@ export function CoachesCard({ index, coaches, busy, run }: { index: number; coac
         <p className="text-sm text-slate-600">You have the most coaches allowed ({MAX_CLUB_COACHES}). Remove one to add another.</p>
       )}
     </section>
+  )
+}
+
+function CoachAccountLink({ coach, busy, run }: { coach: ClubCoach; busy: string | null; run: Run }) {
+  const [editing, setEditing] = useState(false)
+  const [email, setEmail] = useState<string | null>('')
+  const saving = busy === `coach-account:${coach.id}`
+
+  if (!editing) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-slate-600">
+          {coach.account_user_id ? 'Coach sign-in is linked.' : 'No coach sign-in linked.'}
+        </p>
+        <div className="flex flex-wrap gap-x-4">
+          <button type="button" className={linkStyle} disabled={busy !== null}
+            onClick={() => setEditing(true)}>
+            {coach.account_user_id ? 'Change linked account' : 'Link coach account'}
+          </button>
+          {coach.account_user_id ? (
+            <button type="button" className={removeStyle} disabled={busy !== null}
+              onClick={() => {
+                if (!window.confirm(`Remove coach sign-in access for ${coach.full_name}?`)) return
+                void run(`coach-account:${coach.id}`, () => api.linkClubCoachAccount(coach.id, null), 'Coach sign-in unlinked')
+              }}>
+              Unlink account
+            </button>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    const address = email?.trim() ?? ''
+    if (!address) return
+    void run(`coach-account:${coach.id}`, () => api.linkClubCoachAccount(coach.id, address), 'Coach sign-in linked')
+      .then((ok) => {
+        if (ok) {
+          setEmail('')
+          setEditing(false)
+        }
+      })
+  }
+
+  return (
+    <form className="space-y-2" onSubmit={submit} aria-label={`Link sign-in for ${coach.full_name}`}>
+      <TextField id={`coach-${coach.id}-account-email`} label="Coach's confirmed sign-up email"
+        value={email} onChange={setEmail} type="email" max={254} required />
+      <p className="text-sm text-slate-600">The coach must sign up and confirm this email before you link it.</p>
+      <div className="flex gap-2">
+        <button type="submit" className="btn-primary" disabled={saving || busy !== null}>
+          {saving ? 'Linking…' : 'Link account'}
+        </button>
+        <button type="button" className="btn-secondary" disabled={busy !== null} onClick={() => setEditing(false)}>
+          Cancel
+        </button>
+      </div>
+    </form>
   )
 }
 
