@@ -5,7 +5,9 @@ import {
   ChevronRight,
   CreditCard,
   CalendarDays,
+  GraduationCap,
   MapPin,
+  UserRoundCog,
 } from 'lucide-react'
 import {
   AppHeader,
@@ -175,9 +177,39 @@ export function MemberHome() {
             </Link>
 
             <Link
-              to="/member/notifications"
+              to="/member/coaches"
               className="enter-rise control-feedback card p-4 flex items-center gap-3 min-h-[72px]"
               style={stagger(2)}
+            >
+              <span className="action-tile-icon shrink-0" aria-hidden>
+                <GraduationCap size={22} />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-subtitle font-semibold">Rent a coach</p>
+                <p className="text-body font-normal text-slate-600">Choose a lesson time with a coach at your club</p>
+              </div>
+              <ChevronRight className="text-slate-400" size={22} aria-hidden />
+            </Link>
+
+            <Link
+              to="/coach"
+              className="enter-rise control-feedback card p-4 flex items-center gap-3 min-h-[72px]"
+              style={stagger(3)}
+            >
+              <span className="action-tile-icon shrink-0" aria-hidden>
+                <UserRoundCog size={22} />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-subtitle font-semibold">Coach tools</p>
+                <p className="text-body font-normal text-slate-600">For coaches whose account is linked by a club admin</p>
+              </div>
+              <ChevronRight className="text-slate-400" size={22} aria-hidden />
+            </Link>
+
+            <Link
+              to="/member/notifications"
+              className="enter-rise control-feedback card p-4 flex items-center gap-3 min-h-[72px]"
+              style={stagger(4)}
             >
               <span className="action-tile-icon shrink-0" aria-hidden>
                 <Bell size={22} />
