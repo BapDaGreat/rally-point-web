@@ -45,7 +45,7 @@ describe('bRineLy "quiet court" design tokens', () => {
   })
 
   it('describes the site the same way in the page head and the app manifest', () => {
-    const description = 'Find a pickleball court in the Philippines, book 1 to 3 hours, and pay the club by GCash.'
+    const description = 'Find a pickleball court in the Philippines, book by the hour, and pay the club by GCash.'
     expect(html).toContain('<title>bRineLy — Book a pickleball court</title>')
     expect(html).toContain('<meta name="theme-color" content="#fafaf7" />')
     expect(html).toContain(description)

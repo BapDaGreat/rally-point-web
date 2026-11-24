@@ -929,11 +929,11 @@ export function MemberBook() {
     return map
   }, [mine, courtId, dateYmd])
 
-  /** Free hours in a row from `h`, counted up to the chosen length. */
-  const freeHoursFrom = (h: number) => {
+  /** Free hours in a row from `h`, counted up to `cap` (the picked length by default). */
+  const freeHoursFrom = (h: number, cap = hours) => {
     let run = 0
     while (
-      run < hours
+      run < cap
       && h + run < CLUB_CLOSE_HOUR
       && !myHoursOnCourt.has(h + run)
       && selectedCourt?.slots.find((s) => s.startHour === h + run)?.available
@@ -944,7 +944,43 @@ export function MemberBook() {
   const selectionOk = startHour != null && freeHoursFrom(startHour) === hours
   const selectionLabel = selectionOk
     ? `${hourLabel(startHour)} – ${hourLabel(startHour + hours)} · ${hoursWord(hours)}`
-    : 'Tap a start time'
+    : 'Tap the hours you want'
+
+  /**
+   * The player builds a booking by tapping hours, as on other court apps: the hours picked are the length.
+   * There is no maximum. A booking is one court and whole hours in a row (what the hold accepts), so:
+   * tapping the free hour just before or after the pick adds it; tapping an end hour of the pick removes it;
+   * tapping any other free hour starts a new pick there.
+   */
+  const pickSlot = (h: number) => {
+    setNotice(null)
+    if (startHour == null || !selectionOk) {
+      setStartHour(h)
+      setHours(1)
+      return
+    }
+    const end = startHour + hours - 1
+    if (h >= startHour && h <= end) {
+      if (hours === 1) {
+        setStartHour(null)
+      } else if (h === startHour) {
+        setStartHour(startHour + 1)
+        setHours(hours - 1)
+      } else {
+        // The last hour, or the middle of three: keep the hours before it.
+        setHours(h - startHour)
+      }
+      return
+    }
+    const adjacent = h === startHour - 1 || h === end + 1
+    if (adjacent) {
+      if (h < startHour) setStartHour(h)
+      setHours(hours + 1)
+      return
+    }
+    setStartHour(h)
+    setHours(1)
+  }
   // The app players pay with: the club's one method, or GCash when it has several.
   const payApp = payMethods?.length === 1 ? payMethods[0].label : 'GCash'
   const hasQr = payMethods?.some((m) => m.qr_url) ?? false
@@ -1201,7 +1237,7 @@ export function MemberBook() {
   const navHeight = useBottomNavHeight(inAppShell && !wideScreen)
   const showContinue = !staffCannotBook && !payMethodsFailed && !(payMethods && payMethods.length === 0)
   const continueDisabled = !selectionOk || busy || resumingId != null || continueBlocked
-  const pickHint = !selectionOk && !busy ? 'Pick a start time to continue' : null
+  const pickHint = !selectionOk && !busy ? 'Pick your hours to continue' : null
   const errorMessage = error && !(staffCannotBook && error === NOT_A_PLAYER)
     ? <p role="alert" className="text-sm text-red-700 font-semibold">{error}</p>
     : null
@@ -1550,27 +1586,6 @@ export function MemberBook() {
                   ) : null}
                 </section>
 
-                <section className="card p-3">
-                  <p className="label px-1 mb-2">Duration</p>
-                  <div className="flex gap-2">
-                    {[1, 2, 3].map((h) => (
-                      <button
-                        key={h}
-                        type="button"
-                        aria-pressed={hours === h}
-                        onClick={() => {
-                          setHours(h)
-                          setNotice(null)
-                          setStartHour(null)
-                        }}
-                        className="chip-option flex-1"
-                      >
-                        {h}h
-                      </button>
-                    ))}
-                  </div>
-                </section>
-
                 {/* The booking summary, which normally shows errors, is hidden in these two states. */}
                 {loading || allOutOfService ? errorMessage : null}
 
@@ -1632,6 +1647,9 @@ export function MemberBook() {
 
                     <section className="enter-fade card p-3">
                       <p className="label px-1 mb-1">Available times · {dateLabel}</p>
+                      <p className="px-1 text-body text-muted">
+                        Tap each hour you want, in a row. Tap a picked hour at either end to remove it.
+                      </p>
                       {everyHourPassed ? (
                         <p className="mt-2 px-1 text-body text-muted">
                           {`Every hour on ${dateLabel} has passed. Try another day.`}
@@ -1664,8 +1682,9 @@ export function MemberBook() {
                                 const selected = selectionOk && s.startHour >= startHour && s.startHour < startHour + hours
                                 const look = slotLook(s, {
                                   selected,
-                                  freeHours: freeHoursFrom(s.startHour),
-                                  wanted: hours,
+                                  // Any free hour can be tapped: the length comes from how many are picked.
+                                  freeHours: freeHoursFrom(s.startHour, 1),
+                                  wanted: 1,
                                   own: myHoursOnCourt.get(s.startHour) ?? null,
                                 })
                                 const face = (
@@ -1686,10 +1705,8 @@ export function MemberBook() {
                                   <button
                                     key={s.startHour}
                                     type="button"
-                                    onClick={() => {
-                                      setStartHour(s.startHour)
-                                      setNotice(null)
-                                    }}
+                                    aria-pressed={selected}
+                                    onClick={() => pickSlot(s.startHour)}
                                     className={cellClass}
                                   >
                                     {face}
@@ -1809,7 +1826,7 @@ export function MemberBook() {
                           </p>
                         </>
                       ) : (
-                        <p id="book-pick-hint" className="text-body font-semibold text-ink">Pick a start time to continue</p>
+                        <p id="book-pick-hint" className="text-body font-semibold text-ink">Pick your hours to continue</p>
                       )}
                     </div>
                     <button

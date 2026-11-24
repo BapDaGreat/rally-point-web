@@ -58,7 +58,7 @@ function Hero() {
       <div className="min-w-0 space-y-4">
         <h1 className="text-display font-semibold text-ink lg:text-display-lg">{TITLE}</h1>
         <p className="max-w-xl text-subtitle text-muted">
-          See free hours at clubs across the Philippines, book 1 to 3 hours, and pay the club by GCash.
+          See free hours at clubs across the Philippines, book by the hour, and pay the club by GCash.
         </p>
         <form role="search" onSubmit={search} className="max-w-xl space-y-2">
           <label className="label" htmlFor={searchId}>Search</label>

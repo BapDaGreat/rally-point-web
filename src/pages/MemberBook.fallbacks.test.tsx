@@ -206,16 +206,71 @@ describe('booking steps on the booking screen', () => {
     const summary = within(await screen.findByRole('complementary', { name: 'Your booking' }))
     expect(summary.getByText('Rally Point Gensan')).toBeInTheDocument()
     expect(summary.getByText('Court B')).toBeInTheDocument()
-    expect(summary.getByText('Tap a start time')).toBeInTheDocument()
+    expect(summary.getByText('Tap the hours you want')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /^12:00 PM/ }))
     expect(summary.getByText('12:00 PM – 1:00 PM · 1 hour')).toBeInTheDocument()
     expect(summary.getByText('Php 500.00')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /^Continue/ })).toHaveLength(1)
     expect(summary.getByRole('button', { name: /^Continue/ })).toBeEnabled()
-    // Dates and lengths are choice chips that say which one is picked.
+    // Dates, courts and picked hours are toggles that say which one is picked.
     expect(screen.getByRole('button', { name: 'Today' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: '1h' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /^12:00 PM/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: /Court B/ })).toHaveAttribute('aria-pressed', 'true')
+    // There is no separate length choice: the hours tapped are the length.
+    expect(screen.queryByRole('button', { name: '1h' })).not.toBeInTheDocument()
+  })
+})
+
+describe('picking hours by tapping slots', () => {
+  const pressed = (name: RegExp) => screen.getByRole('button', { name }).getAttribute('aria-pressed')
+
+  it('adds the next or previous hour with no maximum, and trims from either end', async () => {
+    authState.user = memberUser
+    authState.activeClub = gensanClub
+    const user = userEvent.setup()
+    renderOwnClub()
+    const summary = within(await screen.findByRole('complementary', { name: 'Your booking' }))
+
+    await user.click(await screen.findByRole('button', { name: /^12:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^1:00 PM/ }))
+    expect(summary.getByText('12:00 PM – 2:00 PM · 2 hours')).toBeInTheDocument()
+    expect(summary.getByText('Php 1,000.00')).toBeInTheDocument()
+
+    // The hour before the pick joins it too.
+    await user.click(screen.getByRole('button', { name: /^11:00 AM/ }))
+    expect(summary.getByText('11:00 AM – 2:00 PM · 3 hours')).toBeInTheDocument()
+
+    // There is no maximum: a fourth and fifth hour join too.
+    await user.click(screen.getByRole('button', { name: /^2:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^3:00 PM/ }))
+    expect(pressed(/^3:00 PM/)).toBe('true')
+    expect(summary.getByText('11:00 AM – 4:00 PM · 5 hours')).toBeInTheDocument()
+    expect(summary.getByText('Php 2,500.00')).toBeInTheDocument()
+
+    // Tapping an end hour removes it.
+    await user.click(screen.getByRole('button', { name: /^3:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^2:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^11:00 AM/ }))
+    expect(summary.getByText('12:00 PM – 2:00 PM · 2 hours')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^1:00 PM/ }))
+    expect(summary.getByText('12:00 PM – 1:00 PM · 1 hour')).toBeInTheDocument()
+
+    // An hour away from the pick starts a new one; tapping the only picked hour clears it.
+    await user.click(screen.getByRole('button', { name: /^5:00 PM/ }))
+    expect(pressed(/^12:00 PM/)).toBe('false')
+    expect(summary.getByText('5:00 PM – 6:00 PM · 1 hour')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^5:00 PM/ }))
+    expect(summary.getByText('Tap the hours you want')).toBeInTheDocument()
+  })
+
+  it('holds the picked hours as one booking', async () => {
+    authState.user = memberUser
+    const user = userEvent.setup()
+    renderOwnClub()
+    await user.click(await screen.findByRole('button', { name: /^3:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^4:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^Continue/ }))
+    expect(apiMock.createBooking).toHaveBeenCalledWith(expect.objectContaining({ startHour: 15, hours: 2 }))
   })
 })
 
@@ -425,13 +480,13 @@ describe('picking a time', () => {
       renderOwnClub()
       const bar = await screen.findByRole('region', { name: 'Your pick' })
       expect(bar).toHaveStyle({ bottom: '72px' })
-      expect(within(bar).getByText('Pick a start time to continue')).toBeInTheDocument()
+      expect(within(bar).getByText('Pick your hours to continue')).toBeInTheDocument()
       await waitFor(() => expect(within(bar).getByRole('button', { name: 'Continue' })).toBeDisabled())
       expect(within(bar).getByRole('button', { name: 'Continue' })).toHaveAttribute('aria-describedby', 'book-pick-hint')
 
       fireEvent.click(screen.getByRole('button', { name: '12:00 PM' }))
       expect(within(bar).getByText('12:00–1:00 PM · Php 500.00')).toBeInTheDocument()
-      expect(within(bar).queryByText('Pick a start time to continue')).not.toBeInTheDocument()
+      expect(within(bar).queryByText('Pick your hours to continue')).not.toBeInTheDocument()
       // One Continue on the screen, in the bar; the summary card keeps the details.
       expect(screen.getAllByRole('button', { name: /^Continue/ })).toHaveLength(1)
       const summary = within(screen.getByRole('complementary', { name: 'Your booking' }))
@@ -462,12 +517,12 @@ describe('picking a time', () => {
     renderOwnClub()
     const summary = within(await screen.findByRole('complementary', { name: 'Your booking' }))
     await waitFor(() => expect(summary.getByRole('button', { name: /^Continue/ })).toBeDisabled())
-    expect(summary.getByText('Pick a start time to continue')).toBeInTheDocument()
+    expect(summary.getByText('Pick your hours to continue')).toBeInTheDocument()
     expect(summary.getByRole('button', { name: /^Continue/ })).toHaveAttribute('aria-describedby', 'book-pick-hint')
     expect(screen.queryByRole('region', { name: 'Your pick' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '12:00 PM' }))
-    expect(summary.queryByText('Pick a start time to continue')).not.toBeInTheDocument()
+    expect(summary.queryByText('Pick your hours to continue')).not.toBeInTheDocument()
     expect(summary.getByRole('button', { name: /^Continue/ })).toBeEnabled()
   })
 

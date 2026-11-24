@@ -577,7 +577,7 @@ describe('member booking and pass pages', () => {
       expect(screen.queryByText(/did not receive/)).not.toBeInTheDocument()
       expect(screen.getByRole('link', { name: 'Open your notifications' })).toHaveAttribute('href', '/member/notifications')
       expect(screen.getByText(/Available times/)).toBeInTheDocument()
-      expect(await screen.findByText('Tap a start time')).toBeInTheDocument()
+      expect(await screen.findByText('Tap the hours you want')).toBeInTheDocument()
       expect(screen.queryByText('Booking confirmed')).not.toBeInTheDocument()
     } finally {
       vi.useRealTimers()
@@ -726,8 +726,8 @@ describe('member booking and pass pages', () => {
 
       // Tomorrow, 2 hours from 12:00 PM.
       await user.click(screen.getByRole('button', { name: 'Tomorrow' }))
-      await user.click(screen.getByRole('button', { name: '2h' }))
       await user.click(await screen.findByRole('button', { name: /^12:00 PM/ }))
+      await user.click(screen.getByRole('button', { name: /^1:00 PM/ }))
       expect(screen.getByText('12:00 PM – 2:00 PM · 2 hours')).toBeInTheDocument()
       expect(screen.getByText('No refund once booked.')).toBeInTheDocument()
 
@@ -796,9 +796,10 @@ describe('member booking and pass pages', () => {
     expect(screen.queryByRole('button', { name: /^3:00 PM/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^4:00 PM/ })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '2h' }))
-    // 9 AM runs into the player's own 10 AM booking, 2 PM into their held hours, and 9 PM is the last hour.
-    expect(screen.getAllByText('Only 1h free')).toHaveLength(3)
+    // Hours right before the player's own are still free to tap on their own.
+    expect(screen.getByRole('button', { name: /^9:00 AM/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^2:00 PM/ })).toBeInTheDocument()
+    expect(screen.queryByText(/Only \dh free/)).not.toBeInTheDocument()
   })
 
   it('lets a visitor pick a time on a club page and holds the hours only after they sign in, then takes the GCash payment', async () => {
@@ -917,7 +918,7 @@ describe('member booking and pass pages', () => {
       autoCheckout: true,
     }))
     renderClubBooking(`/clubs/${davaoClub.slug}/book`)
-    expect(await screen.findByText('Tap a start time')).toBeInTheDocument()
+    expect(await screen.findByText('Tap the hours you want')).toBeInTheDocument()
     expect(apiMock.createBooking).not.toHaveBeenCalled()
   })
 
@@ -986,13 +987,13 @@ describe('member booking and pass pages', () => {
     expect(screen.queryByRole('button', { name: /^3:00 PM/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^9:00 AM/ })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '2h' }))
-    // 8 AM runs into the past 9 AM, 1 PM into the 2 PM booking, and 9 PM is this venue's last hour.
-    expect(screen.getAllByText('Only 1h free')).toHaveLength(3)
-    expect(screen.queryByRole('button', { name: /^1:00 PM/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Continue/ })).toBeDisabled()
+    // 1 PM is free on its own, but the booked 2 PM is plain text, so the pick cannot run into it.
+    await user.click(screen.getByRole('button', { name: /^1:00 PM/ }))
+    expect(screen.getByText('1:00 PM – 2:00 PM · 1 hour')).toBeInTheDocument()
+    expect(screen.queryByText(/Only \dh free/)).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /^4:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^5:00 PM/ }))
     expect(screen.getByText('4:00 PM – 6:00 PM · 2 hours')).toBeInTheDocument()
     expect(screen.getAllByText('Selected')).toHaveLength(2)
 
@@ -1029,11 +1030,11 @@ describe('member booking and pass pages', () => {
       expect(screen.queryByText('Checkout')).not.toBeInTheDocument()
       expect(apiMock.submitBookingPayment).not.toHaveBeenCalled()
       // The old pick is gone, so "Pick a time again" means it.
-      expect(await screen.findByText('Tap a start time')).toBeInTheDocument()
+      expect(await screen.findByText('Tap the hours you want')).toBeInTheDocument()
       expect(screen.queryByText('Selected')).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: /Continue/ })).toBeDisabled()
       // The notice goes once the player starts choosing again.
-      await user.click(screen.getByRole('button', { name: '2h' }))
+      await user.click(screen.getByRole('button', { name: /^12:00 PM/ }))
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     } finally {
       vi.useRealTimers()
