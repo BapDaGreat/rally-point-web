@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom'
 import { LoadingShapes } from './Skeleton'
 import { ClubImage } from './ClubImage'
-import { clubGrid, plural, rateLine } from '../lib/clubFormat'
+import { clubGrid, plural, rateLines } from '../lib/clubFormat'
 import type { PublicClubListing } from '../types'
 
 /** A club in a list: its picture, where it is, how big it is and what an hour costs. The whole card opens the club. */
 export function ClubCard({ club, lazy = true }: { club: PublicClubListing; lazy?: boolean }) {
+  const rates = rateLines(club.min_rate, club.min_member_rate)
   return (
     <Link to={`/clubs/${club.slug}`} className="control-feedback club-card card flex h-full flex-col overflow-hidden">
       <ClubImage
@@ -24,7 +25,8 @@ export function ClubCard({ club, lazy = true }: { club: PublicClubListing; lazy?
             ? 'Courts coming soon'
             : `${plural(club.venue_count, 'location')} · ${plural(club.court_count, 'court')}`}
         </span>
-        <span className="mt-1 text-body font-semibold text-brand-700">{rateLine(club.min_rate, club.min_member_rate)}</span>
+        <span className="mt-1 text-body font-semibold text-brand-700">{rates.regular}</span>
+        {rates.member ? <span className="text-body font-semibold text-brand-700">{rates.member}</span> : null}
       </span>
     </Link>
   )
