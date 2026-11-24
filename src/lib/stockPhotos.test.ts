@@ -38,9 +38,12 @@ describe('stock photos', () => {
     }
   })
 
-  it('has unique ids and sensible sizes', () => {
+  it('has unique ids, unique titles and sensible sizes', () => {
     const ids = STOCK_PHOTOS.map((p) => p.id)
     expect(new Set(ids).size).toBe(ids.length)
+    const titles = STOCK_PHOTOS.map((p) => p.title.trim())
+    expect(titles.every((t) => t !== '')).toBe(true)
+    expect(new Set(titles).size).toBe(titles.length)
     for (const photo of STOCK_PHOTOS) {
       expect(photo.width).toBe(1600)
       expect(photo.height).toBeGreaterThan(0)
