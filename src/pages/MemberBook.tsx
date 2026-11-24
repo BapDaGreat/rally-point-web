@@ -5,7 +5,6 @@ import {
   Check,
   CheckCircle2,
   ChevronLeft,
-  Circle,
   Clock,
   Hourglass,
   Loader2,
@@ -16,10 +15,13 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { AppHeader, AppShell, SignOutButton } from '../components/Shell'
+import { BookingSteps, type BookingStep } from '../components/BookingSteps'
+import { Photo } from '../components/Photo'
 import { PublicFrame } from '../components/PublicFrame'
 import { LoadingShapes, SkeletonBlock, SkeletonLine } from '../components/Skeleton'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
+import { homeFor } from '../lib/roleHome'
 import LoginPage from './LoginPage'
 import type {
   Booking,
@@ -179,24 +181,24 @@ type SlotLook = { word: string; Icon: LucideIcon | null; tone: string; pickable:
 /** An hour that is the player's own: paid and booked, or held while they pay or the club checks. */
 type OwnHour = 'booked' | 'held'
 
-const MUTED_TONE = 'border-slate-200 bg-slate-100 text-slate-600'
+const MUTED_TONE = 'border-line bg-canvas text-muted'
 
 /**
  * What one hour of the time grid says. Every hour of a paid or held booking reads
  * "Booked", so a 2-hour booking shows as two booked hours. The player's own hours say so.
  */
 function slotLook(slot: TimeSlot, opts: { selected: boolean; freeHours: number; wanted: number; own: OwnHour | null }): SlotLook {
-  if (opts.own === 'booked') return { word: 'Booked · yours', Icon: CheckCircle2, tone: 'border-brand-300 bg-brand-50 text-brand-900', pickable: false }
+  if (opts.own === 'booked') return { word: 'Booked · yours', Icon: CheckCircle2, tone: 'border-brand-700 bg-brand-100 text-brand-900', pickable: false }
   if (opts.own === 'held') return { word: 'Held for you', Icon: Hourglass, tone: 'border-amber-300 bg-amber-50 text-amber-950', pickable: false }
-  if (slot.blocked === 'booked') return { word: 'Booked', Icon: Lock, tone: 'border-rose-300 bg-rose-50 text-rose-800', pickable: false }
+  if (slot.blocked === 'booked') return { word: 'Booked', Icon: Lock, tone: MUTED_TONE, pickable: false }
   if (slot.blocked === 'passed') return { word: 'Passed', Icon: Clock, tone: MUTED_TONE, pickable: false }
   if (slot.blocked === 'out_of_service') return { word: 'Out of service', Icon: Wrench, tone: MUTED_TONE, pickable: false }
   if (!slot.available) return { word: 'Unavailable', Icon: Ban, tone: MUTED_TONE, pickable: false }
   const pickable = opts.freeHours >= opts.wanted
   if (opts.selected) return { word: 'Selected', Icon: Check, tone: 'border-brand-700 bg-brand-700 text-white', pickable }
   // Free, but the next hours are taken or the day ends before the chosen length.
-  if (!pickable) return { word: `Only ${opts.freeHours}h free`, Icon: null, tone: 'border-slate-200 bg-white text-slate-700', pickable }
-  return { word: 'Available', Icon: Circle, tone: 'border-emerald-300 bg-emerald-50 text-emerald-900', pickable }
+  if (!pickable) return { word: `Only ${opts.freeHours}h free`, Icon: null, tone: 'border-line bg-white text-muted', pickable }
+  return { word: 'Available', Icon: null, tone: 'border-field bg-white text-ink', pickable }
 }
 
 /** How long the player has left to pay before the held hours are released. */
@@ -265,17 +267,32 @@ function ConfirmCountdown({ endsAt }: { endsAt: number }) {
   )
 }
 
-/** One way to pay the club: its QR code, account name and number. */
-function PayMethodCard({ method }: { method: CheckoutPaymentMethod }) {
+/**
+ * One way to pay the club: its QR code, account name and number. A QR picture that does not
+ * load says what to do instead: send the amount to the number, or ask the desk for it.
+ */
+function PayMethodCard({ method, amount }: { method: CheckoutPaymentMethod; amount: number }) {
+  const [qrFailed, setQrFailed] = useState<string | null>(null)
+  const qrBroken = Boolean(method.qr_url) && qrFailed === method.qr_url
   return (
     <div className="space-y-3 rounded-xl border-2 border-slate-200 p-3">
       <p className="text-title font-extrabold text-slate-900">{method.label}</p>
       {method.qr_url ? (
-        <img
+        <Photo
           src={method.qr_url}
           alt={`${method.label} QR code to pay ${method.account_name ?? 'the club'}`}
-          className="mx-auto aspect-square w-full max-w-72 rounded-lg border border-slate-200 bg-white object-contain"
+          fit="contain"
+          priority
+          onError={() => setQrFailed(method.qr_url ?? null)}
+          className="mx-auto aspect-square w-full max-w-72 rounded-lg border border-line bg-white"
         />
+      ) : null}
+      {qrBroken ? (
+        <p className="notice notice-warn text-body font-semibold">
+          {method.account_number
+            ? `The QR code did not load. Send ${peso(amount)} to the number below.`
+            : `The QR code did not load. Ask the desk for the club's ${method.label} number.`}
+        </p>
       ) : null}
       {method.account_name || method.account_number ? (
         <dl className="space-y-2">
@@ -411,6 +428,10 @@ export function MemberBook() {
   const [autoCheckoutPending, setAutoCheckoutPending] = useState(() => Boolean(savedIntent?.autoCheckout))
   // The club this screen joined the player to (the app also switches to it).
   const [joinedClubSlug, setJoinedClubSlug] = useState<string | null>(null)
+  // The club link names no club taking bookings, so there is nothing to choose from.
+  const [clubMissing, setClubMissing] = useState(false)
+  // The club's phone, read from its public profile once it turns down a payment.
+  const [clubPhone, setClubPhone] = useState<string | null>(null)
   const availCacheRef = useRef<Map<string, CourtDayAvailability[]>>(new Map())
   const [bootstrappedKey, setBootstrappedKey] = useState<string | null>(null)
   // Bookings whose confirmation email was already asked for, so each is sent once.
@@ -418,6 +439,9 @@ export function MemberBook() {
 
   // Members and admins book as players; staff and platform superadmins cannot book online.
   const isPlayerUser = Boolean(user && (user.role === 'member' || user.role === 'admin'))
+  // Staff are told so as soon as the screen opens. A platform superadmin is told on Continue.
+  const staffCannotBook = Boolean(user && !isPlayerUser && user.role !== 'superadmin')
+  const clubPageSlug = routeClubSlug ?? activeClub?.slug ?? null
   const clubReady = !routeClubSlug || activeClub?.slug === routeClubSlug || joinedClubSlug === routeClubSlug
   const publicBrowsingMode = Boolean(routeClubSlug && (!isPlayerUser || !clubReady))
   const checkoutReady = isPlayerUser && clubReady
@@ -480,6 +504,7 @@ export function MemberBook() {
     let active = true
     setLoading(true)
     setError(null)
+    setClubMissing(false)
     availCacheRef.current.clear()
     void (async () => {
       try {
@@ -491,7 +516,7 @@ export function MemberBook() {
             const detail = typeof api.publicClubDetail === 'function' ? await api.publicClubDetail(routeClubSlug) : null
             if (!active) return
             if (!detail) {
-              setError('This club is not taking bookings.')
+              setClubMissing(true)
               setLoading(false)
               return
             }
@@ -731,6 +756,12 @@ export function MemberBook() {
           setPending(null)
           setConfirmEnds(null)
           setStartHour(null)
+          // The player may want to ring the club; its phone is on its public profile, if it lists one.
+          if (clubPageSlug && typeof api.publicClubProfile === 'function') {
+            void api.publicClubProfile(clubPageSlug)
+              .then((profile) => setClubPhone(profile?.phone?.trim() || null))
+              .catch(() => undefined)
+          }
           // The club's reason is in the player's notifications; the hours may have gone for another reason too.
           setNotice({
             text:
@@ -985,7 +1016,28 @@ export function MemberBook() {
   }
 
   const pageTitle = clubName ? `Book at ${clubName}` : 'Book a court'
-  const pageSubtitle = '1. Venue · 2. Date · 3. Court · 4. Pay'
+  const currentStep: BookingStep = step === 'done'
+    ? 'confirmed'
+    : step === 'pick'
+      ? authDialogOpen ? 'login' : 'choose'
+      : 'pay'
+  const homeLink = homeFor(user?.role ?? 'member')
+  const summaryClubName = clubName ?? activeClub?.name ?? null
+  const dateLabel = fmtDate(`${dateYmd}T12:00:00+08:00`)
+  // The times are in for this club and day, so an empty or closed list means just that.
+  const availabilityReady = !loading && bootstrappedKey === expectedBootstrapKey
+  const bookableRows = avail.filter((row) => row.court.status !== 'maintenance')
+  const noCourts = availabilityReady && !error && avail.length === 0
+  const allOutOfService = availabilityReady && avail.length > 0 && bookableRows.length === 0
+  // Every court that is open is full (or past) for the chosen day.
+  const dayFull = bookableRows.length > 0 && bookableRows.every((row) =>
+    row.slots.every((slot) => !slot.available || (row.court.id === courtId && myHoursOnCourt.has(slot.startHour))),
+  )
+  const clubPageLink = clubPageSlug ? (
+    <Link to={`/clubs/${clubPageSlug}`} className="text-link inline-flex min-h-12 items-center">
+      Go to the club page
+    </Link>
+  ) : null
 
   const content: ReactNode = (
     <>
@@ -1002,7 +1054,9 @@ export function MemberBook() {
         />
       ) : null}
 
-      {routeClubSlug && step === 'pick' ? (
+      {clubMissing ? null : <BookingSteps current={currentStep} visitor={!user} />}
+
+      {routeClubSlug && step === 'pick' && !clubMissing ? (
         <Link
           to={`/clubs/${routeClubSlug}`}
           className="control-feedback inline-flex min-h-12 items-center gap-1 text-body font-semibold text-brand-800"
@@ -1060,6 +1114,9 @@ export function MemberBook() {
           >
             Book another
           </button>
+          <Link to={homeLink} className="text-link inline-flex min-h-12 items-center">
+            Go to my home
+          </Link>
         </section>
       ) : null}
 
@@ -1099,7 +1156,7 @@ export function MemberBook() {
               </li>
               <li>Type the reference number {payApp} shows after you pay, then tap “I’ve paid”.</li>
             </ol>
-            {(payMethods ?? []).map((m) => <PayMethodCard key={m.id} method={m} />)}
+            {(payMethods ?? []).map((m) => <PayMethodCard key={m.id} method={m} amount={pending.amount} />)}
           </div>
 
           <p className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
@@ -1176,23 +1233,53 @@ export function MemberBook() {
           <p className="text-sm text-slate-600">
             You can leave this screen. Your booking shows under Your bookings as “Waiting for the club to confirm”.
           </p>
+          <div className="flex flex-wrap gap-x-6">
+            <Link to={homeLink} className="text-link inline-flex min-h-12 items-center">
+              Go to my home
+            </Link>
+            <Link to="/member/notifications" className="text-link inline-flex min-h-12 items-center">
+              Open notifications
+            </Link>
+          </div>
         </section>
       ) : null}
 
-      {step === 'pick' ? (
+      {step === 'pick' && clubMissing ? (
+        <section className="card p-5 space-y-2">
+          <h2 className="text-title font-semibold text-ink">This club is not taking bookings.</h2>
+          <Link to="/clubs" className="text-link inline-flex min-h-12 items-center">
+            See all clubs
+          </Link>
+        </section>
+      ) : null}
+
+      {step === 'pick' && !clubMissing ? (
         <>
           {notice ? (
-            <section role="alert" className="card border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-950">
+            <section role="alert" className="notice notice-warn text-sm font-semibold text-amber-950">
               <p>{notice.text}</p>
               {notice.notifications ? (
-                <Link
-                  to="/member/notifications"
-                  className="mt-1 inline-flex min-h-12 items-center font-extrabold text-amber-950 underline underline-offset-2"
-                >
-                  Open your notifications
-                </Link>
+                <div className="mt-1 flex flex-wrap gap-x-6">
+                  <Link
+                    to="/member/notifications"
+                    className="inline-flex min-h-12 items-center font-extrabold text-amber-950 underline underline-offset-2"
+                  >
+                    Open your notifications
+                  </Link>
+                  {clubPhone ? (
+                    <a
+                      href={`tel:${clubPhone.replace(/[^\d+]/g, '')}`}
+                      className="inline-flex min-h-12 items-center font-extrabold text-amber-950 underline underline-offset-2"
+                    >
+                      Call the club: {clubPhone}
+                    </a>
+                  ) : null}
+                </div>
               ) : null}
             </section>
+          ) : null}
+          {staffCannotBook ? (
+            <p className="notice notice-warn text-body font-semibold">{NOT_A_PLAYER}</p>
           ) : null}
           <div className="px-1">
             <p className="text-body text-slate-600">
@@ -1202,196 +1289,254 @@ export function MemberBook() {
               Book at another club
             </Link>
           </div>
-          {venues.length > 1 ? (
-            <section className="card p-3">
-              <label className="label px-1" htmlFor="member-book-venue">Venue</label>
-              <select
-                id="member-book-venue"
-                className="input"
-                value={venueId}
-                onChange={(event) => {
-                  setVenueId(event.target.value)
-                  setCourtId(null)
-                  setStartHour(null)
-                }}
-              >
-                {venues.map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}
-              </select>
+
+          {noCourts ? (
+            <section className="enter-fade card p-5 space-y-2">
+              <h2 className="text-title font-semibold text-ink">This club has not listed courts yet.</h2>
+              <div className="flex flex-wrap gap-x-6">
+                {clubPageLink}
+                <Link to="/clubs" className="text-link inline-flex min-h-12 items-center">
+                  See all clubs
+                </Link>
+              </div>
             </section>
-          ) : null}
-
-          <section className="card p-3">
-            <p className="label px-1 mb-2">Date</p>
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {days.map((d) => (
-                <button
-                  key={d.ymd}
-                  type="button"
-                  onClick={() => {
-                    setDateYmd(d.ymd)
-                    setNotice(null)
-                    setStartHour(null)
-                  }}
-                  className={`shrink-0 rounded-xl px-3 py-2 min-h-12 text-sm font-bold border ${
-                    dateYmd === d.ymd
-                      ? 'bg-brand-700 text-white border-brand-700'
-                      : 'bg-white text-slate-700 border-slate-200'
-                  }`}
-                >
-                  {d.label}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="card p-3">
-            <p className="label px-1 mb-2">Duration</p>
-            <div className="flex gap-2">
-              {[1, 2, 3].map((h) => (
-                <button
-                  key={h}
-                  type="button"
-                  onClick={() => {
-                    setHours(h)
-                    setNotice(null)
-                    setStartHour(null)
-                  }}
-                  className={`flex-1 rounded-xl min-h-12 font-bold border ${
-                    hours === h
-                      ? 'bg-brand-700 text-white border-brand-700'
-                      : 'bg-white border-slate-200'
-                  }`}
-                >
-                  {h}h
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {loading ? (
-            <AvailabilityLoading />
           ) : (
-            <>
-              <section className="enter-fade card p-3 space-y-3">
-                <p className="label px-1">Court</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {avail.map(({ court }) => {
-                    const outOfService = court.status === 'maintenance'
-                    return (
+            <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6 lg:space-y-0">
+              <div className="min-w-0 space-y-4">
+                {venues.length > 1 ? (
+                  <section className="card p-3">
+                    <label className="label px-1" htmlFor="member-book-venue">Venue</label>
+                    <select
+                      id="member-book-venue"
+                      className="input"
+                      value={venueId}
+                      onChange={(event) => {
+                        setVenueId(event.target.value)
+                        setCourtId(null)
+                        setStartHour(null)
+                      }}
+                    >
+                      {venues.map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}
+                    </select>
+                  </section>
+                ) : null}
+
+                <section className="card p-3">
+                  <p className="label px-1 mb-2">Date</p>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {days.map((d) => (
                       <button
-                        key={court.id}
+                        key={d.ymd}
                         type="button"
-                        disabled={outOfService}
+                        aria-pressed={dateYmd === d.ymd}
                         onClick={() => {
-                          setCourtId(court.id)
+                          setDateYmd(d.ymd)
                           setNotice(null)
                           setStartHour(null)
                         }}
-                        className={`rounded-xl border px-3 py-3 text-left min-h-14 ${
-                          outOfService
-                            ? 'border-slate-200 bg-slate-50 text-slate-500'
-                            : courtId === court.id
-                              ? 'border-brand-600 bg-brand-50'
-                              : 'border-slate-200 bg-white'
-                        }`}
+                        className="chip-option shrink-0"
                       >
-                        <p className="font-extrabold">{court.name}</p>
-                        <p className="text-xs text-slate-500">
-                          {outOfService ? 'Out of service' : `${peso(courtRateFor(court, member))}/hr`}
-                        </p>
-                        {!outOfService && !isMember && court.member_rate != null && court.member_rate < court.hourly_rate ? (
-                          <p className="text-xs text-brand-800">Members {peso(court.member_rate)}/hr</p>
-                        ) : null}
+                        {d.label}
                       </button>
-                    )
-                  })}
-                </div>
-              </section>
+                    ))}
+                  </div>
+                </section>
 
-              <section className="enter-fade card p-3">
-                <div className="flex items-center justify-between px-1 mb-1">
-                  <p className="label mb-0">Available times · {fmtDate(dateYmd + 'T12:00:00+08:00')}</p>
-                  <p className="text-xs font-bold text-brand-700">{peso(total)}</p>
-                </div>
-                <p className="px-1 text-sm font-semibold text-slate-700" aria-live="polite">{selectionLabel}</p>
-                {selectionOk ? (
-                  <p className="px-1 text-sm font-semibold text-amber-900">No refund once booked.</p>
-                ) : null}
-                <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 gap-2">
-                  {(selectedCourt?.slots ?? []).map((s) => {
-                    const selected = selectionOk && s.startHour >= startHour && s.startHour < startHour + hours
-                    const look = slotLook(s, {
-                      selected,
-                      freeHours: freeHoursFrom(s.startHour),
-                      wanted: hours,
-                      own: myHoursOnCourt.get(s.startHour) ?? null,
-                    })
-                    const face = (
-                      <>
-                        <span className="text-sm font-bold">{hourLabel(s.startHour)}</span>
-                        <span className="inline-flex items-center gap-1 text-sm font-semibold">
-                          {look.Icon ? <look.Icon size={12} aria-hidden fill={look.Icon === Circle ? 'currentColor' : 'none'} /> : null}
-                          {look.word}
-                        </span>
-                      </>
-                    )
-                    const cellClass = `flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-1.5 text-center ${look.tone}`
-                    // Hours that cannot start a booking are plain text, not faded buttons,
-                    // so "Booked" stays easy to read.
-                    return look.pickable ? (
+                <section className="card p-3">
+                  <p className="label px-1 mb-2">Duration</p>
+                  <div className="flex gap-2">
+                    {[1, 2, 3].map((h) => (
                       <button
-                        key={s.startHour}
+                        key={h}
                         type="button"
+                        aria-pressed={hours === h}
                         onClick={() => {
-                          setStartHour(s.startHour)
+                          setHours(h)
                           setNotice(null)
+                          setStartHour(null)
                         }}
-                        className={cellClass}
+                        className="chip-option flex-1"
                       >
-                        {face}
+                        {h}h
                       </button>
-                    ) : (
-                      <div key={s.startHour} className={cellClass}>
-                        {face}
+                    ))}
+                  </div>
+                </section>
+
+                {loading ? (
+                  <AvailabilityLoading />
+                ) : allOutOfService ? (
+                  <section className="enter-fade card p-5 space-y-2">
+                    <h2 className="text-title font-semibold text-ink">No courts are open for booking right now.</h2>
+                    <p className="text-body text-muted">Every court here is out of service. Check back later or try another club.</p>
+                    <div className="flex flex-wrap gap-x-6">
+                      {clubPageLink}
+                      <Link to="/clubs" className="text-link inline-flex min-h-12 items-center">
+                        See all clubs
+                      </Link>
+                    </div>
+                  </section>
+                ) : (
+                  <>
+                    <section className="enter-fade card p-3 space-y-3">
+                      <p className="label px-1">Court</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {avail.map(({ court }) => {
+                          const outOfService = court.status === 'maintenance'
+                          const chosen = !outOfService && courtId === court.id
+                          return (
+                            <button
+                              key={court.id}
+                              type="button"
+                              disabled={outOfService}
+                              aria-pressed={outOfService ? undefined : chosen}
+                              onClick={() => {
+                                setCourtId(court.id)
+                                setNotice(null)
+                                setStartHour(null)
+                              }}
+                              className={`card relative min-h-14 px-3 py-3 text-left ${
+                                outOfService
+                                  ? 'bg-canvas! text-muted'
+                                  : chosen
+                                    ? 'border-brand-700! ring-1 ring-brand-700'
+                                    : 'border-field!'
+                              }`}
+                            >
+                              {chosen ? (
+                                <Check size={18} className="absolute right-2 top-2 text-brand-700" aria-hidden />
+                              ) : null}
+                              <p className="pr-6 font-semibold text-ink">{court.name}</p>
+                              <p className="text-xs text-muted">
+                                {outOfService ? 'Out of service' : `${peso(courtRateFor(court, member))}/hr`}
+                              </p>
+                              {!outOfService && !isMember && court.member_rate != null && court.member_rate < court.hourly_rate ? (
+                                <p className="text-xs text-brand-800">Members {peso(court.member_rate)}/hr</p>
+                              ) : null}
+                            </button>
+                          )
+                        })}
                       </div>
-                    )
-                  })}
-                </div>
-              </section>
+                    </section>
 
-              {error ? <p role="alert" className="text-sm text-red-600 font-medium">{error}</p> : null}
+                    <section className="enter-fade card p-3">
+                      <p className="label px-1 mb-1">Available times · {dateLabel}</p>
+                      {dayFull ? (
+                        <p className="notice notice-warn mt-2 text-body font-semibold">
+                          No free hours on {dateLabel}. Try another day.
+                        </p>
+                      ) : null}
+                      <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {(selectedCourt?.slots ?? []).map((s) => {
+                          const selected = selectionOk && s.startHour >= startHour && s.startHour < startHour + hours
+                          const look = slotLook(s, {
+                            selected,
+                            freeHours: freeHoursFrom(s.startHour),
+                            wanted: hours,
+                            own: myHoursOnCourt.get(s.startHour) ?? null,
+                          })
+                          const face = (
+                            <>
+                              <span className="text-sm font-semibold">{hourLabel(s.startHour)}</span>
+                              <span className="inline-flex items-center gap-1 text-sm">
+                                {look.Icon ? <look.Icon size={12} aria-hidden /> : null}
+                                {look.word}
+                              </span>
+                            </>
+                          )
+                          const cellClass = `flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-1.5 text-center ${look.tone}`
+                          // Hours that cannot start a booking are plain text, not faded buttons,
+                          // so "Booked" stays easy to read.
+                          return look.pickable ? (
+                            <button
+                              key={s.startHour}
+                              type="button"
+                              onClick={() => {
+                                setStartHour(s.startHour)
+                                setNotice(null)
+                              }}
+                              className={cellClass}
+                            >
+                              {face}
+                            </button>
+                          ) : (
+                            <div key={s.startHour} className={cellClass}>
+                              {face}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  </>
+                )}
+              </div>
 
-              {payMethodsFailed ? (
-                <section role="alert" className="card border-red-200 bg-red-50 p-4 text-red-900">
-                  <p className="font-extrabold">We could not load how to pay this club.</p>
-                  <p className="mt-1 text-sm">Check your connection, then try again.</p>
-                  <button type="button" className="btn-secondary mt-3 w-full" onClick={() => void loadPayMethods()}>
-                    Try again
-                  </button>
-                </section>
-              ) : payMethods && payMethods.length === 0 ? (
-                <section className="card border-amber-300 bg-amber-50 p-4 text-amber-950">
-                  <p className="font-extrabold">This club hasn&apos;t set up GCash payment yet. Ask the desk to reserve.</p>
-                </section>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="btn-primary w-full"
-                    disabled={!selectionOk || busy || resumingId != null || continueBlocked}
-                    aria-busy={busy}
-                    onClick={() => void goPay()}
-                  >
-                    {busy ? 'Holding slot…' : `Continue · ${peso(total)}`}
-                  </button>
-                  {!user ? (
-                    <p className="px-1 text-sm text-slate-600">
-                      You log in before you pay. The {BOOKING_HOLD_MINUTES} minutes to pay start after that.
-                    </p>
+              {loading || allOutOfService ? null : (
+                <aside aria-labelledby="booking-summary-title" className="enter-fade card p-4 space-y-3 lg:sticky lg:top-28">
+                  <h2 id="booking-summary-title" className="text-title font-semibold text-ink">Your booking</h2>
+                  <dl className="space-y-2 text-body">
+                    {summaryClubName ? (
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-muted">Club</dt>
+                        <dd className="text-right font-semibold text-ink">{summaryClubName}</dd>
+                      </div>
+                    ) : null}
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted">Court</dt>
+                      <dd className="text-right font-semibold text-ink">{selectedCourt?.court.name ?? 'Choose a court'}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted">Date</dt>
+                      <dd className="text-right font-semibold text-ink">{dateLabel}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted">Time</dt>
+                      <dd className="text-right font-semibold text-ink" aria-live="polite">{selectionLabel}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3 border-t border-line pt-2">
+                      <dt className="text-muted">Total</dt>
+                      <dd className="text-right font-semibold tabular-nums text-ink">{peso(total)}</dd>
+                    </div>
+                  </dl>
+                  {selectionOk ? (
+                    <p className="text-sm font-semibold text-amber-900">No refund once booked.</p>
                   ) : null}
-                </>
+
+                  {error && !(staffCannotBook && error === NOT_A_PLAYER) ? (
+                    <p role="alert" className="text-sm text-red-600 font-medium">{error}</p>
+                  ) : null}
+
+                  {staffCannotBook ? null : payMethodsFailed ? (
+                    <section role="alert" className="notice notice-error">
+                      <p className="font-semibold">We could not load how to pay this club.</p>
+                      <p className="mt-1 text-sm">Check your connection, then try again.</p>
+                      <button type="button" className="btn-secondary mt-3 w-full" onClick={() => void loadPayMethods()}>
+                        Try again
+                      </button>
+                    </section>
+                  ) : payMethods && payMethods.length === 0 ? (
+                    <p className="notice notice-warn font-semibold">This club hasn&apos;t set up GCash payment yet. Ask the desk to reserve.</p>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-primary w-full"
+                        disabled={!selectionOk || busy || resumingId != null || continueBlocked}
+                        aria-busy={busy}
+                        onClick={() => void goPay()}
+                      >
+                        {busy ? 'Holding slot…' : `Continue · ${peso(total)}`}
+                      </button>
+                      {!user ? (
+                        <p className="px-1 text-sm text-slate-600">
+                          You log in before you pay. The {BOOKING_HOLD_MINUTES} minutes to pay start after that.
+                        </p>
+                      ) : null}
+                    </>
+                  )}
+                </aside>
               )}
-            </>
+            </div>
           )}
 
           {mine.length > 0 ? (
@@ -1461,7 +1606,7 @@ export function MemberBook() {
 
   if (routeClubSlug && !user) {
     return (
-      <PublicFrame title={pageTitle} subtitle={pageSubtitle}>
+      <PublicFrame title={pageTitle}>
         {content}
       </PublicFrame>
     )
@@ -1469,11 +1614,7 @@ export function MemberBook() {
 
   return (
     <AppShell role={user?.role ?? 'member'}>
-      <AppHeader
-        title={pageTitle}
-        subtitle={pageSubtitle}
-        right={<SignOutButton />}
-      />
+      <AppHeader title={pageTitle} right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-4">
         {content}
       </main>
