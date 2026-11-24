@@ -64,7 +64,8 @@ export function PublicFrame({
             className="control-feedback -ml-1 inline-flex min-h-12 items-center gap-2 rounded-[10px] px-1 text-title font-semibold text-ink"
           >
             <BrinelyLogo variant="mark" className="h-8 w-8 object-contain" title="" />
-            <span>bRineLy</span>
+            {/* The drawn wordmark, not retyped text: the italic lettering is the most recognisable part of the brand. */}
+            <BrinelyLogo variant="wordmark" className="h-6 w-auto object-contain" title="" />
           </Link>
           <nav
             aria-label="Main"

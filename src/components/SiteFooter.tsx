@@ -36,9 +36,9 @@ export function SiteFooter() {
         {/* Three link columns even on a phone, so no group is left alone on a row. */}
         <div className="grid grid-cols-3 gap-x-4 gap-y-8 border-t border-line py-10 md:grid-cols-[1.6fr_1fr_1fr_1fr] md:gap-x-6">
           <div className="col-span-3 md:col-span-1">
-            <p className="flex items-center gap-2 text-title font-semibold text-ink">
+            <p className="flex items-center gap-2">
               <BrinelyLogo variant="mark" className="h-7 w-7 object-contain" title="" />
-              bRineLy
+              <BrinelyLogo variant="wordmark" className="h-6 w-auto object-contain" />
             </p>
             <p className="mt-1 text-subtitle font-semibold text-ink">Stay in the brine. Play more.</p>
             <p className="mt-2 max-w-xs text-subtitle">Court booking for pickleball clubs in the Philippines.</p>
