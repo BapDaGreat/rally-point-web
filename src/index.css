@@ -26,23 +26,33 @@
   --text-status--line-height: 13px;
   --text-small: 10px;
   --text-small--line-height: 13px;
-  --color-brand-50: #f0fdfa;
-  --color-brand-100: #ccfbf1;
-  --color-brand-200: #99f6e4;
-  --color-brand-300: #5eead4;
-  --color-brand-400: #2dd4bf;
-  --color-brand-500: #14b8a6;
-  --color-brand-600: #0d9488;
-  --color-brand-700: #0f766e;
-  --color-brand-800: #115e59;
-  --color-brand-900: #134e4a;
-  --color-ink: #0f172a;
-  --color-muted: #475569;
+  --text-display: 34px;
+  --text-display--line-height: 40px;
+  --text-display-lg: 48px;
+  --text-display-lg--line-height: 56px;
+  /* "Quiet court": the logo's navy and sky on a warm white page. brand-700 is the one accent. */
+  --color-brand-50: #f0f9ff;
+  --color-brand-100: #e0f2fe;
+  --color-brand-200: #bae6fd;
+  --color-brand-300: #7dd3fc;
+  --color-brand-400: #38bdf8;
+  --color-brand-500: #0ea5e9;
+  --color-brand-600: #0284c7;
+  --color-brand-700: #0369a1;
+  --color-brand-800: #075985;
+  --color-brand-900: #0b2a5b;
+  --color-ink: #0b2a5b;
+  --color-muted: #475467;
   --color-surface: #ffffff;
-  --color-canvas: #f8fafc;
-  --color-danger: #dc2626;
-  --color-warn: #d97706;
-  --color-ok: #16a34a;
+  --color-canvas: #fafaf7;
+  /* Hairlines are decoration only; input borders use the darker field colour (3:1 on white). */
+  --color-line: #e7e5e0;
+  --color-field: #8a8782;
+  --color-danger: #b91c1c;
+  --color-warn: #b45309;
+  --color-ok: #15803d;
+  --radius-2xl: 12px;
+  --radius-3xl: 16px;
 }
 
 :root {
@@ -77,7 +87,7 @@ body,
 body {
   margin: 0;
   font-family: var(--font-sans);
-  background: #020617;
+  background: var(--color-canvas);
   color: var(--color-ink);
   overscroll-behavior-y: none;
   line-height: 1.45;
@@ -100,7 +110,7 @@ textarea {
   background: var(--color-surface);
   position: relative;
   overflow-x: clip;
-  box-shadow: 0 0 0 1px rgb(15 23 42 / 0.06);
+  box-shadow: 0 0 0 1px var(--color-line);
 }
 
 .app-shell-bleed {
@@ -119,21 +129,6 @@ textarea {
 }
 
 @media (min-width: 768px) {
-  body {
-    background:
-      radial-gradient(
-        ellipse 80% 50% at 20% -10%,
-        rgb(15 118 110 / 0.35),
-        transparent
-      ),
-      radial-gradient(
-        ellipse 60% 40% at 90% 100%,
-        rgb(88 28 135 / 0.2),
-        transparent
-      ),
-      #020617;
-  }
-
   .app-shell:not(.app-shell-bleed) {
     width: 100%;
     max-width: none;
@@ -182,9 +177,8 @@ textarea {
   max-width: 430px;
   transform: translateX(-50%);
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  background: rgba(255, 255, 255, 0.98);
-  backdrop-filter: blur(12px);
-  border-top: 2px solid rgb(226 232 240);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-line);
   z-index: 40;
 }
 
@@ -210,10 +204,10 @@ textarea {
     overflow-y: auto;
     width: 240px;
     flex-shrink: 0;
-    background: linear-gradient(180deg, #0f172a 0%, #0b1224 55%, #0f766e 160%);
+    background: var(--color-ink);
     color: white;
     padding: 1.25rem 0.85rem;
-    border-right: 1px solid rgb(255 255 255 / 0.06);
+    border-right: 1px solid rgb(255 255 255 / 0.08);
   }
 
   .side-nav-link {
@@ -222,29 +216,29 @@ textarea {
     gap: 0.7rem;
     min-height: 52px;
     padding: 0.65rem 0.85rem;
-    border-radius: 14px;
+    border-radius: 10px;
     font-size: 1rem;
-    font-weight: 700;
-    color: rgb(226 232 240 / 0.88);
+    font-weight: 600;
+    color: rgb(255 255 255 / 0.82);
     text-decoration: none;
   }
   .side-nav-link.active {
-    background: rgb(20 184 166 / 0.28);
-    color: #ccfbf1;
-    box-shadow: inset 0 0 0 1px rgb(45 212 191 / 0.35);
+    background: rgb(255 255 255 / 0.1);
+    color: white;
+    box-shadow: inset 3px 0 0 var(--color-brand-400);
   }
 }
 
 .card {
   background: white;
-  border: 1.5px solid rgb(226 232 240);
-  border-radius: 18px;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
 }
 
 .stat-card {
-  background: linear-gradient(145deg, #0f766e, #115e59);
+  background: var(--color-ink);
   color: white;
-  border-radius: 18px;
+  border-radius: 12px;
   padding: 1.15rem 1.2rem;
 }
 
@@ -256,10 +250,10 @@ textarea {
   gap: 0.5rem;
   width: 100%;
   min-height: 54px;
-  border-radius: 16px;
+  border-radius: 10px;
   background: var(--color-brand-700);
   color: white;
-  font-weight: 800;
+  font-weight: 600;
   font-size: 1.05rem;
   border: none;
   cursor: pointer;
@@ -272,20 +266,20 @@ textarea {
   gap: 0.5rem;
   width: 100%;
   min-height: 54px;
-  border-radius: 16px;
+  border-radius: 10px;
   background: white;
-  color: var(--color-brand-800);
-  font-weight: 800;
+  color: var(--color-ink);
+  font-weight: 600;
   font-size: 1rem;
-  border: 2px solid rgb(203 213 225);
+  border: 1.5px solid var(--color-field);
   cursor: pointer;
 }
 
 .input {
   width: 100%;
   min-height: 54px;
-  border-radius: 14px;
-  border: 2px solid rgb(203 213 225);
+  border-radius: 10px;
+  border: 1.5px solid var(--color-field);
   padding-block: 0.8rem;
   padding-inline: 1rem;
   background: #fff;
@@ -293,8 +287,8 @@ textarea {
   font-size: 1.05rem;
 }
 .input:focus {
-  outline: 3px solid rgb(13 148 136 / 0.35);
-  border-color: var(--color-brand-600);
+  outline: 3px solid rgb(3 105 161 / 0.3);
+  border-color: var(--color-brand-700);
   background: white;
 }
 .input-with-icon {
@@ -304,8 +298,8 @@ textarea {
 .label {
   display: block;
   font-size: 0.95rem;
-  font-weight: 700;
-  color: #1e293b;
+  font-weight: 600;
+  color: var(--color-ink);
   margin-bottom: 0.4rem;
 }
 
@@ -334,8 +328,8 @@ textarea {
   color: #334155;
 }
 .pill-brand {
-  background: #ccfbf1;
-  color: #115e59;
+  background: var(--color-brand-100);
+  color: var(--color-brand-900);
 }
 
 .list-row {
@@ -343,7 +337,7 @@ textarea {
   align-items: center;
   gap: 0.75rem;
   padding: 1rem 0;
-  border-bottom: 1px solid rgb(241 245 249);
+  border-bottom: 1px solid var(--color-line);
   min-height: 56px;
 }
 .list-row:last-child {
@@ -358,8 +352,8 @@ textarea {
   gap: 0.35rem;
   padding: 1.05rem 1rem;
   min-height: 108px;
-  border-radius: 18px;
-  border: 1.5px solid rgb(226 232 240);
+  border-radius: 12px;
+  border: 1px solid var(--color-line);
   background: white;
   text-decoration: none;
   color: inherit;
@@ -367,23 +361,23 @@ textarea {
 .action-tile-icon {
   width: 44px;
   height: 44px;
-  border-radius: 14px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f0fdfa;
-  color: #0f766e;
+  background: var(--color-brand-50);
+  color: var(--color-brand-700);
 }
 .action-tile-title {
   font-size: var(--text-title);
   line-height: var(--text-title--line-height);
   font-weight: 500;
-  color: #0f172a;
+  color: var(--color-ink);
   margin-top: 0.25rem;
 }
 .action-tile-sub {
   font-size: var(--text-body);
-  color: #475569;
+  color: var(--color-muted);
   line-height: var(--text-body--line-height);
 }
 
@@ -422,7 +416,6 @@ button {
   .bottom-nav a:hover,
   .list-row:is(a, button):hover {
     filter: brightness(0.96);
-    box-shadow: 0 3px 12px rgb(15 23 42 / 0.1);
   }
 
   .btn-primary:not(:disabled):hover {
@@ -435,8 +428,7 @@ button {
   }
 
   .action-tile:hover {
-    border-color: rgb(45 212 191 / 0.55);
-    box-shadow: 0 4px 14px rgb(15 118 110 / 0.12);
+    border-color: var(--color-brand-300);
   }
 
   .side-nav-link:hover {
@@ -507,15 +499,15 @@ button[aria-busy='true'],
   width: 1.6rem;
   height: 1.6rem;
   border-radius: 999px;
-  background: #0f766e;
+  background: var(--color-ink);
   color: white;
   font-size: 0.85rem;
-  font-weight: 800;
+  font-weight: 600;
   flex-shrink: 0;
 }
 
 .skeleton {
-  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background: linear-gradient(90deg, #eeece7 25%, #f6f5f1 50%, #eeece7 75%);
   background-size: 200% 100%;
   animation: shimmer 1.2s infinite linear;
   border-radius: 8px;
@@ -576,25 +568,22 @@ button[aria-busy='true'],
   }
 }
 
-/* Club cards on Find a court: a small lift and photo zoom for mouse users only. */
+/* Club cards on Find a court: a slight photo zoom for mouse users only. */
 .club-card-media {
   transition: transform var(--media-zoom-duration) var(--interaction-easing);
 }
 @media (hover: hover) and (pointer: fine) {
-  .club-card:hover {
-    transform: translateY(-2px);
-  }
   .club-card:hover .club-card-media {
-    transform: scale(1.03);
+    transform: scale(1.02);
   }
 }
 
 /* Photos wait on a placeholder while they download, then fade in. A failed photo keeps a still placeholder. */
 .photo {
-  background-color: #e2e8f0;
+  background-color: #eeece7;
 }
 .photo[data-state='loading'] {
-  background-image: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-image: linear-gradient(90deg, #eeece7 25%, #f6f5f1 50%, #eeece7 75%);
   background-size: 200% 100%;
   animation: shimmer 1.2s infinite linear;
 }
@@ -626,13 +615,13 @@ button[aria-busy='true'],
   width: calc(min(100%, 430px) - 2rem);
   bottom: calc(6.25rem + env(safe-area-inset-bottom, 0px));
   z-index: 50;
-  background: #0f172a;
+  background: var(--color-ink);
   color: white;
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 1rem 1.1rem;
   font-size: 1rem;
-  font-weight: 700;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.25);
+  font-weight: 600;
+  box-shadow: 0 6px 20px rgb(11 42 91 / 0.18);
 }
 
 @media (min-width: 768px) {
@@ -705,5 +694,106 @@ button[aria-busy='true'],
   .court-lines > * {
     animation: none !important;
     stroke-dashoffset: 0 !important;
+  }
+}
+
+/*
+ * Public site ("quiet court"): plain header and footer, underlined text links, honest photo
+ * labels, choice chips and notices. Flat surfaces and hairlines; the photos carry the colour.
+ */
+.app-shell-public {
+  background: var(--color-canvas);
+}
+.site-header {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-line);
+}
+.site-nav-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  padding-inline: 0.75rem;
+  border-radius: 10px;
+  font-weight: 600;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+.site-nav-link[aria-current='page'] {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--color-brand-400);
+  text-underline-offset: 6px;
+}
+.site-footer {
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-line);
+  color: var(--color-muted);
+}
+.text-link {
+  color: var(--color-brand-700);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.text-link:focus-visible,
+.site-nav-link:focus-visible {
+  outline: 3px solid var(--color-brand-700);
+  outline-offset: 3px;
+}
+/* A stand-in photo says so, so nobody mistakes it for the club's own venue. */
+.photo-label {
+  position: absolute;
+  left: 0.5rem;
+  bottom: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-size: var(--text-caption);
+  line-height: var(--text-caption--line-height);
+  font-weight: 600;
+}
+.chip-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 48px;
+  padding-inline: 1rem;
+  border-radius: 10px;
+  border: 1.5px solid var(--color-field);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-weight: 600;
+}
+.chip-option[aria-pressed='true'] {
+  background: var(--color-brand-100);
+  border-color: var(--color-brand-700);
+  color: var(--color-brand-900);
+}
+.notice {
+  border-radius: 12px;
+  border: 1px solid var(--color-line);
+  background: var(--color-brand-50);
+  color: var(--color-ink);
+  padding: 0.9rem 1rem;
+}
+.notice-warn {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+.notice-error {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #7f1d1d;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .text-link:hover {
+    color: var(--color-brand-900);
+  }
+  .site-nav-link:hover {
+    background-color: var(--color-brand-50);
   }
 }
