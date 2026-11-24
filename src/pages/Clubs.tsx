@@ -153,7 +153,7 @@ function byDefaultThenName(a: PublicClubListing, b: PublicClubListing) {
  * link (`?q=` and `?city=`), so a search from the landing page, a shared link and the back button
  * all show the same list.
  */
-export function ClubDirectory({ landing = false }: { landing?: boolean }) {
+export function ClubDirectory() {
   const [clubs, setClubs] = useState<PublicClubListing[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -210,8 +210,8 @@ export function ClubDirectory({ landing = false }: { landing?: boolean }) {
 
   return (
     <Frame
-      title={landing ? 'Welcome to bRineLy' : 'Find a court'}
-      subtitle={landing ? 'Pick a court and book your play · brinely.info' : 'Pickleball clubs you can book online.'}
+      title="Find a court"
+      subtitle="Pickleball clubs you can book online."
     >
       <div role="search" aria-label="Search clubs" className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:max-w-3xl">
         <div>
@@ -238,8 +238,6 @@ export function ClubDirectory({ landing = false }: { landing?: boolean }) {
           </select>
         </div>
       </div>
-      {/* A landing-page pointer for owners, until the new landing page stops using this list. */}
-      {landing ? <Link to="/owners" className={textLink}>I own a court</Link> : null}
 
       {error ? (
         <section role="alert" className="notice notice-error space-y-3">
