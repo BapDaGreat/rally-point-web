@@ -14,10 +14,21 @@ describe('PhotoCredits', () => {
     STOCK_PHOTOS.forEach((photo, index) => {
       const item = items[index]
       expect(item).toHaveTextContent(`${photo.alt} — photo by ${photo.photographer}, ${photo.license}`)
-      const link = within(item).getByRole('link', { name: new RegExp(`${photo.alt}.*opens in a new tab`) })
+      const site = photo.license.replace(/ License$/, '')
+      const link = within(item).getByRole('link', {
+        name: `View “${photo.title}” by ${photo.photographer} on ${site} (opens in a new tab)`,
+      })
       expect(link).toHaveAttribute('href', photo.sourceUrl)
       expect(link).toHaveAttribute('target', '_blank')
       expect(link).toHaveAttribute('rel', 'noopener noreferrer')
     })
+  })
+
+  it('gives every source link a different accessible name', () => {
+    render(<PhotoCredits />)
+
+    const names = screen.getAllByRole('link').map((link) => link.textContent)
+    expect(names).toHaveLength(STOCK_PHOTOS.length)
+    expect(new Set(names).size).toBe(names.length)
   })
 })
