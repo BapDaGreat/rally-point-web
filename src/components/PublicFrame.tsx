@@ -1,69 +1,104 @@
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 import { BrinelyLogo } from './BrinelyLogo'
 import { AppHeader, AppShell, SignOutButton } from './Shell'
+import { SiteFooter } from './SiteFooter'
+
+const mainLinks = [
+  { to: '/clubs', label: 'Find a court' },
+  { to: '/owners', label: 'For court owners' },
+]
 
 /**
- * The frame for pages open to visitors (Find a court, the welcome page, the
+ * The frame for pages open to visitors (the landing page, Find a court, club pages, the
  * court-owner page). Signed-in people get the usual app header and menu.
- * Visitors get the same header layout with Log in (and Sign up, unless the page
- * asks for Log in only), and no club logo: these pages are not one club's.
+ *
+ * Visitors get a plain site header (logo home, Find a court, For court owners, and Log in /
+ * Sign up unless the page asks otherwise), the page heading at the top of the content, and the
+ * site footer. `heading="none"` lets a page set its own h1, for example inside a photo hero.
  */
 export function PublicFrame({
   title,
   subtitle,
   accountLinks = 'both',
+  heading = 'page',
+  width = 'wide',
   children,
 }: {
   title: string
   subtitle?: string
-  accountLinks?: 'both' | 'login'
+  accountLinks?: 'both' | 'login' | 'none'
+  heading?: 'page' | 'none'
+  width?: 'wide' | 'narrow'
   children: ReactNode
 }) {
   const { user } = useAuth()
-  const body = <main className="safe-bottom px-4 pt-4 space-y-4">{children}</main>
+  // AppHeader names the tab too when someone is signed in; both use the same page title.
+  useDocumentTitle(title)
+
   if (user) {
     return (
       <AppShell role={user.role}>
         <AppHeader title={title} subtitle={subtitle} right={<SignOutButton />} />
-        {body}
+        <main className="safe-bottom px-4 pt-4 space-y-4">{children}</main>
       </AppShell>
     )
   }
+
   return (
-    <div className="app-shell app-shell-desktop">
-      <header className="sticky top-0 z-30 bg-white/98 backdrop-blur border-b border-slate-200 pt-4 pb-3.5">
-        <div className="app-content-rail flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="mb-1 inline-flex items-center gap-1.5 text-caption font-bold text-brand-800">
-              <BrinelyLogo variant="mark" className="h-5 w-5 rounded-md object-contain" title="bRineLy" />
-              <span>bRineLy</span>
-              <span className="font-medium text-slate-500">· brinely.info</span>
-            </p>
-            <h1 className="text-heading-2 font-semibold text-slate-900">{title}</h1>
-            {subtitle ? <p className="text-subtitle font-medium text-slate-600 mt-1">{subtitle}</p> : null}
-          </div>
-          <nav aria-label="Account" className="shrink-0 flex items-center gap-2">
-            <Link
-              to="/login"
-              className="control-feedback min-h-12 px-3 rounded-2xl border-2 border-slate-200 inline-flex items-center text-body font-semibold text-slate-700"
-            >
-              Log in
-            </Link>
-            {accountLinks === 'both' ? (
-              <Link
-                to="/login"
-                state={{ mode: 'join' }}
-                className="control-feedback min-h-12 px-3 rounded-2xl bg-brand-700 inline-flex items-center text-body font-semibold text-white"
-              >
-                Sign up
-              </Link>
-            ) : null}
+    <div className="app-shell app-shell-desktop app-shell-public flex flex-col">
+      <header className="site-header md:sticky md:top-0 z-30">
+        <div className="app-content-rail flex flex-wrap items-center justify-between gap-x-4 py-2">
+          <Link
+            to="/"
+            aria-label="bRineLy home"
+            className="control-feedback -ml-1 inline-flex min-h-12 items-center gap-2 rounded-[10px] px-1 text-title font-semibold text-ink"
+          >
+            <BrinelyLogo variant="mark" className="h-8 w-8 object-contain" title="" />
+            <span>bRineLy</span>
+          </Link>
+          <nav
+            aria-label="Main"
+            className="order-last -mx-3 flex w-[calc(100%+1.5rem)] items-center overflow-x-auto border-t border-line md:order-none md:mx-0 md:mr-auto md:w-auto md:border-0"
+          >
+            {mainLinks.map((link) => (
+              <NavLink key={link.to} to={link.to} className="site-nav-link shrink-0">
+                {link.label}
+              </NavLink>
+            ))}
           </nav>
+          {accountLinks === 'none' ? null : (
+            <nav aria-label="Account" className="flex items-center gap-1">
+              <Link to="/login" className="site-nav-link">
+                Log in
+              </Link>
+              {accountLinks === 'both' ? (
+                <Link
+                  to="/login"
+                  state={{ mode: 'join' }}
+                  className="control-feedback inline-flex min-h-12 items-center rounded-[10px] bg-brand-700 px-4 font-semibold text-white"
+                >
+                  Sign up
+                </Link>
+              ) : null}
+            </nav>
+          )}
         </div>
       </header>
-      {body}
+      <main className="app-content-rail flex-1 pt-6 pb-16">
+        <div className={`space-y-4 ${width === 'narrow' ? 'max-w-[44rem]' : ''}`}>
+          {heading === 'page' ? (
+            <div className="pb-2">
+              <h1 className="text-heading-1 font-semibold text-ink">{title}</h1>
+              {subtitle ? <p className="mt-1 text-subtitle text-muted">{subtitle}</p> : null}
+            </div>
+          ) : null}
+          {children}
+        </div>
+      </main>
+      <SiteFooter />
     </div>
   )
 }

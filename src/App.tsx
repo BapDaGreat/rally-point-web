@@ -1,4 +1,4 @@
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import { AuthProvider } from './context/AuthProvider'
 import type { Role } from './types'
@@ -40,6 +40,8 @@ import { PrivacyNoticePage } from './pages/PrivacyNoticePage'
 import { ClubDetailPage, ClubDirectory } from './pages/Clubs'
 import { WelcomePage } from './pages/Welcome'
 import { OwnersPage } from './pages/Owners'
+import { NotFoundPage } from './pages/NotFound'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 function Protected({ roles }: { roles?: Role[] }) {
   const { user, loading } = useAuth()
@@ -70,9 +72,12 @@ export default function App() {
 
 function AppRoutes() {
   const { activeClub } = useAuth()
+  const { pathname } = useLocation()
   // Switching clubs remounts the screens, so replies still in flight for the
   // previous club are dropped instead of showing up in the new one.
+  // A screen that crashes shows a way out; moving to another page tries again.
   return (
+    <ErrorBoundary resetKey={pathname}>
       <Routes key={activeClub?.club_id ?? 'no-club'}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/privacy" element={<PrivacyNoticePage />} />
@@ -146,8 +151,9 @@ function AppRoutes() {
           <Route path="/superadmin/help" element={<HelpPage />} />
         </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
+    </ErrorBoundary>
   )
 }
 

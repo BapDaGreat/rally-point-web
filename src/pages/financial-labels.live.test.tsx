@@ -136,7 +136,7 @@ describe('live financial labels', () => {
     liveState.user = null
     const user = userEvent.setup()
     render(<MemoryRouter><LoginPage /></MemoryRouter>)
-    expect(screen.getByText('Availability · QR · open play')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Log in' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Join as member', pressed: false }))
     expect(screen.getByText('For players only. View availability, open play, and your QR pass.')).toBeInTheDocument()
     expect(screen.queryByText(/book, pay, open play/)).not.toBeInTheDocument()

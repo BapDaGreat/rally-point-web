@@ -13,11 +13,13 @@ import {
   UserRound,
   Users,
 } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { ClubRole, Role } from '../types'
 import { useAuth } from '../context/AuthContext'
 import { homeFor } from '../lib/roleHome'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
+import { useModalDialog } from '../lib/useModalDialog'
 import { BrinelyLogo } from './BrinelyLogo'
 import { LoadingShapes, SkeletonBlock, SkeletonCard, SkeletonRows } from './Skeleton'
 
@@ -246,8 +248,9 @@ export function AppHeader({
   right?: ReactNode
 }) {
   const clubName = useAuth().activeClub?.name ?? 'bRineLy'
+  useDocumentTitle(title)
   return (
-    <header className="sticky top-0 z-30 bg-white/98 backdrop-blur border-b border-slate-200 pt-4 pb-3.5">
+    <header className="sticky top-0 z-30 bg-white border-b border-line pt-4 pb-3.5">
       <div className="app-content-rail flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
           {left ? <div className="shrink-0 mt-0.5">{left}</div> : null}
@@ -329,50 +332,13 @@ export function SignOutAction({
     }
   }
 
-  useEffect(() => {
-    if (!confirming) return
-
-    const trigger = opener.current
-    // Keep the page behind the dialog out of reach while it is open.
-    const appRoot = document.getElementById('root')
-    const wasInert = appRoot?.inert ?? false
-    if (appRoot) appRoot.inert = true
-    cancelButton.current?.focus()
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        if (signingOutRef.current) return
-        setSignOutError(null)
-        setConfirming(false)
-        return
-      }
-      if (event.key !== 'Tab') return
-
-      const buttons = dialog.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')
-      if (!buttons?.length) {
-        event.preventDefault()
-        return
-      }
-      const first = buttons[0]
-      const last = buttons[buttons.length - 1]
-      const active = document.activeElement
-      if (!dialog.current?.contains(active)) {
-        event.preventDefault()
-        ;(event.shiftKey ? last : first).focus()
-      } else if (event.shiftKey && active === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && active === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      if (appRoot) appRoot.inert = wasInert
-      if (trigger?.isConnected) trigger.focus()
-    }
-  }, [confirming])
+  // Keep the page behind the dialog out of reach while it is open.
+  useModalDialog(confirming, {
+    dialogRef: dialog,
+    initialFocusRef: cancelButton,
+    returnFocusRef: opener,
+    onEscape: closeDialog,
+  })
 
   return (
     <>
