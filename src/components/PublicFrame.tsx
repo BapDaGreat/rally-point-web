@@ -35,7 +35,8 @@ export function PublicFrame({
   children: ReactNode
 }) {
   const { user } = useAuth()
-  useDocumentTitle(user ? undefined : title)
+  // AppHeader names the tab too when someone is signed in; both use the same page title.
+  useDocumentTitle(title)
 
   if (user) {
     return (
