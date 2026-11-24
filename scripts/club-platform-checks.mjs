@@ -93,6 +93,17 @@ export const memberGcashCheckoutChecks = Object.freeze([
   'payment_reference_unique_per_club', 'schedule_board_still_shared', 'checkout_counts',
 ])
 
+export const memberCodesBookingLengthChecks = Object.freeze([
+  'ledger_has_codes_and_length', 'reservation_writes_still_paused', 'member_codes_use_br_prefix',
+  'code_functions_unchanged_settings', 'booking_hours_any_length', 'hold_takes_any_length',
+  'hold_function_signed_in_only', 'codes_and_length_counts',
+])
+
+export const rentACoachChecks = Object.freeze([
+  'ledger_has_rent_a_coach', 'reservation_writes_still_paused', 'coach_tables_closed', 'coach_functions_signed_in_only',
+  'coach_functions_pin_search_path', 'coach_foreign_keys_indexed', 'coach_counts',
+])
+
 export const isolationCheckCount = 55
 
 const same = (actual, expected, message) => assert.ok(isDeepStrictEqual(actual, expected), message)
@@ -120,7 +131,9 @@ export function verifySuiteInventory(names) {
 export function evaluateChecks(rows, kind, { ignore = [] } = {}) {
   const kinds = { preflight: preflightChecks, postflight: postflightChecks, advisor: advisorChecks,
     advisorFollowup: advisorFollowupChecks, courtMarketplace: courtMarketplaceChecks, courtPhotos: courtPhotosChecks,
-    clubProfile: clubProfileChecks, ownerOnboarding: ownerOnboardingChecks, memberGcashCheckout: memberGcashCheckoutChecks }
+    clubProfile: clubProfileChecks, ownerOnboarding: ownerOnboardingChecks, memberGcashCheckout: memberGcashCheckoutChecks,
+    memberCodesBookingLength: memberCodesBookingLengthChecks,
+    rentACoach: rentACoachChecks }
   const expected = Object.hasOwn(kinds, kind) ? kinds[kind] : null
   assert.ok(expected, 'Unknown check kind')
   assert.ok(ignore.every(name => expected.includes(name)), `${kind}: unknown check in ignore list`)

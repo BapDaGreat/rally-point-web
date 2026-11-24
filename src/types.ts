@@ -824,7 +824,8 @@ export function parseQrPayload(raw: string): { member_code: string; token: strin
   if (parts.length === 3 && parts[0] === 'RP1') {
     return { member_code: parts[1], token: parts[2] }
   }
-  if (/^RP-\d+/i.test(t)) return { member_code: t.toUpperCase(), token: '' }
+  // A typed code: BR- for codes made since 2026-11-24, RP- for older ones (both stay valid).
+  if (/^(BR|RP)-[0-9A-Z]+/i.test(t)) return { member_code: t.toUpperCase(), token: '' }
   return null
 }
 

@@ -55,7 +55,7 @@ describe('OwnersPage', () => {
     const items = within(benefits).getAllByRole('listitem')
     expect(items.map((item) => item.textContent)).toEqual([
       'Your own club page with photos, hours and a map',
-      'Players book 1 to 3 hours and pay your GCash directly',
+      'Players book by the hour and pay your GCash directly',
       'Staff confirm payments from their phone',
       'A TV board for your courts',
     ])

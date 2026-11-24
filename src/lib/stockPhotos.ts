@@ -8,6 +8,12 @@
  *
  * Real photographs only: no renders or illustrations, so the site never shows a court that
  * could not exist.
+ *
+ * Art direction, so the set reads as one: daylight and warm natural light; blue or green
+ * courts; pickleball plainly (paddles, perforated balls, the kitchen line), never tennis or
+ * padel; no readable brand logos (small marks are softened at encoding); no children; no face
+ * as the main subject; tropical settings where a free photo allows. All photos share one gentle
+ * grade (slightly warmer, slightly more contrast).
  */
 
 export type StockPhotoUse = 'hero' | 'login' | 'owners' | 'club'
@@ -21,6 +27,8 @@ export type StockPhoto = {
   /** Size of the 1600px version. */
   width: number
   height: number
+  /** Short name for the credits list, e.g. "Forehand on a blue court". */
+  title: string
   alt: string
   photographer: string
   sourceUrl: string
@@ -45,35 +53,40 @@ function photo(
 }
 
 export const STOCK_PHOTOS: readonly StockPhoto[] = [
-  photo('indoor-forehand', 1600, 1066, {
-    alt: 'A woman hitting a forehand on an indoor pickleball court',
-    photographer: 'HONG SON',
-    sourceUrl: 'https://www.pexels.com/photo/woman-playing-pickleball-in-indoor-court-32975182/',
-    license: 'Pexels License',
-    use: ['login'],
-  }),
-  photo('outdoor-player-portrait', 1600, 2400, {
-    alt: 'A smiling player holding a paddle at the net of an outdoor court',
-    photographer: 'Sanket Mishra',
-    sourceUrl: 'https://www.pexels.com/photo/young-man-enjoying-pickleball-on-outdoor-court-34618473/',
-    license: 'Pexels License',
-    use: ['owners'],
-  }),
-  photo('empty-court-sun', 1600, 1067, {
-    alt: 'Empty outdoor pickleball courts and net in bright sun',
-    photographer: 'Frank Schrader',
-    sourceUrl: 'https://www.pexels.com/photo/empty-pickleball-court-with-net-in-summer-sun-29820786/',
-    license: 'Pexels License',
+  photo('player-forehand-blue-court', 1600, 1066, {
+    title: 'Forehand on a blue court',
+    alt: 'A player in a cap reaching for a forehand on a sunny outdoor court, with a net, trees and other players behind',
+    photographer: 'Jon Matthews',
+    sourceUrl: 'https://unsplash.com/photos/usqfZcs_GfM',
+    license: 'Unsplash License',
     use: ['hero', 'club'],
   }),
+  photo('doubles-through-net', 1600, 1066, {
+    title: 'Doubles seen through the net',
+    alt: 'Two doubles players waiting at the baseline of a blue outdoor court, seen through the net, with palm trees beyond the fence',
+    photographer: 'Jon Matthews',
+    sourceUrl: 'https://unsplash.com/photos/X7n27HXxAIc',
+    license: 'Unsplash License',
+    use: ['login', 'club'],
+  }),
   photo('aerial-courts-blue', 1600, 1200, {
+    title: 'Courts from above',
     alt: 'Aerial view of blue and green pickleball courts with nets',
     photographer: 'Frank Schrader',
     sourceUrl: 'https://www.pexels.com/photo/29821186/',
     license: 'Pexels License',
+    use: ['owners', 'club'],
+  }),
+  photo('net-shadow-green-court', 1600, 1200, {
+    title: 'Net shadow on a green court',
+    alt: 'A pickleball net casting its shadow across a green court beside blue playing areas in bright sun',
+    photographer: 'Frank Schrader',
+    sourceUrl: 'https://www.pexels.com/photo/shadow-play-on-a-sunny-pickleball-court-29820785/',
+    license: 'Pexels License',
     use: ['club'],
   }),
   photo('paddle-ball-court', 1600, 1066, {
+    title: 'Paddle and ball on the court',
     alt: 'A paddle and a yellow ball lying on a blue pickleball court',
     photographer: 'Mason Tuttle',
     sourceUrl: 'https://www.pexels.com/photo/17299528/',
@@ -81,17 +94,11 @@ export const STOCK_PHOTOS: readonly StockPhoto[] = [
     use: ['club'],
   }),
   photo('paddle-at-net', 1600, 978, {
+    title: 'Paddle against the net',
     alt: 'A paddle and a yellow ball resting against the net on a blue court',
     photographer: 'Mason Tuttle',
     sourceUrl: 'https://www.pexels.com/photo/17299530/',
     license: 'Pexels License',
-    use: ['club'],
-  }),
-  photo('balls-on-paddle', 1600, 2400, {
-    alt: 'Two orange pickleballs resting on a paddle',
-    photographer: 'Leo_Visions',
-    sourceUrl: 'https://unsplash.com/photos/micIY9KIPdA',
-    license: 'Unsplash License',
     use: ['club'],
   }),
 ]

@@ -78,7 +78,7 @@ describe('demoStore account and catalog behavior', () => {
     expect(profile.role).toBe('member')
     expect(profile.full_name).toBe('New Player')
     expect(profile.phone).toBe('0917 000 0000')
-    expect(demoStore.memberByUser(profile.id)?.member_code).toMatch(/^RP-/)
+    expect(demoStore.memberByUser(profile.id)?.member_code).toMatch(/^BR-/)
     expect(demoStore.currentUser()?.id).toBe(profile.id)
     expect(JSON.stringify(localStorage)).not.toContain(submittedCredential)
     expect(() => demoStore.registerMember({
@@ -320,8 +320,9 @@ describe('demoStore booking and payment behavior', () => {
     updateDb((db) => { db.courts.find((court) => court.id === 'court_2')!.status = 'maintenance' })
     expect(() => demoStore.createBooking({ ...base, court_id: 'court_2' })).toThrow('Court under maintenance')
     updateDb((db) => { db.courts.find((court) => court.id === 'court_2')!.status = 'available' })
-    expect(() => demoStore.createBooking({ ...base, court_id: 'court_2', hours: 0 })).toThrow('Book 1–3 hours')
-    expect(() => demoStore.createBooking({ ...base, court_id: 'court_2', hours: 4 })).toThrow('Book 1–3 hours')
+    expect(() => demoStore.createBooking({ ...base, court_id: 'court_2', hours: 0 })).toThrow('Pick at least 1 hour')
+    // There is no maximum length: a long booking is refused only where it runs past the club's hours.
+    expect(() => demoStore.createBooking({ ...base, court_id: 'court_2', hours: 30 })).toThrow('Outside club hours')
     expect(() => demoStore.createBooking({ ...base, court_id: 'court_2', startHour: 23, hours: 2 })).toThrow('Outside club hours')
     expect(() => demoStore.createBooking({ ...base, court_id: 'court_2', dateYmd: ymd(new Date(Date.now() - 86400000)), startHour: 6 })).toThrow('That time has already passed')
 

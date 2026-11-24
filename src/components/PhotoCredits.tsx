@@ -22,8 +22,11 @@ export function PhotoCredits() {
               rel="noopener noreferrer"
               className="text-link inline-flex min-h-12 items-center"
             >
-              View on {siteName(photo)}
-              <span className="sr-only">: {photo.alt} (opens in a new tab)</span>
+              {/* One inline wrapper, so the flex link keeps the space before the hidden note. */}
+              <span>
+                View “{photo.title}” by {photo.photographer} on {siteName(photo)}{' '}
+                <span className="sr-only">(opens in a new tab)</span>
+              </span>
             </a>
           </li>
         ))}

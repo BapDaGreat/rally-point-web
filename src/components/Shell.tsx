@@ -59,7 +59,16 @@ function ClubMark({ size }: { size: 'small' | 'large' }) {
   const { activeClub } = useAuth()
   const box = size === 'large' ? 'w-11 h-11' : 'w-8 h-8'
   if (!activeClub) return <BrinelyLogo variant="mark" className={`${box} object-contain`} />
-  const words = activeClub.name.split(/\s+/).filter(Boolean)
+  return <ClubBadge name={activeClub.name} size={size} />
+}
+
+/**
+ * A club's initials badge, for any club by name (the sign-in dialog shows the club being
+ * booked, which need not be the active one). Decorative: the club's name is always shown beside it.
+ */
+export function ClubBadge({ name, size = 'small' }: { name: string; size?: 'small' | 'large' }) {
+  const box = size === 'large' ? 'w-11 h-11' : 'w-8 h-8'
+  const words = name.split(/\s+/).filter(Boolean)
   const initials = `${words[0]?.[0] ?? ''}${words.length > 1 ? words[words.length - 1][0] : ''}`.toUpperCase()
   return (
     <span
@@ -99,7 +108,7 @@ export function ClubSwitcher({ tone = 'light', className = '' }: { tone?: 'light
       : 'input min-h-12 w-full'
   return (
     <label className={`block ${className}`}>
-      <span className={tone === 'dark' ? 'text-caption text-teal-200/90' : 'text-caption font-semibold text-slate-600'}>
+      <span className={tone === 'dark' ? 'text-caption text-brand-100' : 'text-caption font-semibold text-slate-600'}>
         Club
       </span>
       <select
@@ -133,8 +142,9 @@ export function SideNav({ role }: { role: Role }) {
   const { user, activeClub } = useAuth()
   const tabs = tabsFor(role)
   const placeName = activeClub?.name ?? (role === 'superadmin' ? 'bRineLy platform' : 'bRineLy')
+  // The 'member' account role is the player role; "member" alone means someone with a membership.
   const roleLabel =
-    role === 'superadmin' ? 'Superadmin' : role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Member'
+    role === 'superadmin' ? 'Superadmin' : role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : 'Player'
 
   return (
     <aside className="side-nav">
@@ -142,7 +152,7 @@ export function SideNav({ role }: { role: Role }) {
         <div className="flex items-center gap-2.5 mb-1">
           <ClubMark size="large" />
           <div>
-            <p className="text-caption font-normal text-teal-200/90">
+            <p className="text-caption font-normal text-brand-100">
               {placeName}
             </p>
             <p className="text-subtitle font-medium">{roleLabel}</p>
@@ -181,6 +191,12 @@ export function SideNav({ role }: { role: Role }) {
         <LogOut size={22} aria-hidden />
         Log out
       </SignOutAction>
+
+      {/* The platform's own mark, kept apart from the club's badge at the top. */}
+      <p className="mt-4 flex items-center gap-2 border-t border-white/10 px-2 pt-4 text-caption font-semibold text-brand-100">
+        <BrinelyLogo variant="mark" title="" className="h-6 w-6 shrink-0 object-contain" />
+        bRineLy
+      </p>
     </aside>
   )
 }

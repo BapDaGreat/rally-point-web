@@ -133,7 +133,7 @@ describe('JoinClubPage', () => {
   it('tells platform accounts they cannot join clubs', async () => {
     state.user = { ...player, role: 'superadmin' }
     renderJoin()
-    expect(await screen.findByText(/cannot join as members/)).toBeInTheDocument()
+    expect(await screen.findByText(/cannot join a club as a player/)).toBeInTheDocument()
     expect(state.joinClub).not.toHaveBeenCalled()
   })
 })

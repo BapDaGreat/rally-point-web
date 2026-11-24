@@ -42,17 +42,34 @@ function renderLogin() {
 function renderLoginDialog(props: {
   onClose?: () => void;
   onAuthenticated?: (profile: Profile) => void;
+  clubName?: string;
+  bookingSummary?: string;
 } = {}) {
   return render(
     <MemoryRouter>
-      <LoginPage dialog onClose={props.onClose ?? vi.fn()} onAuthenticated={props.onAuthenticated ?? vi.fn()} />
+      <LoginPage
+        dialog
+        clubName={props.clubName}
+        bookingSummary={props.bookingSummary}
+        onClose={props.onClose ?? vi.fn()}
+        onAuthenticated={props.onAuthenticated ?? vi.fn()}
+      />
     </MemoryRouter>,
   );
 }
 
 function switchToJoin() {
-  const buttons = screen.getAllByRole("button", { name: "Join as member" });
+  const buttons = screen.getAllByRole("button", { name: "Sign up" });
   return buttons[0];
+}
+
+/** The sign-up form's submit button (the "Sign up" tab has the same name). */
+function signUpSubmitButton() {
+  const button = screen
+    .getAllByRole("button", { name: "Sign up" })
+    .find((candidate) => candidate.getAttribute("type") === "submit");
+  if (!button) throw new Error("Could not find sign-up submit button");
+  return button;
 }
 
 function loginSubmitButton() {
@@ -230,6 +247,13 @@ describe("LoginPage authentication form safety", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Create your player account" })).toBeInTheDocument();
     expect(document.title).toBe("Sign up · bRineLy");
+    // One word for the action: the tab and the submit button both say "Sign up".
+    expect(screen.getByRole("button", { name: "Log in", pressed: false })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign up", pressed: true })).toBeInTheDocument();
+    expect(signUpSubmitButton()).toBeInTheDocument();
+    // The password rule stays visible, not only as a placeholder.
+    expect(screen.getByLabelText("Password")).toHaveAccessibleDescription("At least 6 characters.");
+    expect(screen.getByLabelText("Password")).not.toHaveAttribute("placeholder");
   });
 
   it("links to the public Privacy Notice", () => {
@@ -248,8 +272,7 @@ describe("LoginPage authentication form safety", () => {
       </MemoryRouter>,
     );
 
-    const signupForm = screen
-      .getByRole("button", { name: "Join bRineLy" })
+    const signupForm = signUpSubmitButton()
       .closest("form");
     if (!signupForm) throw new Error("Signup form is missing");
     const formLink = within(signupForm).getByRole("link", { name: "Privacy Notice" });
@@ -277,8 +300,7 @@ describe("LoginPage authentication form safety", () => {
     expect(
       screen.getByText(/By registering, you acknowledge that you have read our/),
     ).toBeInTheDocument();
-    const signupForm = screen
-      .getByRole("button", { name: "Join bRineLy" })
+    const signupForm = signUpSubmitButton()
       .closest("form");
     if (!signupForm) throw new Error("Signup form is missing");
     expect(within(signupForm).getByRole("link", { name: "Privacy Notice" })).toHaveAttribute(
@@ -328,7 +350,7 @@ describe("LoginPage authentication form safety", () => {
     await user.type(screen.getByLabelText("Full name"), "Existing Player");
     await user.type(screen.getByLabelText("Email"), "existing@example.com");
     await user.type(screen.getByLabelText("Password"), "valid-passphrase");
-    await user.click(screen.getByRole("button", { name: "Join bRineLy" }));
+    await user.click(signUpSubmitButton());
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(
@@ -343,7 +365,7 @@ describe("LoginPage authentication form safety", () => {
 
     expect(screen.queryByText("Quick demo logins")).not.toBeInTheDocument();
     expect(
-      screen.getByText(/Staff \/ admin accounts are created by the club/i),
+      screen.getByText(/Staff and admin accounts are created by the club/i),
     ).toBeInTheDocument();
 
     unmount();
@@ -352,7 +374,7 @@ describe("LoginPage authentication form safety", () => {
 
     expect(screen.getByText("Quick demo logins")).toBeInTheDocument();
     expect(
-      screen.queryByText(/Staff \/ admin accounts are created by the club/i),
+      screen.queryByText(/Staff and admin accounts are created by the club/i),
     ).not.toBeInTheDocument();
   });
 });
@@ -466,11 +488,20 @@ describe("LoginPage booking dialog", () => {
     const onAuthenticated = vi.fn();
     const onClose = vi.fn();
     authState.signIn.mockResolvedValue(profile);
-    renderLoginDialog({ onAuthenticated, onClose });
+    renderLoginDialog({
+      onAuthenticated,
+      onClose,
+      clubName: "Rally Point Davao",
+      bookingSummary: "Court A · Nov 25 · 6–7 AM · Php 500.00",
+    });
 
-    const dialog = screen.getByRole("dialog", { name: "Log in" });
-    expect(within(dialog).getByText("Login to continue")).toBeInTheDocument();
-    expect(within(dialog).getByText("Secure booking access")).toBeInTheDocument();
+    // One title names the club being booked, with that club's badge (not the bRineLy mark).
+    const dialog = screen.getByRole("dialog", { name: "Log in to book at Rally Point Davao" });
+    expect(within(dialog).getAllByRole("heading")).toHaveLength(1);
+    expect(within(dialog).getByText("RD")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("img", { name: "bRineLy" })).not.toBeInTheDocument();
+    expect(within(dialog).getByText("Court A · Nov 25 · 6–7 AM · Php 500.00")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/all log in here/)).not.toBeInTheDocument();
     expect(within(dialog).getByText("By continuing, you confirm you are booking under your account.")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toHaveFocus();
     await submitLogin(user);
@@ -478,7 +509,7 @@ describe("LoginPage booking dialog", () => {
     expect(onAuthenticated).toHaveBeenCalledTimes(1);
     expect(onAuthenticated).toHaveBeenCalledWith(profile);
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole("dialog", { name: "Log in" })).toBe(dialog);
+    expect(screen.getByRole("dialog", { name: "Log in to book at Rally Point Davao" })).toBe(dialog);
   });
 
   it("reports an existing session when it finishes loading in the dialog", async () => {
@@ -521,7 +552,7 @@ describe("LoginPage booking dialog", () => {
     await user.keyboard("{Escape}");
     await user.click(backdrop());
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole("dialog", { name: "Log in" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Log in to book" })).toBeInTheDocument();
 
     await act(async () => failSignIn(new Error("Invalid login credentials")));
   });
@@ -534,14 +565,14 @@ describe("LoginPage booking dialog", () => {
     renderLoginDialog({ onClose, onAuthenticated });
 
     await submitLogin(user);
-    const dialog = screen.getByRole("dialog", { name: "Log in" });
+    const dialog = screen.getByRole("dialog", { name: "Log in to book" });
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "Unable to log in. Check your email and password, then try again.",
     );
     expect(onAuthenticated).not.toHaveBeenCalled();
 
     // A click inside the card is not a click on the backdrop.
-    await user.click(within(dialog).getByRole("heading", { name: "Log in" }));
+    await user.click(within(dialog).getByRole("heading", { name: "Log in to book" }));
     expect(onClose).not.toHaveBeenCalled();
 
     await user.keyboard("{Escape}");
@@ -574,11 +605,21 @@ describe("LoginPage booking dialog", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("names the sign-up step in the dialog's title", async () => {
+    const user = userEvent.setup();
+    renderLoginDialog({ clubName: "Rally Point Davao" });
+
+    await user.click(switchToJoin());
+    const dialog = screen.getByRole("dialog", { name: "Sign up to book at Rally Point Davao" });
+    expect(within(dialog).getAllByRole("heading")).toHaveLength(1);
+    expect(within(dialog).getByText("For players only. View availability, open play, and your QR pass.")).toBeInTheDocument();
+  });
+
   it("keeps Tab inside the dialog", async () => {
     const user = userEvent.setup();
     renderLoginDialog();
     const close = screen.getByRole("button", { name: "Close sign-in" });
-    const joinButtons = screen.getAllByRole("button", { name: "Join as member" });
+    const joinButtons = screen.getAllByRole("button", { name: "Sign up" });
     const last = joinButtons[joinButtons.length - 1];
 
     close.focus();
@@ -637,7 +678,7 @@ describe("LoginPage sign-up code step", () => {
     await user.type(screen.getByLabelText("Mobile (optional)"), "09171234567");
     await user.type(screen.getByLabelText("Email"), "New@Example.com");
     await user.type(screen.getByLabelText("Password"), "secret-pass");
-    await user.click(screen.getByRole("button", { name: "Join bRineLy" }));
+    await user.click(signUpSubmitButton());
   }
 
   it("asks for the emailed code instead of showing an error", async () => {
@@ -770,7 +811,7 @@ describe("LoginPage sign-up code step", () => {
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret-pass" } });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Join bRineLy" }));
+      fireEvent.click(signUpSubmitButton());
     });
 
     expect(screen.getByRole("heading", { name: "Check your email" })).toBeInTheDocument();
@@ -802,7 +843,7 @@ describe("LoginPage sign-up code step", () => {
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret-pass" } });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Join bRineLy" }));
+      fireEvent.click(signUpSubmitButton());
     });
     advanceSeconds(60);
     await act(async () => {

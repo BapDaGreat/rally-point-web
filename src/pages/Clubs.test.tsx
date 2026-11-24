@@ -123,7 +123,10 @@ describe('Find a court', () => {
     expect(davaoLink).toHaveTextContent('Davao City')
     expect(davaoLink).toHaveTextContent('1 location')
     expect(davaoLink).toHaveTextContent('2 courts')
-    expect(davaoLink).toHaveTextContent('From Php 450.00 per hour · Members from Php 400.00')
+    // The members' price gets its own line, and "Php" never parts from the amount.
+    expect(within(davaoLink).getByText('From Php 450.00 per hour')).toBeInTheDocument()
+    expect(within(davaoLink).getByText('Members from Php 400.00')).toBeInTheDocument()
+    expect(within(davaoLink).getByText('From Php 450.00 per hour').textContent).toBe('From Php 450.00 per hour')
     // Clubs have no photos yet, so each card shows a real stock photo marked as a sample.
     expect(within(davaoLink).getByText('Sample photo')).toBeInTheDocument()
     const gensanLink = screen.getByRole('link', { name: /Rally Point Gensan/ })
@@ -156,7 +159,8 @@ describe('Find a court', () => {
     const court1 = within(venue.getByText('Davao Court 1').closest('li')!)
     expect(court1.getByText('Php 450.00 per hour')).toBeInTheDocument()
     expect(court1.getByText('Members Php 400.00')).toBeInTheDocument()
-    expect(court1.getByText('Available')).toBeInTheDocument()
+    // An open court shows its price and Book button; only a closed court gets a status label.
+    expect(court1.queryByText('Available')).not.toBeInTheDocument()
     expect(court1.getByText('Sample')).toBeInTheDocument()
     expect(court1.getByRole('link', { name: /Book Davao Court 1/ })).toHaveAttribute(
       'href',
@@ -264,8 +268,7 @@ describe('Find a court', () => {
     await user.click(screen.getByRole('button', { name: /12:00 PM/ }))
     await user.click(screen.getByRole('button', { name: /Continue/ }))
 
-    const dialog = await screen.findByRole('dialog', { name: 'Log in' })
-    expect(within(dialog).getByText('Login to continue')).toBeInTheDocument()
+    const dialog = await screen.findByRole('dialog', { name: 'Log in to book at Rally Point Davao' })
     expect(within(dialog).getByText('By continuing, you confirm you are booking under your account.')).toBeInTheDocument()
     expect(auth.joinClub).not.toHaveBeenCalled()
     // The 15-minute hold starts only once the visitor has signed in.
@@ -449,5 +452,15 @@ describe('Find a court', () => {
     expect(screen.getByRole('heading', { name: 'Davao Main' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /^Book/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Book/ })).not.toBeInTheDocument()
+  })
+
+  it('lets a signed-in club admin book, since admins book as players', async () => {
+    auth.user = { ...player, id: 'admin-1', role: 'admin' }
+    renderAt('/clubs/rally-point-davao')
+
+    const summary = within(await screen.findByRole('complementary', { name: 'Booking summary' }))
+    expect(summary.getByRole('link', { name: 'Book a court' }))
+      .toHaveAttribute('href', '/clubs/rally-point-davao/book?venue=venue-davao')
+    expect(screen.queryByText(/Staff accounts cannot book online/)).not.toBeInTheDocument()
   })
 })

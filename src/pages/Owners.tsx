@@ -25,12 +25,14 @@ const steps = [
 
 const benefits = [
   'Your own club page with photos, hours and a map',
-  'Players book 1 to 3 hours and pay your GCash directly',
+  'Players book by the hour and pay your GCash directly',
   'Staff confirm payments from their phone',
   'A TV board for your courts',
 ]
 
 const sectionHeading = 'text-heading-3 font-semibold text-ink'
+/** Public-page buttons fill the width on phones and size to their words from small tablets up. */
+const fitButton = 'sm:w-auto! sm:px-6'
 
 function emptyRequest(): OwnerCallRequestInput {
   return {
@@ -89,8 +91,9 @@ export function OwnersPage() {
   }
 
   return (
-    <PublicFrame title="List your club" subtitle="For pickleball court owners" accountLinks="login">
-      <div className="enter-rise grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-center lg:gap-10">
+    // One headline: the page's h1 leads the column beside the photo, and the pitch reads as its lead.
+    <PublicFrame title="List your club" heading="none" accountLinks="login">
+      <div className="enter-rise grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-start lg:gap-10">
         <Photo
           src={stockSrc(OWNERS_PHOTO, 'small')}
           srcSet={stockSrcSet(OWNERS_PHOTO)}
@@ -100,7 +103,8 @@ export function OwnersPage() {
           priority
         />
         <div className="space-y-3">
-          <p className="max-w-[34ch] text-heading-2 font-semibold text-ink">
+          <h1 className="text-heading-1 font-semibold text-ink">List your club</h1>
+          <p className="max-w-[40ch] text-title font-normal text-ink">
             Put your club online. Players find you, book a time and pay your GCash directly.
           </p>
           <p className="max-w-[48ch] text-subtitle text-muted">
@@ -147,7 +151,7 @@ export function OwnersPage() {
               <p className="text-subtitle text-muted">
                 We will use {[sent.phone.trim(), sent.email.trim().toLowerCase()].filter(Boolean).join(' or ')}. If that time no longer suits you, just tell us when we call.
               </p>
-              <Link to="/" className="btn-secondary min-h-12 w-full">Back to start</Link>
+              <Link to="/" className={`btn-secondary min-h-12 ${fitButton}`}>Back to start</Link>
             </section>
           ) : (
             <form className="enter-rise card p-5 space-y-4" style={stagger(1)} onSubmit={(event) => void submit(event)} aria-labelledby="owners-form" noValidate>
@@ -227,7 +231,7 @@ export function OwnersPage() {
                 </Link>
               </div>
               {error ? <p role="alert" className="notice notice-error text-body font-semibold">{error}</p> : null}
-              <button type="submit" className="btn-primary min-h-12 w-full" disabled={busy} aria-busy={busy}>
+              <button type="submit" className={`btn-primary min-h-12 ${fitButton}`} disabled={busy} aria-busy={busy}>
                 {busy ? 'Sending…' : 'Ask for a call'}
               </button>
             </form>
@@ -239,7 +243,7 @@ export function OwnersPage() {
           <p className="mt-2 text-subtitle text-muted">
             If we have set up your club, create your owner account with the email you gave us. You become your club’s admin, and you can log in as soon as your club is open.
           </p>
-          <Link to="/login" state={{ mode: 'join', owner: true }} className="btn-secondary mt-4 min-h-12 w-full sm:w-auto! sm:px-6">
+          <Link to="/login" state={{ mode: 'join', owner: true }} className={`btn-secondary mt-4 min-h-12 ${fitButton}`}>
             Create my owner account
           </Link>
         </section>

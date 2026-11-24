@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Booking, CheckoutPaymentMethod, Court, Member, MyClub, Profile, PublicClubDetail, TimeSlot } from '../types'
+import { ymdLocal } from '../types'
 import { MemberBook } from './MemberBook'
 
 const authState = vi.hoisted(() => ({
@@ -166,6 +167,18 @@ beforeEach(() => {
   apiMock.publicClubProfile.mockResolvedValue(null)
 })
 
+describe('visitor log-in during booking', () => {
+  it('shows what the visitor picked in the log-in sheet, and the way back above the title', async () => {
+    const user = userEvent.setup()
+    renderClub()
+    expect(await screen.findByRole('link', { name: /Back to Rally Point Davao/ })).toHaveAttribute('href', '/clubs/rally-point-davao')
+    await user.click(await screen.findByRole('button', { name: /^12:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^Continue/ }))
+    const sheet = await screen.findByRole('dialog', { name: /Log in to book at Rally Point Davao/ })
+    expect(within(sheet).getByText(/^Court B · .+ · 12:00 PM–1:00 PM · Php 500\.00$/)).toBeInTheDocument()
+  })
+})
+
 describe('booking steps on the booking screen', () => {
   it('shows a visitor the log-in step and a player only choose, pay and confirmed', async () => {
     const first = renderClub()
@@ -193,16 +206,71 @@ describe('booking steps on the booking screen', () => {
     const summary = within(await screen.findByRole('complementary', { name: 'Your booking' }))
     expect(summary.getByText('Rally Point Gensan')).toBeInTheDocument()
     expect(summary.getByText('Court B')).toBeInTheDocument()
-    expect(summary.getByText('Tap a start time')).toBeInTheDocument()
+    expect(summary.getByText('Tap the hours you want')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /^12:00 PM/ }))
     expect(summary.getByText('12:00 PM – 1:00 PM · 1 hour')).toBeInTheDocument()
     expect(summary.getByText('Php 500.00')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /^Continue/ })).toHaveLength(1)
     expect(summary.getByRole('button', { name: /^Continue/ })).toBeEnabled()
-    // Dates and lengths are choice chips that say which one is picked.
+    // Dates, courts and picked hours are toggles that say which one is picked.
     expect(screen.getByRole('button', { name: 'Today' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: '1h' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /^12:00 PM/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: /Court B/ })).toHaveAttribute('aria-pressed', 'true')
+    // There is no separate length choice: the hours tapped are the length.
+    expect(screen.queryByRole('button', { name: '1h' })).not.toBeInTheDocument()
+  })
+})
+
+describe('picking hours by tapping slots', () => {
+  const pressed = (name: RegExp) => screen.getByRole('button', { name }).getAttribute('aria-pressed')
+
+  it('adds the next or previous hour with no maximum, and trims from either end', async () => {
+    authState.user = memberUser
+    authState.activeClub = gensanClub
+    const user = userEvent.setup()
+    renderOwnClub()
+    const summary = within(await screen.findByRole('complementary', { name: 'Your booking' }))
+
+    await user.click(await screen.findByRole('button', { name: /^12:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^1:00 PM/ }))
+    expect(summary.getByText('12:00 PM – 2:00 PM · 2 hours')).toBeInTheDocument()
+    expect(summary.getByText('Php 1,000.00')).toBeInTheDocument()
+
+    // The hour before the pick joins it too.
+    await user.click(screen.getByRole('button', { name: /^11:00 AM/ }))
+    expect(summary.getByText('11:00 AM – 2:00 PM · 3 hours')).toBeInTheDocument()
+
+    // There is no maximum: a fourth and fifth hour join too.
+    await user.click(screen.getByRole('button', { name: /^2:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^3:00 PM/ }))
+    expect(pressed(/^3:00 PM/)).toBe('true')
+    expect(summary.getByText('11:00 AM – 4:00 PM · 5 hours')).toBeInTheDocument()
+    expect(summary.getByText('Php 2,500.00')).toBeInTheDocument()
+
+    // Tapping an end hour removes it.
+    await user.click(screen.getByRole('button', { name: /^3:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^2:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^11:00 AM/ }))
+    expect(summary.getByText('12:00 PM – 2:00 PM · 2 hours')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^1:00 PM/ }))
+    expect(summary.getByText('12:00 PM – 1:00 PM · 1 hour')).toBeInTheDocument()
+
+    // An hour away from the pick starts a new one; tapping the only picked hour clears it.
+    await user.click(screen.getByRole('button', { name: /^5:00 PM/ }))
+    expect(pressed(/^12:00 PM/)).toBe('false')
+    expect(summary.getByText('5:00 PM – 6:00 PM · 1 hour')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^5:00 PM/ }))
+    expect(summary.getByText('Tap the hours you want')).toBeInTheDocument()
+  })
+
+  it('holds the picked hours as one booking', async () => {
+    authState.user = memberUser
+    const user = userEvent.setup()
+    renderOwnClub()
+    await user.click(await screen.findByRole('button', { name: /^3:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^4:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^Continue/ }))
+    expect(apiMock.createBooking).toHaveBeenCalledWith(expect.objectContaining({ startHour: 15, hours: 2 }))
   })
 })
 
@@ -269,10 +337,10 @@ describe('booking screen dead ends', () => {
     expect(await screen.findByText(/^Every hour on .+ has passed\. Try another day\.$/)).toBeInTheDocument()
   })
 
-  it('e: signed-in staff are told at once that only member accounts book, with no Continue', async () => {
+  it('e: signed-in staff are told at once that only player accounts book, with no Continue', async () => {
     authState.user = staffUser
     renderClub()
-    expect(await screen.findByText('Only member accounts can book courts online. Please sign in with a member account.')).toBeInTheDocument()
+    expect(await screen.findByText('Only player accounts can book courts online. Please sign in with a player account.')).toBeInTheDocument()
     expect(await screen.findByText(/Available times/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Continue/ })).not.toBeInTheDocument()
     expect(apiMock.checkoutPaymentMethods).not.toHaveBeenCalled()
@@ -350,5 +418,232 @@ describe('booking screen dead ends', () => {
     await sendReference(user)
     expect(await screen.findByRole('link', { name: 'Open your notifications' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Call the club/ })).not.toBeInTheDocument()
+  })
+
+  it('i: a later turned-down payment does not keep a phone number from an earlier one', async () => {
+    authState.user = memberUser
+    authState.activeClub = gensanClub
+    apiMock.publicClubProfile.mockResolvedValueOnce({ phone: '0917 555 0000' })
+    apiMock.myBooking.mockImplementation(async () => ({ ...sent(), status: 'cancelled' }))
+    const user = userEvent.setup()
+    renderOwnClub()
+    await openCheckout(user)
+    await sendReference(user)
+    expect(await screen.findByRole('link', { name: 'Call the club: 0917 555 0000' })).toBeInTheDocument()
+
+    // The second time, the club's profile does not load.
+    apiMock.publicClubProfile.mockRejectedValueOnce(new Error('offline'))
+    await openCheckout(user)
+    await sendReference(user)
+    await waitFor(() => expect(apiMock.publicClubProfile).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByRole('link', { name: /Call the club/ })).not.toBeInTheDocument())
+  })
+
+  it('c: still shows an error when every court is out of service', async () => {
+    authState.user = memberUser
+    apiMock.availability.mockResolvedValue([{ court: { ...court, status: 'maintenance' }, slots: slots(false) }])
+    apiMock.myBookings.mockRejectedValue(new Error('Bookings are down'))
+    renderOwnClub()
+    expect(await screen.findByText('No courts are open for booking right now.')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Bookings are down')
+  })
+})
+
+/** Makes the screen report a phone width, and the app's bottom menu a given height. */
+function asPhone(navHeight = 72) {
+  const matchMedia = vi.fn((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }))
+  Object.defineProperty(window, 'matchMedia', { value: matchMedia, configurable: true, writable: true })
+  const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function offsetHeight(this: HTMLElement) {
+    return this.classList.contains('bottom-nav') ? navHeight : 0
+  })
+  return () => {
+    Reflect.deleteProperty(window, 'matchMedia')
+    height.mockRestore()
+  }
+}
+
+describe('picking a time', () => {
+  it('on a phone, keeps the pick and the only Continue in a bar above the bottom menu', async () => {
+    const restore = asPhone(72)
+    try {
+      authState.user = memberUser
+      authState.activeClub = gensanClub
+      renderOwnClub()
+      const bar = await screen.findByRole('region', { name: 'Your pick' })
+      expect(bar).toHaveStyle({ bottom: '72px' })
+      expect(within(bar).getByText('Pick your hours to continue')).toBeInTheDocument()
+      await waitFor(() => expect(within(bar).getByRole('button', { name: 'Continue' })).toBeDisabled())
+      expect(within(bar).getByRole('button', { name: 'Continue' })).toHaveAttribute('aria-describedby', 'book-pick-hint')
+
+      fireEvent.click(screen.getByRole('button', { name: '12:00 PM' }))
+      expect(within(bar).getByText('12:00–1:00 PM · Php 500.00')).toBeInTheDocument()
+      expect(within(bar).queryByText('Pick your hours to continue')).not.toBeInTheDocument()
+      // One Continue on the screen, in the bar; the summary card keeps the details.
+      expect(screen.getAllByRole('button', { name: /^Continue/ })).toHaveLength(1)
+      const summary = within(screen.getByRole('complementary', { name: 'Your booking' }))
+      expect(summary.queryByRole('button', { name: /^Continue/ })).not.toBeInTheDocument()
+      expect(summary.getByText(/You pay the member rate/)).toBeInTheDocument()
+
+      fireEvent.click(within(bar).getByRole('button', { name: 'Continue' }))
+      expect(await screen.findByText('Checkout')).toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: 'Your pick' })).not.toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
+  it('on a phone, a visitor’s bar sits at the very bottom, with no menu under it', async () => {
+    const restore = asPhone(72)
+    try {
+      renderClub()
+      const bar = await screen.findByRole('region', { name: 'Your pick' })
+      expect(bar).toHaveStyle({ bottom: '0px' })
+    } finally {
+      restore()
+    }
+  })
+
+  it('on a wide screen, says why Continue cannot be tapped until a time is picked', async () => {
+    authState.user = memberUser
+    renderOwnClub()
+    const summary = within(await screen.findByRole('complementary', { name: 'Your booking' }))
+    await waitFor(() => expect(summary.getByRole('button', { name: /^Continue/ })).toBeDisabled())
+    expect(summary.getByText('Pick your hours to continue')).toBeInTheDocument()
+    expect(summary.getByRole('button', { name: /^Continue/ })).toHaveAttribute('aria-describedby', 'book-pick-hint')
+    expect(screen.queryByRole('region', { name: 'Your pick' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '12:00 PM' }))
+    expect(summary.queryByText('Pick your hours to continue')).not.toBeInTheDocument()
+    expect(summary.getByRole('button', { name: /^Continue/ })).toBeEnabled()
+  })
+
+  it('groups the hours by part of the day and shows free hours by their time alone', async () => {
+    authState.user = memberUser
+    const day = slots()
+    day[8] = { ...day[8], available: false, blocked: 'booked' }
+    apiMock.availability.mockResolvedValue([{ court, slots: day }])
+    renderOwnClub()
+    const morning = await screen.findByRole('group', { name: /Morning/ })
+    expect(within(morning).getByRole('heading', { name: 'Morning 5–11 AM' })).toBeInTheDocument()
+    expect(within(morning).getByRole('button', { name: '6:00 AM' })).toBeInTheDocument()
+    const afternoon = screen.getByRole('group', { name: /Afternoon/ })
+    expect(within(afternoon).getByRole('button', { name: '12:00 PM' })).toBeInTheDocument()
+    // 2 PM is taken: it says so in words and cannot be tapped.
+    expect(within(afternoon).getByText('Booked')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^2:00 PM/ })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: /Evening/ })).getByRole('button', { name: '8:00 PM' })).toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: /Late night/ })).getByRole('button', { name: '9:00 PM' })).toBeInTheDocument()
+    expect(screen.queryByText('Available')).not.toBeInTheDocument()
+
+    fireEvent.click(within(afternoon).getByRole('button', { name: '12:00 PM' }))
+    const picked = within(afternoon).getByRole('button', { name: /^12:00 PM/ })
+    expect(picked).toHaveTextContent('Selected')
+    expect(picked).toHaveClass('picked-mark')
+  })
+
+  it('shows the court price in body text, not small grey print', async () => {
+    authState.user = memberUser
+    renderOwnClub()
+    const price = await screen.findByText('Php 500.00/hr')
+    expect(price).toHaveClass('text-body', 'text-ink')
+    expect(price).not.toHaveClass('text-xs')
+  })
+
+  it('opens on tomorrow when every hour today is over, and offers See tomorrow from today', async () => {
+    authState.user = memberUser
+    const today = ymdLocal(new Date())
+    const over = slots().map((slot) => ({ ...slot, available: false, blocked: 'passed' as const }))
+    apiMock.availability.mockImplementation(async (ymd: string) => [{ court, slots: ymd === today ? over : slots() }])
+    renderOwnClub()
+    expect(await screen.findByText('No open hours are left today, so this shows tomorrow.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Tomorrow' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '12:00 PM' })).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }))
+    expect(await screen.findByText(/^Every hour on .+ has passed\. Try another day\.$/)).toBeInTheDocument()
+    expect(screen.queryByText(/No open hours are left today/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'See tomorrow' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tomorrow' })).toHaveAttribute('aria-pressed', 'true'))
+    expect(await screen.findByRole('button', { name: '12:00 PM' })).toBeEnabled()
+  })
+
+  it('stays on a day the player picked, even when it is full', async () => {
+    authState.user = memberUser
+    const today = ymdLocal(new Date())
+    apiMock.availability.mockImplementation(async (ymd: string) => [{ court, slots: ymd === today ? slots() : slots(false) }])
+    renderOwnClub()
+    expect(await screen.findByRole('button', { name: '12:00 PM' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Tomorrow' }))
+    expect(await screen.findByText(/^No free hours on .+\. Try another day\.$/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Tomorrow' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /^See / })).toBeInTheDocument()
+  })
+})
+
+describe('checkout', () => {
+  it('shows the number to send to large, with a Copy number button', async () => {
+    authState.user = memberUser
+    const user = userEvent.setup()
+    renderOwnClub()
+    await openCheckout(user)
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const number = screen.getByText('0917 123 4567')
+    expect(number).toHaveClass('text-heading-2', 'tabular-nums')
+    expect(number).not.toHaveClass('font-mono')
+    fireEvent.click(screen.getByRole('button', { name: 'Copy number' }))
+    expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument()
+    expect(writeText).toHaveBeenCalledWith('09171234567')
+
+    const field = screen.getByLabelText('GCash reference number')
+    expect(field).toHaveAttribute('inputmode', 'numeric')
+    expect(field).toHaveAttribute('placeholder', expect.stringMatching(/\d/))
+    expect(field.closest('section')).toHaveClass('max-w-2xl')
+  })
+
+  it('says so when the number cannot be copied', async () => {
+    authState.user = memberUser
+    const user = userEvent.setup()
+    renderOwnClub()
+    await openCheckout(user)
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+      configurable: true,
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Copy number' }))
+    expect(await screen.findByText(/Copying did not work on this phone/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy number' })).toBeInTheDocument()
+  })
+
+  it('asks before Change time lets the hours go once a reference is typed', async () => {
+    authState.user = memberUser
+    const user = userEvent.setup()
+    renderOwnClub()
+    await openCheckout(user)
+    await user.type(screen.getByLabelText('GCash reference number'), REFERENCE)
+
+    await user.click(screen.getByRole('button', { name: /Change time/ }))
+    expect(screen.getByText('These hours will be released. Only go back if you have not paid.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Stay here' })).toHaveFocus()
+    expect(apiMock.releaseBookingHold).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Stay here' }))
+    expect(screen.queryByText(/These hours will be released/)).not.toBeInTheDocument()
+    expect(screen.getByText('Checkout')).toBeInTheDocument()
+    expect(screen.getByLabelText('GCash reference number')).toHaveValue(REFERENCE)
+
+    await user.click(screen.getByRole('button', { name: /Change time/ }))
+    await user.click(screen.getByRole('button', { name: 'Release and change time' }))
+    expect(apiMock.releaseBookingHold).toHaveBeenCalledWith(held.id)
+    expect(await screen.findByText(/Available times/)).toBeInTheDocument()
   })
 })

@@ -24,6 +24,15 @@ describe('BookingSteps', () => {
     expect(screen.getByText('Pay').closest('li')).toHaveAttribute('aria-current', 'step')
   })
 
+  it('gives phones one short line naming the step', () => {
+    const { rerender } = render(<BookingSteps current="login" visitor />)
+    expect(screen.getByText('Step 2 of 4 · Log in')).toBeInTheDocument()
+    rerender(<BookingSteps current="choose" visitor={false} />)
+    expect(screen.getByText('Step 1 of 3 · Choose a time')).toHaveClass('sm:hidden')
+    // The full list is for wider screens; only one of the two shows at any width.
+    expect(screen.getByRole('list', { name: 'Booking steps' })).toHaveClass('hidden', 'sm:flex')
+  })
+
   it('starts on choosing a time and ends on confirmed', () => {
     const { rerender } = render(<BookingSteps current="choose" visitor={false} />)
     expect(screen.getByText('Choose a time').closest('li')).toHaveAttribute('aria-current', 'step')

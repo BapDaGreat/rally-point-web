@@ -22,10 +22,11 @@
   --text-body--line-height: 22px;
   --text-caption: 12px;
   --text-caption--line-height: 16px;
-  --text-status: 10px;
-  --text-status--line-height: 13px;
-  --text-small: 10px;
-  --text-small--line-height: 13px;
+  /* Nothing on the site is smaller than 12px: players span age groups. */
+  --text-status: 13px;
+  --text-status--line-height: 18px;
+  --text-small: 12px;
+  --text-small--line-height: 16px;
   --text-display: 34px;
   --text-display--line-height: 40px;
   --text-display-lg: 48px;
@@ -311,7 +312,7 @@ textarea {
   padding: 0.3rem 0.7rem;
   font-size: var(--text-status);
   line-height: var(--text-status--line-height);
-  font-weight: 400;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: none; /* plain words, not shouty uppercase */
 }
@@ -767,10 +768,12 @@ button[aria-busy='true'],
   color: var(--color-ink);
   font-weight: 600;
 }
+/* A picked choice is solid navy, not a pale tint, so it reads at a glance; the sky bar is the brand's "picked" mark. */
 .chip-option[aria-pressed='true'] {
-  background: var(--color-brand-100);
-  border-color: var(--color-brand-700);
-  color: var(--color-brand-900);
+  background: var(--color-brand-900);
+  border-color: var(--color-brand-900);
+  color: #ffffff;
+  box-shadow: inset 0 -3px 0 var(--color-brand-400);
 }
 .notice {
   border-radius: 12px;
@@ -796,4 +799,24 @@ button[aria-busy='true'],
   .site-nav-link:hover {
     background-color: var(--color-brand-50);
   }
+}
+
+/* Native radios and checkboxes in the brand accent, not the browser's own blue. */
+input[type='radio'],
+input[type='checkbox'] {
+  accent-color: var(--color-brand-700);
+}
+
+/* A main button that cannot be used yet is plainly grey, not a washed-out blue. */
+.btn-primary:disabled,
+.btn-primary[aria-disabled='true'] {
+  background: var(--color-line);
+  border-color: var(--color-line);
+  color: var(--color-muted);
+  opacity: 1;
+}
+
+/* Sky is the brand's "you are here / picked" mark: the active nav underline, picked chips and the picked time. */
+.picked-mark {
+  box-shadow: inset 0 -3px 0 var(--color-brand-400);
 }

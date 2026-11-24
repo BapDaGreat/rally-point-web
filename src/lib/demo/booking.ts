@@ -159,7 +159,8 @@ export const bookingOperations = {
     if (!court) throw new Error('Court not found')
     if (opts.venue_id && court.venue_id !== opts.venue_id) throw new Error('Court is outside the selected venue')
     if (court.status === 'maintenance') throw new Error('Court under maintenance')
-    if (opts.hours < 1 || opts.hours > 3) throw new Error('Book 1–3 hours')
+    // No maximum length (owner, 2026-11-24): whole hours in a row, at least 1, inside the club's hours.
+    if (!Number.isInteger(opts.hours) || opts.hours < 1) throw new Error('Pick at least 1 hour')
     const { open, close } = venueHours(db.venues.find((venue) => venue.id === court.venue_id))
     if (opts.startHour < open || opts.startHour + opts.hours > close) throw new Error('Outside club hours')
     const member = db.members.find((m) => m.id === opts.member_id)

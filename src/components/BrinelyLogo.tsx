@@ -1,18 +1,25 @@
-/** Official bRineLy brand logo & icon mark assets */
+/** Official bRineLy brand logo & icon mark assets (vector art traced from logo.png, in public/) */
+type LogoVariant = 'color' | 'mark' | 'wordmark'
+
 type LogoProps = {
-  variant?: 'color' | 'mark'
+  variant?: LogoVariant
   className?: string
+  /** Accessible name. Pass an empty string when the logo is decorative. */
   title?: string
 }
 
 const BASE = import.meta.env.BASE_URL || '/'
 
-export function BrinelyLogo({ variant = 'color', className = '', title = 'bRineLy' }: LogoProps) {
-  const src = variant === 'mark' ? `${BASE}logo-mark.png` : `${BASE}logo.png`
+const SOURCES: Record<LogoVariant, string> = {
+  color: 'logo.png',
+  mark: 'logo-mark.svg',
+  wordmark: 'logo-wordmark.svg',
+}
 
+export function BrinelyLogo({ variant = 'color', className = '', title = 'bRineLy' }: LogoProps) {
   return (
     <img
-      src={src}
+      src={`${BASE}${SOURCES[variant]}`}
       alt={title}
       className={className}
       draggable={false}

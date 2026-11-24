@@ -5,7 +5,7 @@ import { ClubCard, ClubCardsLoading } from '../components/ClubCard'
 import { OwnersStrip } from '../components/OwnersStrip'
 import { Photo } from '../components/Photo'
 import { api } from '../lib/api'
-import { clubGrid } from '../lib/clubFormat'
+import { clubGrid, shortClubGrid } from '../lib/clubFormat'
 import { stagger } from '../lib/motion'
 import { HERO_PHOTO, stockSrc, stockSrcSet } from '../lib/stockPhotos'
 import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
@@ -38,9 +38,6 @@ export function WelcomePage() {
       <Hero />
       <HowBookingWorks />
       <FeaturedClubs />
-      <div className="pt-6">
-        <OwnersStrip />
-      </div>
     </PublicFrame>
   )
 }
@@ -61,7 +58,7 @@ function Hero() {
       <div className="min-w-0 space-y-4">
         <h1 className="text-display font-semibold text-ink lg:text-display-lg">{TITLE}</h1>
         <p className="max-w-xl text-subtitle text-muted">
-          See free hours at clubs across the Philippines, book 1 to 3 hours, and pay the club by GCash.
+          See free hours at clubs across the Philippines, book by the hour, and pay the club by GCash.
         </p>
         <form role="search" onSubmit={search} className="max-w-xl space-y-2">
           <label className="label" htmlFor={searchId}>Search</label>
@@ -139,6 +136,13 @@ function FeaturedClubs() {
     }
   }, [attempt])
 
+  const short = clubs ? shortClubGrid(clubs.length) : null
+  const clubItems = (clubs ?? []).map((club, index) => (
+    <li key={club.slug} className="enter-rise" style={stagger(index)}>
+      <ClubCard club={club} />
+    </li>
+  ))
+
   function retry() {
     setFailed(false)
     setClubs(null)
@@ -146,33 +150,40 @@ function FeaturedClubs() {
   }
 
   return (
-    <section aria-labelledby={headingId} className="space-y-4 pt-8">
-      <div className="flex flex-wrap items-center justify-between gap-x-4">
-        <h2 id={headingId} className="text-heading-2 font-semibold text-ink">Clubs on bRineLy</h2>
-        <Link to="/clubs" className={textLink}>
-          See all clubs
-        </Link>
-      </div>
-      {failed ? (
-        <div role="alert" className="notice notice-error flex flex-wrap items-center justify-between gap-3">
-          <p className="text-body font-semibold">Could not load clubs</p>
-          <button type="button" onClick={retry} className="btn-secondary w-auto px-5">
-            Try again
-          </button>
+    <>
+      <section aria-labelledby={headingId} className="space-y-4 pt-8">
+        <div className="flex flex-wrap items-center justify-between gap-x-4">
+          <h2 id={headingId} className="text-heading-2 font-semibold text-ink">Clubs on bRineLy</h2>
+          <Link to="/clubs" className={textLink}>
+            See all clubs
+          </Link>
         </div>
-      ) : clubs === null ? (
-        <ClubCardsLoading count={3} />
-      ) : clubs.length === 0 ? (
-        <p className="text-body text-muted">No clubs are listed yet.</p>
-      ) : (
-        <ul className={clubGrid}>
-          {clubs.map((club, index) => (
-            <li key={club.slug} className="enter-rise" style={stagger(index)}>
-              <ClubCard club={club} />
-            </li>
-          ))}
-        </ul>
+        {failed ? (
+          <div role="alert" className="notice notice-error flex flex-wrap items-center justify-between gap-3">
+            <p className="text-body font-semibold">Could not load clubs</p>
+            <button type="button" onClick={retry} className="btn-secondary sm:w-auto! sm:px-6">
+              Try again
+            </button>
+          </div>
+        ) : clubs === null ? (
+          <ClubCardsLoading count={3} />
+        ) : clubs.length === 0 ? (
+          <p className="text-body text-muted">No clubs are listed yet.</p>
+        ) : short ? (
+          <div className={clubGrid}>
+            <ul className={short.list}>{clubItems}</ul>
+            <OwnersStrip className={short.tile} />
+          </div>
+        ) : (
+          <ul className={clubGrid}>{clubItems}</ul>
+        )}
+      </section>
+      {/* One or two clubs share their row with the owners tile; otherwise it closes the page. */}
+      {short ? null : (
+        <div className="pt-6">
+          <OwnersStrip />
+        </div>
       )}
-    </section>
+    </>
   )
 }

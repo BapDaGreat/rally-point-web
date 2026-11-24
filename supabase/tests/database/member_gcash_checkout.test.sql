@@ -163,8 +163,8 @@ select extensions.throws_ok(
 select set_config('request.jwt.claim.sub', 'd1000000-0000-4000-8000-000000000009', true);
 select extensions.throws_ok(
   $$select public.hold_court_booking('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac',
-      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaad', date '2099-06-01', 9, 4)$$,
-  '22023', 'Book 1 to 3 hours', 'a hold is 1 to 3 hours');
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaad', date '2099-06-01', 9, 0)$$,
+  '22023', 'Pick at least 1 hour', 'a hold is at least 1 hour');
 select extensions.throws_ok(
   $$select public.hold_court_booking('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac',
       'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaad', date '2099-06-01', 21, 2)$$,
