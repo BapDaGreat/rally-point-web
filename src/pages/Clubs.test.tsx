@@ -60,6 +60,7 @@ vi.mock('../lib/api', () => ({
 }))
 
 import { api } from '../lib/api'
+import { stockPhotoFor } from '../lib/stockPhotos'
 
 const clubs: PublicClubListing[] = [
   { slug: 'rally-point-davao', name: 'Rally Point Davao', city: 'Davao City', address: 'Lanang', cities: ['Davao City'], venue_count: 1, court_count: 2, min_rate: 450, min_member_rate: 400 },
@@ -132,8 +133,8 @@ describe('Find a court', () => {
     expect(davaoLink).toHaveTextContent('1 location')
     expect(davaoLink).toHaveTextContent('2 courts')
     expect(davaoLink).toHaveTextContent('From Php 450.00 per hour · Members from Php 400.00')
-    // Clubs have no photos yet, so each card shows a drawn court marked as a sample.
-    expect(within(davaoLink).getByText('Sample')).toBeInTheDocument()
+    // Clubs have no photos yet, so each card shows a real stock photo marked as a sample.
+    expect(within(davaoLink).getByText('Sample photo')).toBeInTheDocument()
     const gensanLink = screen.getByRole('link', { name: /Rally Point Gensan/ })
     expect(gensanLink).toHaveTextContent('From Php 500.00 per hour')
     expect(gensanLink).not.toHaveTextContent('Members from')
@@ -336,7 +337,7 @@ describe('Find a court', () => {
     expect(screen.queryByText('Loading club…')).not.toBeInTheDocument()
   })
 
-  it('fades a photo in once it loads, and keeps a labelled placeholder if it fails', async () => {
+  it('fades a photo in once it loads, and shows a labelled sample photo if it fails', async () => {
     vi.mocked(api.listPublicClubs).mockResolvedValue([
       { ...clubs[0], cover_photo: 'https://example.test/cover.webp' },
       { ...clubs[1], cover_photo: 'https://example.test/broken.webp' },
@@ -353,9 +354,10 @@ describe('Find a court', () => {
     const gensanPhoto = gensanCard.getByRole('img', { name: 'Photo of Rally Point Gensan' })
     expect(gensanPhoto.tagName).toBe('IMG')
     fireEvent.error(gensanPhoto)
-    const placeholder = gensanCard.getByRole('img', { name: 'Photo of Rally Point Gensan' })
-    expect(placeholder.tagName).not.toBe('IMG')
-    expect(placeholder).toHaveAttribute('data-state', 'error')
+    // A sample never borrows the club's name: it says what it shows and is labelled as a sample.
+    expect(gensanCard.queryByRole('img', { name: 'Photo of Rally Point Gensan' })).not.toBeInTheDocument()
+    expect(gensanCard.getByRole('img', { name: stockPhotoFor('rally-point-gensan').alt })).toBeInTheDocument()
+    expect(gensanCard.getByText('Sample photo')).toBeInTheDocument()
     expect(document.querySelector('img[src="https://example.test/broken.webp"]')).toBeNull()
   })
 

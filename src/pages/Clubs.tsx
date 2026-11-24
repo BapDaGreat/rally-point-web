@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Building2, ChevronLeft, ChevronRight, Clock, Images, MapPin, Navigation, RefreshCw, Search } from 'lucide-react'
 import { PublicFrame as Frame } from '../components/PublicFrame'
+import { ClubCard, ClubCardsLoading } from '../components/ClubCard'
+import { clubGrid, plural } from '../lib/clubFormat'
 import { CourtArt } from '../components/CourtArt'
 import { Photo } from '../components/Photo'
 import {
@@ -22,30 +24,6 @@ import { openingHoursLabel, peso } from '../types'
 import { directionsUrl, mapEmbedUrl, placeLine } from '../lib/maps'
 
 const textLink = 'control-feedback inline-flex min-h-12 items-center gap-1 text-body font-semibold text-brand-800'
-
-const clubGrid = 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'
-
-/** Card-shaped placeholders in the same grid as the club list, so nothing jumps when clubs arrive. */
-function ClubCardsLoading() {
-  return (
-    <LoadingShapes label="Loading clubs…">
-      <div className="skeleton h-6 w-24" aria-hidden />
-      <ul className={clubGrid} aria-hidden>
-        {[0, 1, 2].map((key) => (
-          <li key={key} className="card overflow-hidden">
-            <div className="skeleton aspect-[16/9] rounded-none!" />
-            <div className="space-y-2 p-4">
-              <div className="skeleton h-6 w-3/4" />
-              <div className="skeleton h-5 w-1/2" />
-              <div className="skeleton h-5 w-2/3" />
-              <div className="skeleton h-5 w-3/5" />
-            </div>
-          </li>
-        ))}
-      </ul>
-    </LoadingShapes>
-  )
-}
 
 /** The club page's shape (photo, summary, one location with two courts) while it loads. */
 function ClubDetailLoading() {
@@ -77,16 +55,6 @@ function ClubDetailLoading() {
       </div>
     </LoadingShapes>
   )
-}
-
-function plural(count: number, one: string, many = `${one}s`) {
-  return `${count} ${count === 1 ? one : many}`
-}
-
-function rateLine(regular: number | null, member: number | null) {
-  if (regular == null) return 'No courts open for booking yet'
-  const from = `From ${peso(regular)} per hour`
-  return member != null && member < regular ? `${from} · Members from ${peso(member)}` : from
 }
 
 type PublicCourt = PublicClubDetail['venues'][number]['courts'][number]
@@ -314,26 +282,7 @@ export function ClubDirectory({ landing = false }: { landing?: boolean }) {
       <ul key={city || 'all'} className={clubGrid}>
         {shown.map((club, index) => (
           <li key={club.slug} className="enter-rise" style={stagger(index)}>
-            <Link to={`/clubs/${club.slug}`} className="control-feedback club-card card flex h-full flex-col overflow-hidden">
-              {club.cover_photo ? (
-                <Photo src={club.cover_photo} alt={`Photo of ${club.name}`} className="club-card-media block aspect-[16/9] w-full" lazy />
-              ) : (
-                <CourtArt seed={club.slug} className="club-card-media aspect-[16/9]" />
-              )}
-              <span className="flex flex-1 items-center gap-3 p-4">
-                <span className="flex-1 min-w-0">
-                  <span className="block text-subtitle font-semibold text-slate-900">{club.name}</span>
-                  {club.cities.length ? (
-                    <span className="block text-body font-normal text-slate-600">{club.cities.join(' · ')}</span>
-                  ) : null}
-                  <span className="block text-body font-normal text-slate-600">
-                    {plural(club.venue_count, 'location')} · {plural(club.court_count, 'court')}
-                  </span>
-                  <span className="block text-body font-semibold text-brand-800">{rateLine(club.min_rate, club.min_member_rate)}</span>
-                </span>
-                <ChevronRight className="text-slate-400 shrink-0" size={22} aria-hidden />
-              </span>
-            </Link>
+            <ClubCard club={club} />
           </li>
         ))}
       </ul>
