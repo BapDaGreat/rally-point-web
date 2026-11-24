@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Profile } from "../types";
+import { LOGIN_PHOTO } from "../lib/stockPhotos";
 import LoginPage from "./LoginPage";
 
 const authState = vi.hoisted(() => ({
@@ -193,7 +194,7 @@ describe("LoginPage authentication form safety", () => {
     expect(screen.getByRole("button", { name: "Send reset link" })).toBeInTheDocument();
   });
 
-  it("shows public FAQ answers and clearly non-clickable social previews", async () => {
+  it("shows public FAQ answers", async () => {
     const user = userEvent.setup();
     renderLogin();
 
@@ -205,14 +206,30 @@ describe("LoginPage authentication form safety", () => {
     expect(
       screen.getByText(/choose a date, court, and time, then complete payment/i),
     ).toBeInTheDocument();
+  });
 
-    const socialHeading = screen.getByRole("heading", { name: "Find us on social media" });
-    const socialSection = socialHeading.parentElement;
-    if (!socialSection) throw new Error("Social preview section is missing");
-    expect(within(socialSection).getByText("Facebook")).toBeInTheDocument();
-    expect(within(socialSection).getByText("Instagram")).toBeInTheDocument();
-    expect(socialSection.querySelectorAll("a")).toHaveLength(0);
-    expect(within(socialSection).getByText("Social links will be added when the official pages are confirmed.")).toBeInTheDocument();
+  it("shows the login photo and a plain heading, with no video", () => {
+    const { container } = renderLogin();
+
+    expect(screen.getByRole("heading", { level: 1, name: "Log in" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: LOGIN_PHOTO.alt })).toBeInTheDocument();
+    // General imagery, not a club's venue, so it carries no "Sample photo" label.
+    expect(screen.queryByText("Sample photo")).not.toBeInTheDocument();
+    expect(container.querySelector("video")).toBeNull();
+    // The page's own form is the only way in, so the header has no Log in link.
+    expect(screen.queryByRole("link", { name: "Log in" })).not.toBeInTheDocument();
+    expect(document.title).toBe("Log in · bRineLy");
+  });
+
+  it("names the sign-up page in join mode", () => {
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/login", state: { mode: "join" } }]}>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("heading", { level: 1, name: "Create your player account" })).toBeInTheDocument();
+    expect(document.title).toBe("Sign up · bRineLy");
   });
 
   it("links to the public Privacy Notice", () => {
