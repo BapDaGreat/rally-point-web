@@ -57,7 +57,8 @@ Never edit, move, or regenerate anything under `docs/release-private/`. Those ar
     - The six public views run with the caller's rights. Their logic lives in definer functions: `private.*_rows()`, and `board.public_schedule_rows()` for the anonymous TV board. The `board` schema is not exposed through the API.
     - Hosted staging gives `service_role` SELECT on those views; local builds do not. Check grants against a restored copy, not only a local build.
   - **Isolation checked:** two-club isolation passed on staging (55 checks, rolled back) and over the live API.
-  - **Clubs:** staging has two active clubs, Rally Point Gensan and the September `tenant-fixture-second-club`. No platform superadmin exists yet.
+  - **Clubs:** staging has two active clubs, Rally Point Gensan and the September `tenant-fixture-second-club`. Since 2026-11-24 (owner: "yes do it") one test platform superadmin exists, `superadmin.test@brinely.info`, with no club membership.
+  - **Test accounts (2026-11-24):** the seven synthetic test accounts (players, staff and admins at both clubs, on `example.invalid` / `rallypoint.invalid` addresses) got new passwords, and the superadmin above was created through direct trusted SQL (auth user, email identity, `platform_roles` row). Their logins are only in `C:/Users/ed/.rally-point/staging-test-accounts.local`, outside the repo; never copy them into the repo, logs or screenshots. Every login was checked with a real password sign-in.
   - **Still paused:** the reservation-write pause holds. The frozen resume package no longer matches staging, so a resume needs a new package.
   - **Published site:** since 2026-10-17, https://zylush.github.io/rally-point-web/ runs this branch's frontend: the staging build of `b3b1ca2`, published to `gh-pages` as `e3533ed`. It was smoke-tested locally and live (TV board and sign-in, staging API calls returning 200, no console errors).
   - **Production** is unchanged and stays one club.
