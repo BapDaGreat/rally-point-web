@@ -90,18 +90,23 @@ export function OwnersPage() {
 
   return (
     <PublicFrame title="List your club" subtitle="For pickleball court owners" accountLinks="login">
-      <div className="enter-rise grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:items-center lg:gap-10">
+      <div className="enter-rise grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-center lg:gap-10">
         <Photo
           src={stockSrc(OWNERS_PHOTO, 'small')}
           srcSet={stockSrcSet(OWNERS_PHOTO)}
-          sizes="(min-width: 1024px) 20rem, 100vw"
+          sizes="(min-width: 1024px) 26rem, 100vw"
           alt={OWNERS_PHOTO.alt}
-          className="block aspect-[16/9] w-full rounded-xl sm:aspect-[2/1] lg:order-last lg:aspect-[4/5] [&_img]:object-[center_20%]"
+          className="block aspect-[16/9] w-full rounded-xl sm:aspect-[2/1] lg:order-last lg:aspect-[4/3] [&_img]:object-[center_20%]"
           priority
         />
-        <p className="max-w-[34ch] text-heading-2 font-semibold text-ink">
-          Put your club online. Players find you, book a time and pay your GCash directly.
-        </p>
+        <div className="space-y-3">
+          <p className="max-w-[34ch] text-heading-2 font-semibold text-ink">
+            Put your club online. Players find you, book a time and pay your GCash directly.
+          </p>
+          <p className="max-w-[48ch] text-subtitle text-muted">
+            Tell us about your courts in the form below, and we will call you at a time that suits you.
+          </p>
+        </div>
       </div>
 
       <div className="grid gap-4 pt-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)] lg:grid-rows-[auto_auto_1fr] lg:items-start lg:gap-x-10">
@@ -234,7 +239,7 @@ export function OwnersPage() {
           <p className="mt-2 text-subtitle text-muted">
             If we have set up your club, create your owner account with the email you gave us. You become your club’s admin, and you can log in as soon as your club is open.
           </p>
-          <Link to="/login" state={{ mode: 'join', owner: true }} className="btn-secondary mt-4 min-h-12 w-full sm:w-auto sm:px-6">
+          <Link to="/login" state={{ mode: 'join', owner: true }} className="btn-secondary mt-4 min-h-12 w-full sm:w-auto! sm:px-6">
             Create my owner account
           </Link>
         </section>

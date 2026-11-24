@@ -13,7 +13,7 @@ import { BOOKING_HOLD_MINUTES } from '../types'
 import type { PublicClubListing } from '../types'
 
 const TITLE = 'Book a pickleball court near you.'
-const textLink = 'text-link inline-flex min-h-12 items-center text-body'
+const textLink = 'text-link inline-flex min-h-12 items-center text-subtitle'
 
 const steps = [
   { title: 'Pick a club and a time', body: 'See free hours for today and the next 7 days.' },
@@ -75,7 +75,7 @@ function Hero() {
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Club name or city"
             />
-            <button type="submit" className="btn-primary sm:w-auto sm:shrink-0 sm:px-6">
+            <button type="submit" className="btn-primary sm:w-auto! sm:shrink-0 sm:px-6">
               Find a court
             </button>
           </div>

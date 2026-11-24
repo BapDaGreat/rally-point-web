@@ -42,7 +42,7 @@ function ClubDetailLoading() {
             <div className="skeleton h-5 w-2/3" />
             <div className="skeleton h-5 w-2/5" />
           </div>
-          <ul className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          <ul className="grid grid-cols-2 gap-3">
             {[0, 1].map((key) => (
               <li key={key} className="overflow-hidden rounded-[10px] border border-line">
                 <div className="skeleton aspect-[16/10] rounded-none!" />
@@ -102,9 +102,11 @@ function CourtCard({
         {court.in_service && canBook ? (
           <Link
             to={target}
+            aria-label={`Book ${court.name}`}
             className="control-feedback mt-3 inline-flex min-h-12 items-center justify-between gap-1 rounded-[10px] border border-line px-3 text-body font-semibold text-brand-700"
           >
-            <span>Book {court.name}</span>
+            {/* The card already names the court, so the button just says Book. */}
+            <span>Book</span>
             <ChevronRight size={16} className="hidden shrink-0 sm:block" aria-hidden />
           </Link>
         ) : null}
@@ -478,7 +480,7 @@ export function ClubDetailPage() {
 
                 <h3 className="text-subtitle font-semibold text-ink">Courts</h3>
                 {venue.courts.length === 0 ? <p className="text-body text-muted">No courts listed yet.</p> : (
-                  <ul className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                  <ul className="grid grid-cols-2 gap-3">
                     {venue.courts.map((court) => (
                       <CourtCard
                         key={court.id}

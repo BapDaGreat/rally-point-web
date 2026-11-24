@@ -11,15 +11,15 @@ export function NotFoundPage() {
       <p className="text-subtitle text-muted">This page does not exist or has moved. Check the link, or carry on from here.</p>
       <div className="flex flex-wrap gap-3">
         {user ? (
-          <Link to={homeFor(user.role)} className="btn-primary w-auto px-6">
+          <Link to={homeFor(user.role)} className="btn-primary w-auto! px-6">
             Go to my home
           </Link>
         ) : (
-          <Link to="/" className="btn-primary w-auto px-6">
+          <Link to="/" className="btn-primary w-auto! px-6">
             Go to the home page
           </Link>
         )}
-        <Link to="/clubs" className="btn-secondary w-auto px-6">
+        <Link to="/clubs" className="btn-secondary w-auto! px-6">
           Find a court
         </Link>
       </div>

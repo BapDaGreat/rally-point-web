@@ -248,6 +248,27 @@ describe('booking screen dead ends', () => {
     expect(screen.getByRole('button', { name: /Continue/ })).toBeDisabled()
   })
 
+  it("folds today's hours that are over into one line, so the grid starts at the first open hour", async () => {
+    authState.user = memberUser
+    const day = slots()
+    // 6 AM to 9 AM are over; 10 AM onward can still be booked.
+    for (let index = 0; index < 4; index += 1) day[index] = { ...day[index], available: false, blocked: 'passed' }
+    apiMock.availability.mockResolvedValue([{ court, slots: day }])
+    renderOwnClub()
+    expect(await screen.findByText('Hours before 10:00 AM have passed.')).toBeInTheDocument()
+    expect(screen.queryByText('Passed')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^10:00 AM/ })).toBeEnabled()
+  })
+
+  it('says when every hour of the day is over', async () => {
+    authState.user = memberUser
+    apiMock.availability.mockResolvedValue([
+      { court, slots: slots().map((slot) => ({ ...slot, available: false, blocked: 'passed' as const })) },
+    ])
+    renderOwnClub()
+    expect(await screen.findByText(/^Every hour on .+ has passed\. Try another day\.$/)).toBeInTheDocument()
+  })
+
   it('e: signed-in staff are told at once that only member accounts book, with no Continue', async () => {
     authState.user = staffUser
     renderClub()

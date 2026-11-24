@@ -29,8 +29,8 @@ const groups: { title: string; links: FooterLink[] }[] = [
 export function SiteFooter() {
   return (
     <footer className="site-footer mt-auto">
-      <div className="app-content-rail grid gap-8 py-10 md:grid-cols-[1.6fr_1fr_1fr_1fr]">
-        <div>
+      <div className="app-content-rail grid grid-cols-2 gap-x-6 gap-y-8 py-10 md:grid-cols-[1.6fr_1fr_1fr_1fr]">
+        <div className="col-span-2 md:col-span-1">
           <p className="flex items-center gap-2 text-title font-semibold text-ink">
             <BrinelyLogo variant="mark" className="h-7 w-7 object-contain" title="" />
             bRineLy

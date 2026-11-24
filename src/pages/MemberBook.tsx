@@ -1033,6 +1033,12 @@ export function MemberBook() {
   const dayFull = bookableRows.length > 0 && bookableRows.every((row) =>
     row.slots.every((slot) => !slot.available || (row.court.id === courtId && myHoursOnCourt.has(slot.startHour))),
   )
+  // Today's hours that are already over are folded into one line, so the grid starts at the
+  // first hour someone could still book instead of a wall of "Passed".
+  const courtSlots = selectedCourt?.slots ?? []
+  const firstNotPassed = courtSlots.findIndex((slot) => slot.blocked !== 'passed')
+  const passedBefore = firstNotPassed === -1 ? courtSlots.length : firstNotPassed
+  const shownSlots = courtSlots.slice(passedBefore)
   const clubPageLink = clubPageSlug ? (
     <Link to={`/clubs/${clubPageSlug}`} className="text-link inline-flex min-h-12 items-center">
       Go to the club page
@@ -1131,8 +1137,8 @@ export function MemberBook() {
             <ChevronLeft size={16} aria-hidden /> Back
           </button>
           <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Checkout</p>
-            <h2 ref={stepHeading} tabIndex={-1} className="outline-none font-extrabold text-lg mt-0.5">
+            <p className="text-body font-semibold text-muted">Checkout</p>
+            <h2 ref={stepHeading} tabIndex={-1} className="outline-none text-title font-semibold text-ink mt-0.5">
               {courtNameOf(pending)} · {fmtDateTime(pending.start_at)}
             </h2>
             <p className="text-sm text-slate-600">
@@ -1426,8 +1432,15 @@ export function MemberBook() {
                           No free hours on {dateLabel}. Try another day.
                         </p>
                       ) : null}
+                      {passedBefore > 0 ? (
+                        <p className="mt-2 px-1 text-body text-muted">
+                          {shownSlots.length > 0
+                            ? `Hours before ${hourLabel(shownSlots[0].startHour)} have passed.`
+                            : `Every hour on ${dateLabel} has passed. Try another day.`}
+                        </p>
+                      ) : null}
                       <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {(selectedCourt?.slots ?? []).map((s) => {
+                        {shownSlots.map((s) => {
                           const selected = selectionOk && s.startHour >= startHour && s.startHour < startHour + hours
                           const look = slotLook(s, {
                             selected,
