@@ -259,8 +259,8 @@ describe('End-to-end user email verification & login journey (AuthProvider + Log
       </MemoryRouter>,
     )
 
-    // Real live-mode indicator (not demo)
-    expect(await screen.findByText('Pickleball club app')).toBeInTheDocument()
+    // Live mode (not demo): the page has loaded and shows no demo accounts
+    expect(await screen.findByRole('heading', { level: 1, name: 'Log in' })).toBeInTheDocument()
     expect(screen.queryByText('Quick demo logins')).not.toBeInTheDocument()
 
     // Switch to Join as member and sign up
