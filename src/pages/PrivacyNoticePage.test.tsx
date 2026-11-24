@@ -64,7 +64,7 @@ describe('PrivacyNoticePage', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Privacy Notice' })).toBeInTheDocument()
     expect(screen.getByText('For bRineLy booking portal users')).toBeInTheDocument()
     // A legal page carries no marketing tagline; the site footer has it.
-    expect(screen.queryByText('Stay in the brine. Play more.')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('main')).queryByText('Stay in the brine. Play more.')).not.toBeInTheDocument()
     expect(screen.getByText('Last updated: November 22, 2026')).toBeInTheDocument()
     expect(screen.queryByText(/Rally Point Gensan/)).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Who we are' })).toBeInTheDocument()
