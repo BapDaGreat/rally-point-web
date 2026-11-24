@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -41,7 +41,8 @@ describe('OwnersPage', () => {
     renderPage()
     expect(screen.getByRole('heading', { level: 1, name: 'List your club' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Put your courts on bRineLy' })).toBeInTheDocument()
-    expect(screen.getAllByRole('listitem')).toHaveLength(3)
+    const steps = screen.getByRole('heading', { name: 'Put your courts on bRineLy' }).closest('section')!
+    expect(within(steps).getAllByRole('listitem')).toHaveLength(3)
     expect(screen.getByRole('link', { name: 'Create my owner account' })).toHaveAttribute('href', '/login')
     expect(screen.getByLabelText('Day for the call')).toHaveAttribute('min', ownerCallDateRange().min)
   })

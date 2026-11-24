@@ -18,6 +18,7 @@ import { createPortal } from 'react-dom'
 import type { ClubRole, Role } from '../types'
 import { useAuth } from '../context/AuthContext'
 import { homeFor } from '../lib/roleHome'
+import { useDocumentTitle } from '../lib/useDocumentTitle'
 import { useModalDialog } from '../lib/useModalDialog'
 import { BrinelyLogo } from './BrinelyLogo'
 import { LoadingShapes, SkeletonBlock, SkeletonCard, SkeletonRows } from './Skeleton'
@@ -247,8 +248,9 @@ export function AppHeader({
   right?: ReactNode
 }) {
   const clubName = useAuth().activeClub?.name ?? 'bRineLy'
+  useDocumentTitle(title)
   return (
-    <header className="sticky top-0 z-30 bg-white/98 backdrop-blur border-b border-slate-200 pt-4 pb-3.5">
+    <header className="sticky top-0 z-30 bg-white border-b border-line pt-4 pb-3.5">
       <div className="app-content-rail flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
           {left ? <div className="shrink-0 mt-0.5">{left}</div> : null}
