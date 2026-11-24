@@ -319,13 +319,16 @@ export function PrivacyNoticePage() {
     } catch {
       // A malformed address keeps its raw text, which matches no section.
     }
-    const target = id ? document.getElementById(id) : null
+    // "Back to top" scrolls the whole page and puts focus back at the start of the notice.
+    const toTop = id === 'top'
+    const target = toTop ? document.documentElement : id ? document.getElementById(id) : null
     if (!target) return
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false
     target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
     if (jumpedByLink.current) {
       jumpedByLink.current = false
-      target.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true })
+      const focusTarget = toTop ? document.getElementById('privacy-notice') : target.querySelector<HTMLElement>('h2')
+      focusTarget?.focus({ preventScroll: true })
     }
   }, [location.hash, location.key])
 
@@ -335,11 +338,23 @@ export function PrivacyNoticePage() {
     </Link>
   )
 
-  const tagline = (
-    <div className="text-body text-muted">
-      <p>Stay in the brine. Play more.</p>
-      <p className="mt-1">Last updated: November 22, 2026</p>
-    </div>
+  // A legal page: no marketing line here (the site footer carries it).
+  const tagline = <p className="text-body text-muted">Last updated: November 22, 2026</p>
+
+  const backToTop = (
+    <p className="mt-2 border-t border-line pt-4">
+      <Link
+        to={{ pathname: location.pathname, search: location.search, hash: '#top' }}
+        state={location.state}
+        replace
+        onClick={() => {
+          jumpedByLink.current = true
+        }}
+        className="text-link inline-flex min-h-12 items-center"
+      >
+        Back to top
+      </Link>
+    </p>
   )
 
   const body = (
@@ -380,6 +395,7 @@ export function PrivacyNoticePage() {
           )
         })}
       </div>
+      {backToTop}
     </>
   )
 
@@ -387,7 +403,7 @@ export function PrivacyNoticePage() {
   if (!user) {
     return (
       <PublicFrame title="Privacy Notice" subtitle={subtitle} width="narrow">
-        <div className="max-w-[68ch]">
+        <div id="privacy-notice" tabIndex={-1} className="max-w-[68ch] focus:outline-none">
           {tagline}
           <div className="mt-2">{backLink}</div>
           {body}
@@ -399,7 +415,7 @@ export function PrivacyNoticePage() {
   return (
     <AppShell role={user.role}>
       <main className="app-content-rail safe-bottom mx-auto w-full py-6 sm:py-10">
-        <div className="mx-auto max-w-[68ch]">
+        <div id="privacy-notice" tabIndex={-1} className="mx-auto max-w-[68ch] focus:outline-none">
           {backLink}
           <header className="mt-4">
             <h1 className="text-heading-1 font-semibold text-ink">Privacy Notice</h1>

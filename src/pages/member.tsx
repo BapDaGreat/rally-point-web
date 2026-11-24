@@ -108,13 +108,13 @@ export function MemberHome() {
           <>
             {member && !member.membership_type ? (
               <section className="enter-rise stat-card">
-                <p className="text-body font-normal text-teal-100">Your membership</p>
+                <p className="text-body font-normal text-brand-100">Your membership</p>
                 <p className="text-heading-2 font-semibold mt-1">No membership yet</p>
-                <p className="text-body font-normal text-teal-50 mt-2">
+                <p className="text-body font-normal text-brand-50 mt-2">
                   You can book courts here at the regular rate. Members pay the member rate where the club offers one.
                 </p>
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <span className="text-teal-50 font-normal text-body">ID {member.member_code}</span>
+                  <span className="text-brand-50 font-normal text-body">ID {member.member_code}</span>
                   <Link
                     to="/member/pay"
                     className="control-feedback min-h-12 min-w-28 px-4 rounded-xl bg-white text-brand-800 text-subtitle font-medium inline-flex items-center justify-center gap-2 shadow-sm"
@@ -126,14 +126,14 @@ export function MemberHome() {
               </section>
             ) : (
             <section className="enter-rise stat-card">
-              <p className="text-body font-normal text-teal-100">
+              <p className="text-body font-normal text-brand-100">
                 Your membership
               </p>
               <p className="text-heading-2 font-semibold mt-1">
                 {friendlyStatus(member?.membership_type ?? '—')} plan
               </p>
               <div className="mt-3 flex items-center justify-between gap-2 text-body">
-                <span className="text-teal-50 font-normal">
+                <span className="text-brand-50 font-normal">
                   ID {member?.member_code ?? '—'}
                 </span>
                 <span
@@ -143,7 +143,7 @@ export function MemberHome() {
                 </span>
               </div>
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-body font-normal text-teal-50 flex items-center gap-2">
+                <p className="text-body font-normal text-brand-50 flex items-center gap-2">
                   <CalendarDays size={18} aria-hidden /> Valid until{' '}
                   {member?.expiry_date ? fmtDate(member.expiry_date) : '—'}
                 </p>
@@ -309,7 +309,7 @@ export function MemberPay() {
       />
       <main className="safe-bottom px-4 pt-4 space-y-4">
         <section className="card p-4">
-          <p className="text-caption font-bold uppercase text-slate-400">
+          <p className="text-caption font-semibold text-muted">
             {isDemoMode ? 'Amount due' : 'Renewal price'}
           </p>
           <p className="text-heading-1 font-bold text-slate-900 mt-1">

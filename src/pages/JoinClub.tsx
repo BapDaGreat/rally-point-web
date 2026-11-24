@@ -79,7 +79,7 @@ export function JoinClubPage() {
   if (user.role === 'superadmin') {
     return (
       <JoinCard title={club.name} club={club}>
-        <p>Platform accounts look after clubs from the platform portal and cannot join as members.</p>
+        <p>Platform accounts look after clubs from the platform portal and cannot join a club as a player.</p>
         <Link to="/superadmin" className="btn-primary">
           Back to the platform portal
         </Link>

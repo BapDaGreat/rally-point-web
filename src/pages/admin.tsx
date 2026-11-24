@@ -142,15 +142,15 @@ export function AdminHome() {
           <>
             <section className="enter-rise grid grid-cols-2 gap-3">
               <div className="stat-card col-span-2">
-                <p className="text-teal-100 text-xs font-bold uppercase">{isDemoMode ? 'Revenue today' : 'Recorded charges today'}</p>
+                <p className="text-brand-100 text-xs font-semibold">{isDemoMode ? 'Revenue today' : 'Recorded charges today'}</p>
                 <p className="text-3xl font-extrabold mt-1">{peso(stats.revenue_today)}</p>
               </div>
               <div className="card p-4">
-                <p className="text-xs font-bold uppercase text-slate-400">Members</p>
+                <p className="text-xs font-semibold text-muted">Members</p>
                 <p className="text-3xl font-extrabold mt-1">{stats.members}</p>
               </div>
               <div className="card p-4">
-                <p className="text-xs font-bold uppercase text-slate-400">Active now</p>
+                <p className="text-xs font-semibold text-muted">Active now</p>
                 <p className="text-3xl font-extrabold mt-1">{stats.active_now}</p>
               </div>
             </section>

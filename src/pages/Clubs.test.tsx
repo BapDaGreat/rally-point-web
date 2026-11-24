@@ -268,8 +268,7 @@ describe('Find a court', () => {
     await user.click(screen.getByRole('button', { name: /12:00 PM/ }))
     await user.click(screen.getByRole('button', { name: /Continue/ }))
 
-    const dialog = await screen.findByRole('dialog', { name: 'Log in' })
-    expect(within(dialog).getByText('Login to continue')).toBeInTheDocument()
+    const dialog = await screen.findByRole('dialog', { name: 'Log in to book at Rally Point Davao' })
     expect(within(dialog).getByText('By continuing, you confirm you are booking under your account.')).toBeInTheDocument()
     expect(auth.joinClub).not.toHaveBeenCalled()
     // The 15-minute hold starts only once the visitor has signed in.

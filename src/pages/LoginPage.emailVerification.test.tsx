@@ -263,12 +263,12 @@ describe('End-to-end user email verification & login journey (AuthProvider + Log
     expect(await screen.findByRole('heading', { level: 1, name: 'Log in' })).toBeInTheDocument()
     expect(screen.queryByText('Quick demo logins')).not.toBeInTheDocument()
 
-    // Switch to Join as member and sign up
-    await user.click(screen.getAllByRole('button', { name: 'Join as member' })[0])
+    // Switch to Sign up and create the account
+    await user.click(screen.getAllByRole('button', { name: 'Sign up' })[0])
     await user.type(screen.getByLabelText('Full name'), 'Juan Dela Cruz')
     await user.type(screen.getByLabelText('Email'), 'Juan@Example.com')
     await user.type(screen.getByLabelText('Password'), 'secretpass123')
-    await user.click(screen.getByRole('button', { name: 'Join bRineLy' }))
+    await user.click(screen.getAllByRole('button', { name: 'Sign up' }).find((button) => button.getAttribute('type') === 'submit')!)
 
     // Lands on 6-digit Check your email screen
     expect(await screen.findByRole('heading', { name: 'Check your email' })).toBeInTheDocument()
@@ -307,8 +307,7 @@ describe('End-to-end user email verification & login journey (AuthProvider + Log
       </MemoryRouter>,
     )
 
-    const dialog = await screen.findByRole('dialog', { name: 'Log in' })
-    expect(within(dialog).getByText('Login to continue')).toBeInTheDocument()
+    const dialog = await screen.findByRole('dialog', { name: 'Log in to book at Rally Point Gensan' })
 
     const submitLogin = () =>
       within(dialog)

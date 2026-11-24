@@ -179,11 +179,11 @@ export function StaffHome() {
           <>
             <div className="enter-rise grid grid-cols-2 gap-3">
               <div className="stat-card">
-                <p className="text-teal-100 text-xs font-bold uppercase">Playing now</p>
+                <p className="text-brand-100 text-xs font-semibold">Playing now</p>
                 <p className="text-3xl font-extrabold mt-1">{sessions.filter((s) => s.status === 'playing').length}</p>
               </div>
               <div className="card p-4">
-                <p className="text-xs font-bold uppercase text-slate-400">Check-ins</p>
+                <p className="text-xs font-semibold text-muted">Check-ins</p>
                 <p className="text-3xl font-extrabold mt-1 text-slate-900">{checkins.length}</p>
                 <p className="text-xs text-slate-500">recent</p>
               </div>
@@ -452,7 +452,7 @@ export function StaffCheckIn() {
 
         {last ? (
           <section className="card p-4 border-brand-200 bg-brand-50">
-            <p className="text-xs font-bold uppercase text-brand-800">Last check-in</p>
+            <p className="text-xs font-semibold text-brand-800">Last check-in</p>
             <p className="font-extrabold text-lg text-brand-950">{last}</p>
           </section>
         ) : null}
