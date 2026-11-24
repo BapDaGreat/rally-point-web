@@ -1893,7 +1893,7 @@ function checkoutError(error: unknown, unavailable = CHECKOUT_UNAVAILABLE): Erro
   // The court_allocations no-overlap rule: someone else got those hours first.
   if (code === '23P01') return new Error('Someone else just took those hours. Pick another time.')
   if (/failed to fetch|networkerror|load failed/i.test(text)) {
-    return new Error('Could not reach Rally Point. Check your connection and try again.')
+    return new Error('Could not reach bRineLy. Check your connection and try again.')
   }
   return new Error(text || 'Something went wrong. Please try again.')
 }
