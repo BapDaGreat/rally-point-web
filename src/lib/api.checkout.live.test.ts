@@ -231,7 +231,7 @@ describe('checkout errors (live)', () => {
     await expect(confirming).rejects.toBeInstanceOf(Error)
     await expect(confirming).rejects.toThrow('staff access required')
     fail({ message: 'TypeError: Failed to fetch' })
-    await expect(api.releaseBookingHold('b')).rejects.toThrow('Could not reach Rally Point')
+    await expect(api.releaseBookingHold('b')).rejects.toThrow('Could not reach bRineLy')
     fail({})
     await expect(api.rejectBookingPayment('b', 'Not received')).rejects.toThrow('Something went wrong. Please try again.')
   })

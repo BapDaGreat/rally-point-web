@@ -78,7 +78,7 @@ describe('demoStore account and catalog behavior', () => {
     expect(profile.role).toBe('member')
     expect(profile.full_name).toBe('New Player')
     expect(profile.phone).toBe('0917 000 0000')
-    expect(demoStore.memberByUser(profile.id)?.member_code).toMatch(/^RP-/)
+    expect(demoStore.memberByUser(profile.id)?.member_code).toMatch(/^BR-/)
     expect(demoStore.currentUser()?.id).toBe(profile.id)
     expect(JSON.stringify(localStorage)).not.toContain(submittedCredential)
     expect(() => demoStore.registerMember({
