@@ -24,7 +24,8 @@ export const releaseApprovals = Object.freeze({
   // (all checks, isolation 55/55, schema matches the build). It also lets members write bookings
   // through the five checkout functions.
   'member-gcash-checkout-20261122': '0646d001621961f753e7ed66350c702e4d07280d1a8f0b492ac4a26ebfa95b24',
-  // Owner, 2026-11-24: "do the staging release for the migrations". Recorded only after the
-  // capture, the restore check and the dry run on a restored copy of staging pass.
-  'member-codes-booking-length-20261124': null,
+  // Owner, 2026-11-24: "do the staging release for the migrations". Recorded after the capture
+  // (staging-backup-20261124-r1), the restore check and the dry run on a restored copy of staging
+  // passed (all checks, isolation 55/55).
+  'member-codes-booking-length-20261124': '6eeb2efcafb9ac41a7a401656ec0557f1bc2a96bcf3eb116dc689ff1ab7233e2',
 })
