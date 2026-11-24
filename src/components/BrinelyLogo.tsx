@@ -1,4 +1,4 @@
-/** Official bRineLy brand logo & icon mark assets (flat vector art in public/) */
+/** Official bRineLy brand logo & icon mark assets (vector art traced from logo.png, in public/) */
 type LogoVariant = 'color' | 'mark' | 'wordmark'
 
 type LogoProps = {

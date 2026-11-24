@@ -4,11 +4,19 @@ import { describe, expect, it } from 'vitest'
 describe('brand icon files', () => {
   const svgs = ['logo-mark.svg', 'logo-wordmark.svg', 'favicon.svg']
 
-  it.each(svgs)('%s is flat vector art in the brand colours', (file) => {
+  it.each(svgs)('%s is vector art in the original logo colours', (file) => {
     const svg = readFileSync(`public/${file}`, 'utf8')
     expect(svg).toMatch(/^<svg [^>]*viewBox=/)
-    expect(svg).not.toMatch(/Gradient|<image/i)
-    expect(svg).toContain('#0B2A5B')
+    expect(svg).not.toMatch(/<image/i)
+    expect(svg).toContain('#022350')
+  })
+
+  it('keeps the only gradient on the wordmark L, as in the original artwork', () => {
+    expect(readFileSync('public/logo-mark.svg', 'utf8')).not.toMatch(/Gradient/)
+    expect(readFileSync('public/favicon.svg', 'utf8')).not.toMatch(/Gradient/)
+    const wordmark = readFileSync('public/logo-wordmark.svg', 'utf8')
+    expect(wordmark.match(/<linearGradient /g)).toHaveLength(1)
+    expect(wordmark.match(/fill="url\(#l\)"/g)).toHaveLength(1)
   })
 
   it('points the page head and app manifest at icons that exist', () => {
