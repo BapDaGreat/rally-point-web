@@ -425,7 +425,7 @@ describe('member booking and pass pages', () => {
       expect(screen.getByRole('timer', { name: /left for the club to confirm/ })).toBeInTheDocument()
       // The time to pay has stopped, and there is no going back once the payment is sent.
       expect(screen.queryByText('Time left to pay')).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Change time/ })).not.toBeInTheDocument()
 
       // The first check finds the club still checking.
       await act(async () => { await vi.advanceTimersByTimeAsync(15000) })
@@ -496,7 +496,7 @@ describe('member booking and pass pages', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('This GCash reference number was already used for another booking')
     expect(apiMock.myBooking).toHaveBeenCalledWith(booking.id)
     expect(screen.getByText('Checkout')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Back' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Change time/ })).toBeEnabled()
 
     // When the booking cannot be checked either, the error still shows.
     apiMock.submitBookingPayment.mockRejectedValueOnce(new Error('Could not reach Rally Point. Check your connection and try again.'))
@@ -928,7 +928,7 @@ describe('member booking and pass pages', () => {
     await user.click(await screen.findByRole('button', { name: /^12:00 PM/ }))
     await user.click(screen.getByRole('button', { name: /Continue/ }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Only member accounts can book courts online.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Only player accounts can book courts online.')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(apiMock.createBooking).not.toHaveBeenCalled()
     expect(authState.joinClub).not.toHaveBeenCalled()
@@ -1084,14 +1084,14 @@ describe('member booking and pass pages', () => {
     }
   })
 
-  it('releases the held hours when the player goes back from checkout', async () => {
+  it('releases the held hours at once on Change time when no reference was typed', async () => {
     const user = userEvent.setup()
     render(<MemoryRouter><MemberBook /></MemoryRouter>)
     await user.click(await screen.findByRole('button', { name: /^12:00/ }))
     await user.click(screen.getByRole('button', { name: /Continue/ }))
     await screen.findByText('Checkout')
 
-    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await user.click(screen.getByRole('button', { name: /Change time/ }))
     expect(apiMock.releaseBookingHold).toHaveBeenCalledWith(booking.id)
     expect(await screen.findByText(/Available times/)).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()

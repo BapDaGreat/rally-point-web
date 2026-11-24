@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from 'react'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import {
   Ban,
@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   Clock,
+  Copy,
   Hourglass,
   Loader2,
   Lock,
@@ -97,7 +98,68 @@ function clearBookingIntent() {
 }
 
 /** Staff, admins of other clubs' desks and platform superadmins cannot book online. */
-const NOT_A_PLAYER = 'Only member accounts can book courts online. Please sign in with a member account.'
+const NOT_A_PLAYER = 'Only player accounts can book courts online. Please sign in with a player account.'
+
+/** The width (Tailwind's `lg`) from which the booking summary sits beside the times. */
+const WIDE_QUERY = '(min-width: 1024px)'
+
+function subscribeWide(onChange: () => void) {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => undefined
+  const query = window.matchMedia(WIDE_QUERY)
+  query.addEventListener?.('change', onChange)
+  return () => query.removeEventListener?.('change', onChange)
+}
+
+/**
+ * Whether the screen is wide enough for the summary column. Without matchMedia (old browsers,
+ * tests) the summary column holds the Continue button, as it always did.
+ */
+function useWideScreen() {
+  return useSyncExternalStore(
+    subscribeWide,
+    () => (typeof window.matchMedia === 'function' ? window.matchMedia(WIDE_QUERY).matches : true),
+    () => true,
+  )
+}
+
+/**
+ * The height of the app's bottom menu (0 where it is hidden, on wider screens or for visitors),
+ * so the phone's Continue bar can sit just above it.
+ */
+function useBottomNavHeight(enabled: boolean) {
+  const [height, setHeight] = useState(0)
+  useEffect(() => {
+    if (!enabled) return
+    const nav = document.querySelector<HTMLElement>('.bottom-nav')
+    if (!nav) return
+    const measure = () => setHeight(nav.offsetHeight)
+    measure()
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
+    observer?.observe(nav)
+    window.addEventListener('resize', measure)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [enabled])
+  return enabled ? height : 0
+}
+
+/** "6:00–7:00 AM", or "11:00 AM–1:00 PM" when the hours cross noon. */
+function compactRange(start: number, end: number) {
+  const [startTime, startHalf] = hourLabel(start).split(' ')
+  const [endTime, endHalf] = hourLabel(end).split(' ')
+  return startHalf === endHalf ? `${startTime}–${endTime} ${endHalf}` : `${startTime} ${startHalf}–${endTime} ${endHalf}`
+}
+
+/** The parts of the day the time grid is grouped by, by start hour. */
+const DAY_PARTS = [
+  { id: 'early', name: 'Early morning', range: '12–4 AM', from: 0, to: 5 },
+  { id: 'morning', name: 'Morning', range: '5–11 AM', from: 5, to: 12 },
+  { id: 'afternoon', name: 'Afternoon', range: '12–4 PM', from: 12, to: 17 },
+  { id: 'evening', name: 'Evening', range: '5–8 PM', from: 17, to: 21 },
+  { id: 'night', name: 'Late night', range: '9–11 PM', from: 21, to: 24 },
+] as const
 
 type Step = 'pick' | 'pay' | 'waiting' | 'done'
 
@@ -195,10 +257,12 @@ function slotLook(slot: TimeSlot, opts: { selected: boolean; freeHours: number; 
   if (slot.blocked === 'out_of_service') return { word: 'Out of service', Icon: Wrench, tone: MUTED_TONE, pickable: false }
   if (!slot.available) return { word: 'Unavailable', Icon: Ban, tone: MUTED_TONE, pickable: false }
   const pickable = opts.freeHours >= opts.wanted
-  if (opts.selected) return { word: 'Selected', Icon: Check, tone: 'border-brand-700 bg-brand-700 text-white', pickable }
+  // The picked hours are solid navy with the sky "picked" bar, and still say "Selected" in words.
+  if (opts.selected) return { word: 'Selected', Icon: Check, tone: 'picked-mark border-brand-900 bg-brand-900 text-white', pickable }
   // Free, but the next hours are taken or the day ends before the chosen length.
   if (!pickable) return { word: `Only ${opts.freeHours}h free`, Icon: null, tone: 'border-line bg-white text-muted', pickable }
-  return { word: 'Available', Icon: null, tone: 'border-field bg-white text-ink', pickable }
+  // A free hour shows only its time: a white button with a firm border reads as "tap me".
+  return { word: '', Icon: null, tone: 'border-field bg-white text-ink', pickable }
 }
 
 /** How long the player has left to pay before the held hours are released. */
@@ -274,9 +338,28 @@ function ConfirmCountdown({ endsAt }: { endsAt: number }) {
 function PayMethodCard({ method, amount }: { method: CheckoutPaymentMethod; amount: number }) {
   const [qrFailed, setQrFailed] = useState<string | null>(null)
   const qrBroken = Boolean(method.qr_url) && qrFailed === method.qr_url
+  // Copying the number saves typing it into the payment app; "Copied" shows for a few seconds.
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  useEffect(() => {
+    if (copyState !== 'copied') return
+    const timer = window.setTimeout(() => setCopyState('idle'), 4000)
+    return () => window.clearTimeout(timer)
+  }, [copyState])
+
+  async function copyNumber(number: string) {
+    try {
+      if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) throw new Error('No clipboard')
+      // Payment apps want the digits only.
+      await navigator.clipboard.writeText(number.replace(/\s+/g, ''))
+      setCopyState('copied')
+    } catch {
+      setCopyState('failed')
+    }
+  }
+
   return (
-    <div className="space-y-3 rounded-xl border-2 border-slate-200 p-3">
-      <p className="text-title font-extrabold text-slate-900">{method.label}</p>
+    <div className="space-y-3 rounded-xl border-2 border-line p-3">
+      <p className="text-title font-extrabold text-ink">{method.label}</p>
       {method.qr_url ? (
         <Photo
           src={method.qr_url}
@@ -298,14 +381,31 @@ function PayMethodCard({ method, amount }: { method: CheckoutPaymentMethod; amou
         <dl className="space-y-2">
           {method.account_name ? (
             <div>
-              <dt className="text-sm text-slate-600">Account name</dt>
-              <dd className="text-subtitle font-bold text-slate-900">{method.account_name}</dd>
+              <dt className="text-sm text-muted">Account name</dt>
+              <dd className="text-subtitle font-bold text-ink">{method.account_name}</dd>
             </div>
           ) : null}
           {method.account_number ? (
             <div>
-              <dt className="text-sm text-slate-600">Number to send to</dt>
-              <dd className="font-mono text-title font-extrabold tracking-wider text-slate-900">{method.account_number}</dd>
+              <dt className="text-sm text-muted">Number to send to</dt>
+              <dd className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2">
+                <span className="text-heading-2 font-bold tabular-nums tracking-wide text-ink">{method.account_number}</span>
+                <button
+                  type="button"
+                  className="btn-secondary w-auto! gap-2 px-4"
+                  onClick={() => void copyNumber(method.account_number ?? '')}
+                >
+                  {copyState === 'copied' ? <Check size={18} aria-hidden /> : <Copy size={18} aria-hidden />}
+                  {copyState === 'copied' ? 'Copied' : 'Copy number'}
+                </button>
+                <span role="status" className={copyState === 'failed' ? 'basis-full text-sm font-semibold text-red-700' : 'sr-only'}>
+                  {copyState === 'copied'
+                    ? 'Number copied.'
+                    : copyState === 'failed'
+                      ? 'Copying did not work on this phone. Type the number into the app instead.'
+                      : ''}
+                </span>
+              </dd>
             </div>
           ) : null}
         </dl>
@@ -433,6 +533,16 @@ export function MemberBook() {
   // The club's phone, read from its public profile once it turns down a payment.
   const [clubPhone, setClubPhone] = useState<string | null>(null)
   const availCacheRef = useRef<Map<string, CourtDayAvailability[]>>(new Map())
+  // Which club, venue and day the times on screen are for.
+  const [availFor, setAvailFor] = useState<string | null>(null)
+  // When today has nothing left to book, the screen opens on the next day that has. A day the
+  // player taps, or a pick saved before signing in, is never moved.
+  const autoDateRef = useRef<'pending' | 'done'>(savedIntent ? 'done' : 'pending')
+  const [autoMovedTo, setAutoMovedTo] = useState<string | null>(null)
+  // "Change time" with a reference typed first asks whether the player has paid.
+  const [confirmLeave, setConfirmLeave] = useState(false)
+  const stayButton = useRef<HTMLButtonElement>(null)
+  const wideScreen = useWideScreen()
   const [bootstrappedKey, setBootstrappedKey] = useState<string | null>(null)
   // Bookings whose confirmation email was already asked for, so each is sent once.
   const emailedRef = useRef<Set<string>>(new Set())
@@ -593,6 +703,7 @@ export function MemberBook() {
     return () => { active = false }
   }, [user, bootstrappedKey, expectedBootstrapKey, member, venueId, publicBrowsingMode])
 
+  const availKey = `${routeClubSlug ?? activeClub?.slug ?? 'default'}:${venueId}:${dateYmd}`
   const loadAvailability = useCallback(async (forceRefresh = false) => {
     if (bootstrappedKey !== expectedBootstrapKey) return
     const cacheKey = `${routeClubSlug ?? activeClub?.slug ?? 'default'}:${venueId}:${dateYmd}`
@@ -607,6 +718,7 @@ export function MemberBook() {
       const cached = availCacheRef.current.get(cacheKey)
       if (cached) {
         setAvail(cached)
+        setAvailFor(cacheKey)
         setLoading(false)
         pickCourtId(cached)
         return
@@ -620,6 +732,7 @@ export function MemberBook() {
         : await api.availability(dateYmd, venueId || undefined)
       availCacheRef.current.set(cacheKey, a)
       setAvail(a)
+      setAvailFor(cacheKey)
       pickCourtId(a)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load availability')
@@ -671,6 +784,7 @@ export function MemberBook() {
 
   /** Back to the times, letting go of the hours held for checkout. */
   async function leaveCheckout(bookingId: string, message: string | null) {
+    setConfirmLeave(false)
     setStep('pick')
     setPending(null)
     setHoldEnds(null)
@@ -686,6 +800,7 @@ export function MemberBook() {
   function openWaiting(sent: Booking, endsAt: number) {
     // From here the hold no longer runs out; the club has its own time to check.
     setHoldEnds(null)
+    setConfirmLeave(false)
     setPending(sent)
     setConfirmEnds(endsAt)
     setReference('')
@@ -867,6 +982,7 @@ export function MemberBook() {
       setNotice(null)
       setReference('')
       setReferenceError(null)
+      setConfirmLeave(false)
       setStep('pay')
     } catch (e) {
       clearBookingIntent()
@@ -1003,6 +1119,7 @@ export function MemberBook() {
       setHoldEnds(new Date(current.hold_expires_at).getTime())
       setReference('')
       setReferenceError(null)
+      setConfirmLeave(false)
       setNotice(null)
       // The grid's pick has nothing to do with this checkout.
       setStartHour(null)
@@ -1041,6 +1158,53 @@ export function MemberBook() {
   const firstNotPassed = courtSlots.findIndex((slot) => slot.blocked !== 'passed')
   const passedBefore = firstNotPassed === -1 ? courtSlots.length : firstNotPassed
   const shownSlots = courtSlots.slice(passedBefore)
+  const everyHourPassed = passedBefore > 0 && shownSlots.length === 0
+  const dayIndex = days.findIndex((d) => d.ymd === dateYmd)
+  const nextDay = dayIndex >= 0 ? days[dayIndex + 1] ?? null : null
+
+  /** Shows another day's times, starting the pick again. */
+  function chooseDay(ymd: string) {
+    autoDateRef.current = 'done'
+    setAutoMovedTo(null)
+    setDateYmd(ymd)
+    setNotice(null)
+    setStartHour(null)
+  }
+
+  // Today with nothing left to book (every hour over or taken) opens on the next day with a free
+  // hour. If no day this week has one, the screen stays on today and says so.
+  useEffect(() => {
+    if (autoDateRef.current !== 'pending' || step !== 'pick') return
+    if (!availabilityReady || availFor !== availKey) return
+    const open = avail.filter((row) => row.court.status !== 'maintenance')
+    const nothingFree = open.length > 0 && open.every((row) => row.slots.every((slot) => !slot.available))
+    if (error || !nothingFree || dayIndex < 0) {
+      autoDateRef.current = 'done'
+      if (!error && !nothingFree && dayIndex > 0) setAutoMovedTo(dateYmd)
+      return
+    }
+    if (dayIndex < days.length - 1) {
+      setDateYmd(days[dayIndex + 1].ymd)
+      return
+    }
+    autoDateRef.current = 'done'
+    setDateYmd(days[0].ymd)
+  }, [step, availabilityReady, availFor, availKey, avail, error, dayIndex, days, dateYmd])
+
+  useEffect(() => {
+    if (confirmLeave) stayButton.current?.focus()
+  }, [confirmLeave])
+
+  // Below `lg` the pick and Continue sit in a bar at the bottom of the screen; signed-in players
+  // have the app's bottom menu there, so the bar sits on top of it.
+  const inAppShell = Boolean(user) || !routeClubSlug
+  const navHeight = useBottomNavHeight(inAppShell && !wideScreen)
+  const showContinue = !staffCannotBook && !payMethodsFailed && !(payMethods && payMethods.length === 0)
+  const continueDisabled = !selectionOk || busy || resumingId != null || continueBlocked
+  const pickHint = !selectionOk && !busy ? 'Pick a start time to continue' : null
+  const errorMessage = error && !(staffCannotBook && error === NOT_A_PLAYER)
+    ? <p role="alert" className="text-sm text-red-700 font-semibold">{error}</p>
+    : null
   const clubPageLink = clubPageSlug ? (
     <Link to={`/clubs/${clubPageSlug}`} className="text-link inline-flex min-h-12 items-center">
       Go to the club page
@@ -1076,7 +1240,7 @@ export function MemberBook() {
       {user && !member && !loading && !publicBrowsingMode ? (
         <section className="card p-4">
           <p className="font-bold">No membership linked</p>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-muted mt-1">
             Ask the desk to link your account to a member profile before booking online.
           </p>
         </section>
@@ -1091,26 +1255,26 @@ export function MemberBook() {
             </div>
             <span className="pill pill-ok">Booked · {hoursWord(confirmed.hours)}</span>
           </div>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted">
             {courtNameOf(confirmed)} · {fmtDateTime(confirmed.start_at)} – {fmtTime(confirmed.end_at)}
           </p>
           <p className="text-sm font-bold">{peso(confirmed.amount)}</p>
-          <p className="text-sm text-slate-700">
+          <p className="text-sm text-ink">
             {confirmed.hours === 1 ? 'This hour now shows' : `These ${confirmed.hours} hours now show`} as Booked.
             No refunds.
           </p>
           {confirmed.payment_reference ?? confirmed.payment_ref ? (
-            <p className="text-sm text-slate-700">
-              GCash reference <span className="font-mono font-bold">{confirmed.payment_reference ?? confirmed.payment_ref}</span>
+            <p className="text-sm text-ink">
+              GCash reference <span className="font-bold tabular-nums">{confirmed.payment_reference ?? confirmed.payment_ref}</span>
             </p>
           ) : null}
           {emailReceipt && emailReceipt.bookingId === confirmed.id ? (
-            <p className="flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800">
+            <p className="flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-800">
               <MailCheck size={18} className="shrink-0" aria-hidden />
               <span>{emailReceipt.text}</span>
             </p>
           ) : null}
-          <p className="text-sm text-slate-600">Show this at the desk when you arrive.</p>
+          <p className="text-sm text-muted">Show this at the desk when you arrive.</p>
           <button
             type="button"
             className="btn-primary w-full"
@@ -1129,35 +1293,60 @@ export function MemberBook() {
       ) : null}
 
       {step === 'pay' && pending ? (
-        <section className="enter-rise card p-4 space-y-4">
-          <button
-            type="button"
-            className="min-h-12 text-sm font-bold text-brand-700 inline-flex items-center gap-1"
-            onClick={() => void leaveCheckout(pending.id, null)}
-            disabled={busy || checkingHold}
-          >
-            <ChevronLeft size={16} aria-hidden /> Back
-          </button>
+        <section className="enter-rise card max-w-2xl p-4 space-y-4">
+          {confirmLeave ? (
+            <div role="group" aria-labelledby="leave-checkout-question" className="notice notice-warn space-y-3">
+              <p id="leave-checkout-question" className="text-body font-semibold text-ink">
+                These hours will be released. Only go back if you have not paid.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary w-auto! px-4"
+                  onClick={() => void leaveCheckout(pending.id, null)}
+                  disabled={busy || checkingHold}
+                >
+                  Release and change time
+                </button>
+                <button ref={stayButton} type="button" className="btn-primary w-auto! px-5" onClick={() => setConfirmLeave(false)}>
+                  Stay here
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="min-h-12 text-body font-semibold text-brand-700 inline-flex items-center gap-1"
+              onClick={() => {
+                // Someone who typed a reference may already have paid, so ask before letting the hours go.
+                if (cleanReference(reference)) setConfirmLeave(true)
+                else void leaveCheckout(pending.id, null)
+              }}
+              disabled={busy || checkingHold}
+            >
+              <ChevronLeft size={18} aria-hidden /> Change time
+            </button>
+          )}
           <div>
             <p className="text-body font-semibold text-muted">Checkout</p>
             <h2 ref={stepHeading} tabIndex={-1} className="outline-none text-title font-semibold text-ink mt-0.5">
               {courtNameOf(pending)} · {fmtDateTime(pending.start_at)}
             </h2>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-muted">
               {timeRange(pending)} · {hoursWord(pending.hours)}
             </p>
           </div>
 
-          <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-3">
-            <p className="text-sm font-bold text-slate-700">Amount to pay</p>
-            <p className="text-heading-1 font-extrabold tabular-nums text-slate-900">{peso(pending.amount)}</p>
+          <div className="rounded-xl border-2 border-line bg-canvas p-3">
+            <p className="text-sm font-bold text-ink">Amount to pay</p>
+            <p className="text-heading-1 font-extrabold tabular-nums text-ink">{peso(pending.amount)}</p>
           </div>
 
           {holdEnds != null ? <HoldCountdown endsAt={holdEnds} /> : null}
 
           <div className="space-y-3">
-            <h3 className="text-title font-extrabold text-slate-900">How to pay</h3>
-            <ol className="list-decimal space-y-2 pl-6 text-body text-slate-800 marker:font-extrabold">
+            <h3 className="text-title font-extrabold text-ink">How to pay</h3>
+            <ol className="list-decimal space-y-2 pl-6 text-body text-ink marker:font-extrabold">
               <li>{payStepOne}</li>
               <li>
                 Pay exactly <span className="font-extrabold">{peso(pending.amount)}</span>.
@@ -1179,8 +1368,10 @@ export function MemberBook() {
               <input
                 ref={referenceField}
                 id="checkout-reference"
-                className="input font-mono text-lg tracking-wider"
+                className="input text-lg tabular-nums tracking-wide"
                 value={reference}
+                inputMode="numeric"
+                placeholder="e.g. 1234 567 890123"
                 onChange={(event) => {
                   setReference(event.target.value)
                   if (referenceError) setReferenceError(null)
@@ -1193,7 +1384,7 @@ export function MemberBook() {
                 aria-invalid={referenceError ? true : undefined}
                 aria-describedby={referenceError ? 'checkout-reference-help checkout-reference-error' : 'checkout-reference-help'}
               />
-              <p id="checkout-reference-help" className="mt-1 text-sm text-slate-600">
+              <p id="checkout-reference-help" className="mt-1 text-sm text-muted">
                 It is on your receipt in {payApp}, often called “Ref No.” Spaces are fine.
               </p>
               {referenceError ? (
@@ -1222,23 +1413,23 @@ export function MemberBook() {
             <Hourglass size={22} aria-hidden />
             <h2 ref={stepHeading} tabIndex={-1} className="outline-none font-extrabold text-lg">Waiting for the club to confirm</h2>
           </div>
-          <p className="text-body text-slate-700">
+          <p className="text-body text-ink">
             The club is checking that your payment arrived. This screen updates by itself.
           </p>
-          <div className="rounded-xl border-2 border-slate-200 p-3 space-y-1">
-            <p className="font-bold text-slate-900">{courtNameOf(pending)} · {fmtDate(pending.start_at)}</p>
-            <p className="text-sm text-slate-700">
+          <div className="rounded-xl border-2 border-line p-3 space-y-1">
+            <p className="font-bold text-ink">{courtNameOf(pending)} · {fmtDate(pending.start_at)}</p>
+            <p className="text-sm text-ink">
               {timeRange(pending)} · {hoursWord(pending.hours)} · {peso(pending.amount)}
             </p>
           </div>
           {pending.payment_reference ? (
             <div>
-              <p className="text-sm font-bold text-slate-700">Your reference number</p>
-              <p className="font-mono text-heading-3 font-extrabold tracking-wider break-all text-slate-900">{pending.payment_reference}</p>
+              <p className="text-sm font-bold text-ink">Your reference number</p>
+              <p className="text-heading-3 font-extrabold tabular-nums tracking-wide break-all text-ink">{pending.payment_reference}</p>
             </div>
           ) : null}
           {confirmEnds != null ? <ConfirmCountdown endsAt={confirmEnds} /> : null}
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted">
             You can leave this screen. Your booking shows under Your bookings as “Waiting for the club to confirm”.
           </p>
           <div className="flex flex-wrap gap-x-6">
@@ -1290,9 +1481,6 @@ export function MemberBook() {
             <p className="notice notice-warn text-body font-semibold">{NOT_A_PLAYER}</p>
           ) : null}
           <div className="px-1">
-            <p className="text-body text-slate-600">
-              {isMember ? 'You pay the member rate where a court has one.' : 'You pay the regular rate. Members pay less where a court has a member rate.'}
-            </p>
             <Link to="/clubs" className="inline-flex min-h-12 items-center font-semibold text-brand-800 underline underline-offset-2">
               Book at another club
             </Link>
@@ -1319,6 +1507,7 @@ export function MemberBook() {
                       className="input"
                       value={venueId}
                       onChange={(event) => {
+                        autoDateRef.current = 'done'
                         setVenueId(event.target.value)
                         setCourtId(null)
                         setStartHour(null)
@@ -1331,23 +1520,25 @@ export function MemberBook() {
 
                 <section className="card p-3">
                   <p className="label px-1 mb-2">Date</p>
-                  <div className="flex gap-2 overflow-x-auto pb-1">
+                  {/* Phones scroll the days sideways; wider screens wrap them so none is cut off. */}
+                  <div className="flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible">
                     {days.map((d) => (
                       <button
                         key={d.ymd}
                         type="button"
                         aria-pressed={dateYmd === d.ymd}
-                        onClick={() => {
-                          setDateYmd(d.ymd)
-                          setNotice(null)
-                          setStartHour(null)
-                        }}
+                        onClick={() => chooseDay(d.ymd)}
                         className="chip-option shrink-0"
                       >
                         {d.label}
                       </button>
                     ))}
                   </div>
+                  {autoMovedTo === dateYmd && dayIndex > 0 ? (
+                    <p role="status" className="mt-2 px-1 text-body text-muted">
+                      No open hours are left today, so this shows {dayIndex === 1 ? 'tomorrow' : days[dayIndex].label}.
+                    </p>
+                  ) : null}
                 </section>
 
                 <section className="card p-3">
@@ -1372,9 +1563,7 @@ export function MemberBook() {
                 </section>
 
                 {/* The booking summary, which normally shows errors, is hidden in these two states. */}
-                {(loading || allOutOfService) && error && !(staffCannotBook && error === NOT_A_PLAYER) ? (
-                  <p role="alert" className="text-sm text-red-600 font-medium">{error}</p>
-                ) : null}
+                {loading || allOutOfService ? errorMessage : null}
 
                 {loading ? (
                   <AvailabilityLoading />
@@ -1420,11 +1609,11 @@ export function MemberBook() {
                                 <Check size={18} className="absolute right-2 top-2 text-brand-700" aria-hidden />
                               ) : null}
                               <p className="pr-6 font-semibold text-ink">{court.name}</p>
-                              <p className="text-xs text-muted">
+                              <p className={`text-body tabular-nums ${outOfService ? 'text-muted' : 'text-ink'}`}>
                                 {outOfService ? 'Out of service' : `${peso(courtRateFor(court, member))}/hr`}
                               </p>
                               {!outOfService && !isMember && court.member_rate != null && court.member_rate < court.hourly_rate ? (
-                                <p className="text-xs text-brand-800">Members {peso(court.member_rate)}/hr</p>
+                                <p className="text-body tabular-nums text-brand-800">Members {peso(court.member_rate)}/hr</p>
                               ) : null}
                             </button>
                           )
@@ -1434,58 +1623,78 @@ export function MemberBook() {
 
                     <section className="enter-fade card p-3">
                       <p className="label px-1 mb-1">Available times · {dateLabel}</p>
-                      {dayFull ? (
+                      {everyHourPassed ? (
+                        <p className="mt-2 px-1 text-body text-muted">
+                          {`Every hour on ${dateLabel} has passed. Try another day.`}
+                        </p>
+                      ) : dayFull ? (
                         <p className="notice notice-warn mt-2 text-body font-semibold">
                           No free hours on {dateLabel}. Try another day.
                         </p>
-                      ) : null}
-                      {passedBefore > 0 ? (
+                      ) : passedBefore > 0 ? (
                         <p className="mt-2 px-1 text-body text-muted">
-                          {shownSlots.length > 0
-                            ? `Hours before ${hourLabel(shownSlots[0].startHour)} have passed.`
-                            : `Every hour on ${dateLabel} has passed. Try another day.`}
+                          {`Hours before ${hourLabel(shownSlots[0].startHour)} have passed.`}
                         </p>
                       ) : null}
-                      <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {shownSlots.map((s) => {
-                          const selected = selectionOk && s.startHour >= startHour && s.startHour < startHour + hours
-                          const look = slotLook(s, {
-                            selected,
-                            freeHours: freeHoursFrom(s.startHour),
-                            wanted: hours,
-                            own: myHoursOnCourt.get(s.startHour) ?? null,
-                          })
-                          const face = (
-                            <>
-                              <span className="text-sm font-semibold">{hourLabel(s.startHour)}</span>
-                              <span className="inline-flex items-center gap-1 text-sm">
-                                {look.Icon ? <look.Icon size={12} aria-hidden /> : null}
-                                {look.word}
-                              </span>
-                            </>
-                          )
-                          const cellClass = `flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-1.5 text-center ${look.tone}`
-                          // Hours that cannot start a booking are plain text, not faded buttons,
-                          // so "Booked" stays easy to read.
-                          return look.pickable ? (
-                            <button
-                              key={s.startHour}
-                              type="button"
-                              onClick={() => {
-                                setStartHour(s.startHour)
-                                setNotice(null)
-                              }}
-                              className={cellClass}
-                            >
-                              {face}
-                            </button>
-                          ) : (
-                            <div key={s.startHour} className={cellClass}>
-                              {face}
+                      {(everyHourPassed || dayFull) && nextDay ? (
+                        <button type="button" className="btn-secondary mt-3 w-auto! px-5" onClick={() => chooseDay(nextDay.ymd)}>
+                          {dayIndex === 0 ? 'See tomorrow' : `See ${nextDay.label}`}
+                        </button>
+                      ) : null}
+                      {DAY_PARTS.map((part) => {
+                        const partSlots = shownSlots.filter((slot) => slot.startHour >= part.from && slot.startHour < part.to)
+                        if (partSlots.length === 0) return null
+                        const headingId = `book-times-${part.id}`
+                        return (
+                          <div key={part.id} role="group" aria-labelledby={headingId} className="mt-3">
+                            <h3 id={headingId} className="px-1 text-body font-semibold text-ink">
+                              {part.name} <span className="font-normal text-muted">{part.range}</span>
+                            </h3>
+                            <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 gap-2">
+                              {partSlots.map((s) => {
+                                const selected = selectionOk && s.startHour >= startHour && s.startHour < startHour + hours
+                                const look = slotLook(s, {
+                                  selected,
+                                  freeHours: freeHoursFrom(s.startHour),
+                                  wanted: hours,
+                                  own: myHoursOnCourt.get(s.startHour) ?? null,
+                                })
+                                const face = (
+                                  <>
+                                    <span className="text-subtitle font-semibold tabular-nums">{hourLabel(s.startHour)}</span>
+                                    {look.word ? (
+                                      <span className="inline-flex items-center gap-1 text-sm">
+                                        {look.Icon ? <look.Icon size={12} aria-hidden /> : null}
+                                        {look.word}
+                                      </span>
+                                    ) : null}
+                                  </>
+                                )
+                                const cellClass = `flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-1.5 text-center ${look.tone}`
+                                // Hours that cannot start a booking are plain text, not faded buttons,
+                                // so "Booked" stays easy to read.
+                                return look.pickable ? (
+                                  <button
+                                    key={s.startHour}
+                                    type="button"
+                                    onClick={() => {
+                                      setStartHour(s.startHour)
+                                      setNotice(null)
+                                    }}
+                                    className={cellClass}
+                                  >
+                                    {face}
+                                  </button>
+                                ) : (
+                                  <div key={s.startHour} className={cellClass}>
+                                    {face}
+                                  </div>
+                                )
+                              })}
                             </div>
-                          )
-                        })}
-                      </div>
+                          </div>
+                        )
+                      })}
                     </section>
                   </>
                 )}
@@ -1511,20 +1720,22 @@ export function MemberBook() {
                     </div>
                     <div className="flex justify-between gap-3">
                       <dt className="text-muted">Time</dt>
-                      <dd className="text-right font-semibold text-ink" aria-live="polite">{selectionLabel}</dd>
+                      <dd className="text-right font-semibold text-ink" aria-live={wideScreen ? 'polite' : undefined}>{selectionLabel}</dd>
                     </div>
                     <div className="flex justify-between gap-3 border-t border-line pt-2">
                       <dt className="text-muted">Total</dt>
                       <dd className="text-right font-semibold tabular-nums text-ink">{peso(total)}</dd>
                     </div>
                   </dl>
+                  <p className="text-body text-muted">
+                    {isMember ? 'You pay the member rate where a court has one.' : 'You pay the regular rate. Members pay less where a court has a member rate.'}
+                  </p>
                   {selectionOk ? (
                     <p className="text-sm font-semibold text-amber-900">No refund once booked.</p>
                   ) : null}
 
-                  {error && !(staffCannotBook && error === NOT_A_PLAYER) ? (
-                    <p role="alert" className="text-sm text-red-600 font-medium">{error}</p>
-                  ) : null}
+                  {/* On phones the error shows in the bottom bar, next to the Continue button that caused it. */}
+                  {wideScreen || !showContinue ? errorMessage : null}
 
                   {staffCannotBook ? null : payMethodsFailed ? (
                     <section role="alert" className="notice notice-error">
@@ -1538,17 +1749,25 @@ export function MemberBook() {
                     <p className="notice notice-warn font-semibold">This club hasn&apos;t set up GCash payment yet. Ask the desk to reserve.</p>
                   ) : (
                     <>
-                      <button
-                        type="button"
-                        className="btn-primary w-full"
-                        disabled={!selectionOk || busy || resumingId != null || continueBlocked}
-                        aria-busy={busy}
-                        onClick={() => void goPay()}
-                      >
-                        {busy ? 'Holding slot…' : `Continue · ${peso(total)}`}
-                      </button>
+                      {wideScreen ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn-primary w-full"
+                            disabled={continueDisabled}
+                            aria-busy={busy}
+                            aria-describedby={pickHint ? 'book-pick-hint' : undefined}
+                            onClick={() => void goPay()}
+                          >
+                            {busy ? 'Holding slot…' : `Continue · ${peso(total)}`}
+                          </button>
+                          {pickHint ? (
+                            <p id="book-pick-hint" className="px-1 text-body font-semibold text-ink">{pickHint}</p>
+                          ) : null}
+                        </>
+                      ) : null}
                       {!user ? (
-                        <p className="px-1 text-sm text-slate-600">
+                        <p className="px-1 text-sm text-muted">
                           You log in before you pay. The {BOOKING_HOLD_MINUTES} minutes to pay start after that.
                         </p>
                       ) : null}
@@ -1556,6 +1775,47 @@ export function MemberBook() {
                   )}
                 </aside>
               )}
+
+              {/* Phones: the pick and Continue stay in view at the bottom of the screen, above the
+                  app's menu. The bar sticks within the times, so it never covers Your bookings. */}
+              {!wideScreen && showContinue && !loading && !allOutOfService ? (
+                <div
+                  role="region"
+                  aria-label="Your pick"
+                  className={`sticky z-30 -mx-4 border-t border-line bg-white px-4 pt-3 md:-mx-6 md:px-6 ${
+                    navHeight ? 'pb-3' : 'pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]'
+                  }`}
+                  style={{ bottom: navHeight }}
+                >
+                  {errorMessage ? <div className="mb-2">{errorMessage}</div> : null}
+                  <div className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1" aria-live="polite">
+                      {selectionOk ? (
+                        <>
+                          <p className="truncate text-body text-muted">
+                            {selectedCourt?.court.name ?? 'Court'} · {days[dayIndex]?.label ?? dateLabel}
+                          </p>
+                          <p className="text-subtitle font-semibold tabular-nums text-ink">
+                            {compactRange(startHour, startHour + hours)} · {peso(total)}
+                          </p>
+                        </>
+                      ) : (
+                        <p id="book-pick-hint" className="text-body font-semibold text-ink">Pick a start time to continue</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-primary w-auto! shrink-0 px-6"
+                      disabled={continueDisabled}
+                      aria-busy={busy}
+                      aria-describedby={selectionOk ? undefined : 'book-pick-hint'}
+                      onClick={() => void goPay()}
+                    >
+                      {busy ? 'Holding slot…' : 'Continue'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -1563,7 +1823,7 @@ export function MemberBook() {
             <section className="card p-4">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-extrabold">Your bookings</h2>
-                <span className="text-sm font-semibold text-slate-600">All bookings are non-refundable</span>
+                <span className="text-sm font-semibold text-muted">All bookings are non-refundable</span>
               </div>
               {mine.slice(0, 8).map((b) => {
                 // An online checkout left open (another visit, or a reload) can be picked up again.
@@ -1586,7 +1846,7 @@ export function MemberBook() {
                       <p id={titleId} className="font-semibold text-sm truncate">
                         {b.court?.name ?? 'Court'} · {fmtDateTime(b.start_at)} – {fmtTime(b.end_at)}
                       </p>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-600">
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
                         <span className={`pill ${tone}`}>{bookingStatusWord(b)}</span>
                         <span>{hoursWord(b.hours)}</span>
                         {isBooked ? <span className="font-semibold text-amber-900">No refund</span> : null}
