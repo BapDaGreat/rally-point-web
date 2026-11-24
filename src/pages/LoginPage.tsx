@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import type { Profile, PublicClub, Role } from '../types'
 import { BrinelyLogo } from '../components/BrinelyLogo'
 import { Photo } from '../components/Photo'
+import { ClubBadge } from '../components/Shell'
 import { PublicFrame } from '../components/PublicFrame'
 import { helpFaqs } from '../lib/helpContent'
 import { privacyNoticePath, type PrivacyNoticeState } from '../lib/privacyNotice'
@@ -36,7 +37,7 @@ const demos: { role: Role; email: string; password: string; label: string }[] = 
     role: 'member',
     email: 'member@brinely.info',
     password: 'member123',
-    label: 'Member',
+    label: 'Player',
   },
 ]
 
@@ -119,11 +120,20 @@ function authenticationErrorMessage(mode: Mode, error: unknown) {
 }
 
 type LoginPageProps =
-  | { joinClub?: PublicClub; dialog?: false; clubName?: never; onClose?: never; onAuthenticated?: never }
+  | {
+      joinClub?: PublicClub
+      dialog?: false
+      clubName?: never
+      bookingSummary?: never
+      onClose?: never
+      onAuthenticated?: never
+    }
   | {
       dialog: true
       /** Shown at the top of the dialog, so people see which club they are booking with. */
       clubName?: string
+      /** The booking being made, shown under the title, e.g. "Court A · Nov 25 · 6–7 AM · Php 500.00". */
+      bookingSummary?: string
       onClose: () => void
       onAuthenticated: (profile: Profile) => void
       joinClub?: never
@@ -135,7 +145,14 @@ type LoginPageProps =
  * it calls `onAuthenticated` once the person is signed in, and the caller then closes it.
  * `onClose` runs when the person closes it without signing in.
  */
-export default function LoginPage({ joinClub, clubName, dialog = false, onClose, onAuthenticated }: LoginPageProps = {}) {
+export default function LoginPage({
+  joinClub,
+  clubName,
+  bookingSummary,
+  dialog = false,
+  onClose,
+  onAuthenticated,
+}: LoginPageProps = {}) {
   const { user, loading, signIn, signInWithGoogle, signUpMember, verifySignupCode, resendSignupCode, resetPassword, demo } =
     useAuth()
   const nav = useNavigate()
@@ -375,28 +392,40 @@ export default function LoginPage({ joinClub, clubName, dialog = false, onClose,
   }
 
 
-  // The page's main heading is the h1; in the dialog it sits under the dialog's own title.
-  const Heading = dialog ? 'h2' : 'h1'
+  // The page's main heading is the h1. The dialog's own title (an h2) names the step, so the
+  // form inside it has no second heading; only the code step adds one, under the title.
+  const Heading = dialog ? 'h3' : 'h1'
   const headingClass = dialog
-    ? 'text-heading-2 font-semibold text-ink'
+    ? 'text-heading-3 font-semibold text-ink'
     : 'text-heading-1 font-semibold text-ink'
   const formHeading =
     mode === 'join'
-      ? dialog ? 'Create member account' : 'Create your player account'
+      ? 'Create your player account'
       : mode === 'reset'
       ? 'Reset your password'
       : 'Log in'
-  // The page names only the club a join link is for; the dialog keeps its short lead-in.
-  const formLeadIn = dialog
-    ? mode === 'join'
-      ? joinClub ? `Joining ${joinClub.name}` : 'New player'
-      : mode === 'reset'
-      ? 'Forgot your password?'
-      : 'Welcome back'
-    : mode === 'join' && joinClub
-    ? `Joining ${joinClub.name}`
-    : null
+  // The page names only the club a join link is for.
+  const formLeadIn = mode === 'join' && joinClub ? `Joining ${joinClub.name}` : null
   const codeLeadIn = joinClub ? `Joining ${joinClub.name}` : dialog ? 'One more step' : null
+  const formDescription =
+    mode === 'join'
+      ? demo
+        ? 'For players only. Book and pay for courts, join open play, and use your QR pass.'
+        : 'For players only. View availability, open play, and your QR pass.'
+      : mode === 'reset'
+      ? 'Enter your email and we’ll send a password reset link.'
+      : joinClub
+      ? `Already have an account? Log in, then confirm joining ${joinClub.name}.`
+      : dialog
+      ? null
+      : 'Players, staff, and club admins all log in here.'
+  const ownerNote = mode === 'join' && ownerSignup
+  // The club being booked, named in the dialog's title beside its own badge (never the bRineLy mark).
+  const dialogClub = clubName?.trim() || null
+  const dialogTitle =
+    mode === 'reset'
+      ? 'Reset your password'
+      : `${mode === 'join' ? 'Sign up' : 'Log in'} to book${dialogClub ? ` at ${dialogClub}` : ''}`
 
   const modeButtons = (
     <div className="mb-5 grid grid-cols-2 gap-2">
@@ -414,7 +443,7 @@ export default function LoginPage({ joinClub, clubName, dialog = false, onClose,
         onClick={() => switchMode('join')}
         aria-pressed={mode === 'join'}
       >
-        Join as member
+        Sign up
       </button>
     </div>
   )
@@ -516,28 +545,24 @@ export default function LoginPage({ joinClub, clubName, dialog = false, onClose,
 
   const formStep = (
     <div className={modeFade}>
-      <div className="mb-4">
-        {formLeadIn ? <p className="text-body font-semibold text-muted">{formLeadIn}</p> : null}
-        <Heading id="login-dialog-title" className={`mt-1 ${headingClass}`}>
-          {formHeading}
-        </Heading>
-        <p className="mt-1.5 text-subtitle text-muted">
-          {mode === 'join'
-            ? demo
-              ? 'For players only. You’ll get book, pay, open play, and your QR pass.'
-              : 'For players only. View availability, open play, and your QR pass.'
-            : mode === 'reset'
-            ? 'Enter your email and we’ll send a password reset link.'
-            : joinClub
-            ? `Already have an account? Log in, then confirm joining ${joinClub.name}.`
-            : 'Members, staff, and admin all use this log-in.'}
-        </p>
-        {mode === 'join' && ownerSignup ? (
-          <p className="notice mt-3 text-subtitle">
-            Court owner? Use the email you gave bRineLy. Your account becomes your club’s admin, not a player membership.
-          </p>
-        ) : null}
-      </div>
+      {!dialog || formDescription || ownerNote ? (
+        <div className="mb-4">
+          {dialog ? null : (
+            <>
+              {formLeadIn ? <p className="text-body font-semibold text-muted">{formLeadIn}</p> : null}
+              <Heading className={`mt-1 ${headingClass}`}>{formHeading}</Heading>
+            </>
+          )}
+          {formDescription ? (
+            <p className={`${dialog ? '' : 'mt-1.5 '}text-subtitle text-muted`}>{formDescription}</p>
+          ) : null}
+          {ownerNote ? (
+            <p className="notice mt-3 text-subtitle">
+              Court owner? Use the email you gave bRineLy. Your account becomes your club’s admin, not a player membership.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {dialog && mode !== 'reset' && signInWithGoogle ? (
         <div className="mb-4 space-y-3">
@@ -636,12 +661,16 @@ export default function LoginPage({ joinClub, clubName, dialog = false, onClose,
                 className="input pr-14"
                 type={passwordVisible ? 'text' : 'password'}
                 autoComplete={mode === 'join' ? 'new-password' : 'current-password'}
-                placeholder={mode === 'join' ? 'At least 6 characters' : '••••••••'}
+                placeholder={mode === 'join' ? undefined : '••••••••'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={mode === 'join' ? 6 : undefined}
-                aria-describedby={error ? 'authentication-error' : undefined}
+                aria-describedby={
+                  [mode === 'join' ? 'password-rule' : null, error ? 'authentication-error' : null]
+                    .filter(Boolean)
+                    .join(' ') || undefined
+                }
               />
               <button
                 type="button"
@@ -657,6 +686,12 @@ export default function LoginPage({ joinClub, clubName, dialog = false, onClose,
                 )}
               </button>
             </div>
+            {/* The rule stays visible while typing; a placeholder would vanish. */}
+            {mode === 'join' ? (
+              <p id="password-rule" className="mt-1.5 text-body text-muted">
+                At least 6 characters.
+              </p>
+            ) : null}
           </div>
         ) : null}
 
@@ -697,7 +732,7 @@ export default function LoginPage({ joinClub, clubName, dialog = false, onClose,
           {busy
             ? 'Please wait…'
             : mode === 'join'
-            ? 'Join bRineLy'
+            ? 'Sign up'
             : mode === 'reset'
             ? 'Send reset link'
             : 'Log in'}
@@ -723,7 +758,7 @@ export default function LoginPage({ joinClub, clubName, dialog = false, onClose,
             className="text-link inline-flex min-h-12 cursor-pointer items-center"
             onClick={() => switchMode('join')}
           >
-            Join as member
+            Sign up
           </button>
         </p>
       ) : (
@@ -749,7 +784,7 @@ export default function LoginPage({ joinClub, clubName, dialog = false, onClose,
               setPassword('member123')
             }}
           >
-            Fill demo member account
+            Fill demo player account
           </button>
         </div>
       ) : null}
@@ -778,26 +813,30 @@ export default function LoginPage({ joinClub, clubName, dialog = false, onClose,
           aria-labelledby={codeEmail ? 'signup-code-title' : 'login-dialog-title'}
           className="enter-rise max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-t-[12px] border border-b-0 border-line bg-white p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] text-ink [scrollbar-width:none] sm:rounded-[12px] sm:border-b sm:p-6 [&::-webkit-scrollbar]:hidden"
         >
-          <div className="mb-4 flex items-center justify-between border-b border-line pb-3">
-            <p className="text-title font-semibold text-ink">Login to continue</p>
+          <div className="mb-4 flex items-start justify-between gap-3 border-b border-line pb-3">
+            <div className="flex min-w-0 items-center gap-3">
+              {/* The club's own badge: the bRineLy mark here would read as the club's logo. */}
+              {dialogClub ? (
+                <ClubBadge name={dialogClub} size="large" />
+              ) : (
+                <BrinelyLogo variant="mark" title="" className="h-11 w-11 shrink-0 object-contain" />
+              )}
+              <div className="min-w-0">
+                <h2 id="login-dialog-title" className="text-title font-semibold text-ink">
+                  {dialogTitle}
+                </h2>
+                {bookingSummary ? <p className="mt-0.5 text-body text-muted">{bookingSummary}</p> : null}
+              </div>
+            </div>
             <button
               type="button"
               onClick={closeDialog}
               disabled={busy}
-              className="control-feedback inline-flex min-h-12 min-w-12 items-center justify-center rounded-[10px] text-muted hover:text-ink"
+              className="control-feedback inline-flex min-h-12 min-w-12 shrink-0 items-center justify-center rounded-[10px] text-muted hover:text-ink"
               aria-label="Close sign-in"
             >
               <X size={20} aria-hidden />
             </button>
-          </div>
-          <div className="mb-4 flex items-center gap-3 rounded-[12px] border border-line bg-canvas px-3.5 py-2.5">
-            <BrinelyLogo variant="mark" className="h-8 w-8 shrink-0 object-contain" />
-            <div className="min-w-0">
-              <p className="truncate text-subtitle font-semibold text-ink">
-                {clubName ?? joinClub?.name ?? 'bRineLy'}
-              </p>
-              <p className="text-body text-muted">Secure booking access</p>
-            </div>
           </div>
           {modeButtons}
           {codeEmail ? codeStep : formStep}
@@ -852,7 +891,7 @@ export default function LoginPage({ joinClub, clubName, dialog = false, onClose,
             </section>
           ) : (
             <p className="mt-6 text-body text-muted">
-              Staff / admin accounts are created by the club — not by joining here.
+              Staff and admin accounts are created by the club, not by signing up here.
             </p>
           )}
 

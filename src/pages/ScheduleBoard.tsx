@@ -20,6 +20,9 @@ function kindColor(kind: ScheduleBlock['kind']) {
   return 'bg-brand-600/95 border-brand-300'
 }
 
+/** Sentence-case names for the kinds of block on the board. */
+const kindLabel: Record<ScheduleBlock['kind'], string> = { session: 'Session', booking: 'Booking', open_play: 'Open play' }
+
 /**
  * The board's shape while the day loads: the time grid on wide screens, court or booking
  * cards on narrow ones. The TV board uses still, dark shapes (no shimmer) so a wall
@@ -214,7 +217,7 @@ export function ScheduleBoard({
       {tv ? (
         <header className="flex flex-wrap items-end justify-between gap-3 mb-4">
           <div>
-            <p className="text-teal-300 text-xs font-bold uppercase tracking-widest">
+            <p className="text-brand-200 text-xs font-semibold">
               {club?.name ?? 'bRineLy'}
               {tvVenueId ? ` · ${venues.find((venue) => venue.id === tvVenueId)?.name ?? ''}` : ''} · Live board
             </p>
@@ -359,7 +362,7 @@ export function ScheduleBoard({
                 <div key={c.id} className="rounded-2xl p-4 border bg-slate-900 border-slate-800">
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-extrabold">{c.name}</p>
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                    <span className={`text-status font-semibold px-2 py-0.5 rounded-full ${
                       c.status === 'maintenance' ? 'bg-amber-400 text-amber-950' : courtBlocks.length ? 'bg-sky-500 text-white' : 'bg-emerald-500 text-emerald-950'
                     }`}>
                       {c.status === 'maintenance' ? 'Out of service' : courtBlocks.length ? `${courtBlocks.length} booked` : 'Free'}
@@ -385,9 +388,9 @@ export function ScheduleBoard({
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-extrabold">{b.title}</p>
                     <span
-                      className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full text-white ${kindColor(b.kind)}`}
+                      className={`text-status font-semibold px-2 py-0.5 rounded-full text-white ${kindColor(b.kind)}`}
                     >
-                      {b.kind.replace('_', ' ')}
+                      {kindLabel[b.kind]}
                     </span>
                   </div>
                   {b.venue_name ? (

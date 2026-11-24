@@ -63,7 +63,8 @@ describe('PrivacyNoticePage', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Privacy Notice' })).toBeInTheDocument()
     expect(screen.getByText('For bRineLy booking portal users')).toBeInTheDocument()
-    expect(screen.getByText('Stay in the brine. Play more.')).toBeInTheDocument()
+    // A legal page carries no marketing tagline; the site footer has it.
+    expect(screen.queryByText('Stay in the brine. Play more.')).not.toBeInTheDocument()
     expect(screen.getByText('Last updated: November 22, 2026')).toBeInTheDocument()
     expect(screen.queryByText(/Rally Point Gensan/)).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Who we are' })).toBeInTheDocument()
@@ -155,6 +156,16 @@ describe('PrivacyNoticePage', () => {
     const credits = screen.getByRole('region', { name: 'Photo credits' })
     expect(credits).toHaveAttribute('id', 'photo-credits')
     expect(within(credits).getByText('Sample photos stand in for clubs that have not added their own pictures yet.')).toBeInTheDocument()
+  })
+
+  it('ends with a link back to the top of the notice', async () => {
+    const user = userEvent.setup()
+    renderNotice()
+
+    await user.click(screen.getByRole('link', { name: 'Back to top' }))
+    // The whole page scrolls (the root element has no id) and focus returns to the notice's start.
+    expect(scrolledTo).toEqual([''])
+    expect(document.getElementById('privacy-notice')).toHaveFocus()
   })
 
   it('ignores a return path that points outside the app', () => {

@@ -824,7 +824,7 @@ describe('member booking and pass pages', () => {
     expect(screen.getByText('You log in before you pay. The 15 minutes to pay start after that.')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /Continue/ }))
-    const dialog = await screen.findByRole('dialog', { name: 'Log in' })
+    const dialog = await screen.findByRole('dialog', { name: /^Log in to book/ })
     expect(within(dialog).getByText('By continuing, you confirm you are booking under your account.')).toBeInTheDocument()
     // No hold yet: the 15 minutes start only once the visitor has signed in.
     expect(apiMock.createBooking).not.toHaveBeenCalled()

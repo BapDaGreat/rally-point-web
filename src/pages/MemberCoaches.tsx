@@ -141,7 +141,7 @@ export function MemberCoaches() {
                       {slot.coach_photo_url ? (
                         <img src={slot.coach_photo_url} alt={`Photo of ${slot.coach_name}`} className="h-14 w-14 shrink-0 rounded-full object-cover" loading="lazy" />
                       ) : (
-                        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-teal-50 text-title font-semibold text-brand-800" aria-hidden>
+                        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-brand-50 text-title font-semibold text-brand-800" aria-hidden>
                           {slot.coach_name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}
                         </span>
                       )}
