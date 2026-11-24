@@ -1,5 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
+import { PhotoCredits } from '../components/PhotoCredits'
+import { PublicFrame } from '../components/PublicFrame'
 import { AppShell } from '../components/Shell'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
@@ -234,7 +236,16 @@ function sections(club: NoticeClub): { title: string; content: ReactNode }[] {
         </p>
       ),
     },
+    { title: 'Photo credits', content: <PhotoCredits /> },
   ]
+}
+
+/** "Who we are" becomes "who-we-are"; the site footer links to `/privacy#photo-credits`. */
+function sectionId(title: string) {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
 }
 
 /** The club this notice is for: the join link's club, the signed-in club, or the default club. */
@@ -295,48 +306,109 @@ export function PrivacyNoticePage() {
       ? `For ${club.name} players on the bRineLy booking portal`
       : 'For bRineLy booking portal users'
 
-  const content = (
-    <main className="app-content-rail safe-bottom mx-auto w-full py-6 sm:py-10">
-      <div className="mx-auto max-w-3xl">
-        <Link
-          className="inline-flex min-h-12 items-center font-semibold text-brand-800 underline underline-offset-2"
-          to={backTo}
-        >
-          {backLabel(backTo)}
-        </Link>
-        <header className="mt-4 border-b border-slate-200 pb-5">
-          <h1 className="text-heading-1 font-extrabold tracking-tight text-slate-950">
-            Privacy Notice
-          </h1>
-          <p className="mt-2 text-body text-slate-600">{subtitle}</p>
-          <p className="mt-1 text-caption text-slate-500">Stay in the brine. Play more.</p>
-          <p className="mt-1 text-caption text-slate-500">
-            Last updated: November 22, 2026
-          </p>
-        </header>
+  const noticeSections = sections(club)
+  // Set by a contents link, so the jump also moves keyboard focus to that section.
+  const jumpedByLink = useRef(false)
 
-        <div className="mt-5 space-y-4">
-          {sections(club).map(({ title, content: body }) => (
-            <section
-              key={title}
-              aria-labelledby={`privacy-${title.toLowerCase().replaceAll(' ', '-')}`}
-              className="card p-4 sm:p-5"
-            >
-              <h2
-                id={`privacy-${title.toLowerCase().replaceAll(' ', '-')}`}
-                className="text-title font-bold text-slate-900"
-              >
-                {title}
-              </h2>
-              <div className="mt-2 text-body leading-relaxed text-slate-700">{body}</div>
-            </section>
-          ))}
-        </div>
-      </div>
-    </main>
+  // HashRouter keeps the section in the router's location (`/privacy#photo-credits`), so the
+  // browser cannot jump there itself. Scroll on arrival and after each contents link.
+  useEffect(() => {
+    let id = location.hash.replace(/^#/, '')
+    try {
+      id = decodeURIComponent(id)
+    } catch {
+      // A malformed address keeps its raw text, which matches no section.
+    }
+    const target = id ? document.getElementById(id) : null
+    if (!target) return
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false
+    target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
+    if (jumpedByLink.current) {
+      jumpedByLink.current = false
+      target.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true })
+    }
+  }, [location.hash, location.key])
+
+  const backLink = (
+    <Link className="text-link inline-flex min-h-12 items-center" to={backTo}>
+      {backLabel(backTo)}
+    </Link>
   )
 
-  // Signed-in players keep their menu; visitors see the page on its own.
-  if (user) return <AppShell role={user.role}>{content}</AppShell>
-  return <div className="app-shell app-shell-desktop">{content}</div>
+  const tagline = (
+    <div className="text-body text-muted">
+      <p>Stay in the brine. Play more.</p>
+      <p className="mt-1">Last updated: November 22, 2026</p>
+    </div>
+  )
+
+  const body = (
+    <>
+      <nav aria-labelledby="privacy-contents" className="mt-4 border-y border-line py-4">
+        <p id="privacy-contents" className="text-subtitle font-semibold text-ink">
+          On this page
+        </p>
+        <ul className="mt-1 grid sm:grid-cols-2 sm:gap-x-6">
+          {noticeSections.map(({ title }) => (
+            <li key={title}>
+              <Link
+                to={{ pathname: location.pathname, search: location.search, hash: `#${sectionId(title)}` }}
+                state={location.state}
+                replace
+                onClick={() => {
+                  jumpedByLink.current = true
+                }}
+                className="text-link inline-flex min-h-12 items-center font-normal"
+              >
+                {title}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <div className="divide-y divide-line">
+        {noticeSections.map(({ title, content: sectionBody }) => {
+          const id = sectionId(title)
+          return (
+            <section key={title} id={id} aria-labelledby={`privacy-${id}`} className="scroll-mt-24 py-6">
+              <h2 id={`privacy-${id}`} tabIndex={-1} className="text-heading-3 font-semibold text-ink focus:outline-none">
+                {title}
+              </h2>
+              <div className="mt-2 text-subtitle leading-relaxed text-ink">{sectionBody}</div>
+            </section>
+          )
+        })}
+      </div>
+    </>
+  )
+
+  // Visitors get the public site frame; signed-in players keep their menu.
+  if (!user) {
+    return (
+      <PublicFrame title="Privacy Notice" subtitle={subtitle} width="narrow">
+        <div className="max-w-[68ch]">
+          {tagline}
+          <div className="mt-2">{backLink}</div>
+          {body}
+        </div>
+      </PublicFrame>
+    )
+  }
+
+  return (
+    <AppShell role={user.role}>
+      <main className="app-content-rail safe-bottom mx-auto w-full py-6 sm:py-10">
+        <div className="mx-auto max-w-[68ch]">
+          {backLink}
+          <header className="mt-4">
+            <h1 className="text-heading-1 font-semibold text-ink">Privacy Notice</h1>
+            <p className="mt-2 text-subtitle text-muted">{subtitle}</p>
+            <div className="mt-1">{tagline}</div>
+          </header>
+          {body}
+        </div>
+      </main>
+    </AppShell>
+  )
 }

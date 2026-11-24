@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ownerCallDateRange } from '../lib/ownerRequests'
+import { OWNERS_PHOTO } from '../lib/stockPhotos'
 import { OwnersPage } from './Owners'
 
 const requestOwnerCall = vi.hoisted(() => vi.fn())
@@ -45,6 +46,23 @@ describe('OwnersPage', () => {
     expect(within(steps).getAllByRole('listitem')).toHaveLength(3)
     expect(screen.getByRole('link', { name: 'Create my owner account' })).toHaveAttribute('href', '/login')
     expect(screen.getByLabelText('Day for the call')).toHaveAttribute('min', ownerCallDateRange().min)
+  })
+
+  it('shows what owners get beside a general owners photo', () => {
+    renderPage()
+    const main = screen.getByRole('main')
+    const benefits = within(main).getByRole('heading', { name: 'What you get' }).closest('section')!
+    const items = within(benefits).getAllByRole('listitem')
+    expect(items.map((item) => item.textContent)).toEqual([
+      'Your own club page with photos, hours and a map',
+      'Players book 1 to 3 hours and pay your GCash directly',
+      'Staff confirm payments from their phone',
+      'A TV board for your courts',
+    ])
+    expect(within(main).getByText('Put your club online. Players find you, book a time and pay your GCash directly.')).toBeInTheDocument()
+    const photo = within(main).getByRole('img', { name: OWNERS_PHOTO.alt })
+    expect(photo.getAttribute('srcset')).toContain('800w')
+    expect(within(main).queryByText('Sample photo')).not.toBeInTheDocument()
   })
 
   it('shows the first problem in plain words before sending anything', async () => {

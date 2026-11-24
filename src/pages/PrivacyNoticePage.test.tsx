@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, type InitialEntry } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MyClub, Profile } from '../types'
@@ -25,6 +26,8 @@ vi.mock('../lib/api', () => ({
 
 import { api } from '../lib/api'
 
+const scrolledTo: string[] = []
+
 const davao: MyClub = { club_id: 'club-davao', slug: 'rally-point-davao', name: 'Rally Point Davao', role: 'member' }
 
 const member = {
@@ -48,6 +51,11 @@ describe('PrivacyNoticePage', () => {
     auth.user = null
     auth.activeClub = null
     vi.mocked(api.publicClub).mockReset().mockResolvedValue({ id: 'club-davao', slug: 'rally-point-davao', name: 'Rally Point Davao' })
+    scrolledTo.length = 0
+    // jsdom has no scrollIntoView; record which element asked to be shown.
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      scrolledTo.push(this.id)
+    })
   })
 
   it('shows the requested privacy topics and provisional contact details', () => {
@@ -111,6 +119,42 @@ describe('PrivacyNoticePage', () => {
     expect(screen.getByRole('link', { name: 'Back to Help' })).toHaveAttribute('href', '/member/help')
     expect(screen.queryByRole('link', { name: 'Back to login' })).not.toBeInTheDocument()
     expect(api.publicClub).not.toHaveBeenCalled()
+  })
+
+  it('lists the sections on this page and jumps to the one chosen', async () => {
+    const user = userEvent.setup()
+    renderNotice({ pathname: '/privacy', state: { from: '/owners' } })
+
+    const contents = screen.getByRole('navigation', { name: 'On this page' })
+    const links = within(contents).getAllByRole('link')
+    expect(links.map((link) => link.textContent)).toEqual([
+      'Who we are',
+      'Personal information we collect',
+      'Why we use information and lawful bases',
+      'Who can see information',
+      'Club pages and public information',
+      'Retention and security',
+      'Details to confirm before this notice is official',
+      'Your rights under RA 10173',
+      'Privacy contact',
+      'Photo credits',
+    ])
+    expect(scrolledTo).toEqual([])
+
+    await user.click(within(contents).getByRole('link', { name: 'Your rights under RA 10173' }))
+    expect(scrolledTo).toEqual(['your-rights-under-ra-10173'])
+    expect(screen.getByRole('heading', { name: 'Your rights under RA 10173' })).toHaveFocus()
+    // The jump keeps the way back.
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/owners')
+  })
+
+  it('scrolls to the photo credits when the address names them', () => {
+    renderNotice('/privacy#photo-credits')
+
+    expect(scrolledTo).toEqual(['photo-credits'])
+    const credits = screen.getByRole('region', { name: 'Photo credits' })
+    expect(credits).toHaveAttribute('id', 'photo-credits')
+    expect(within(credits).getByText('Sample photos stand in for clubs that have not added their own pictures yet.')).toBeInTheDocument()
   })
 
   it('ignores a return path that points outside the app', () => {
