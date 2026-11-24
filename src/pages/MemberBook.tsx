@@ -1211,11 +1211,27 @@ export function MemberBook() {
     </Link>
   ) : null
 
+  // The log-in sheet repeats what the visitor picked, so they do not lose track mid-booking.
+  const loginSummary = selectionOk && startHour != null && selectedCourt
+    ? `${selectedCourt.court.name} · ${dateLabel} · ${hourLabel(startHour)}–${hourLabel(startHour + hours)} · ${peso(total)}`
+    : undefined
+  const backToClub = routeClubSlug && step === 'pick' && !clubMissing ? (
+    <Link
+      to={`/clubs/${routeClubSlug}`}
+      className="control-feedback inline-flex min-h-12 items-center gap-1 text-body font-semibold text-brand-800"
+    >
+      <ChevronLeft size={18} aria-hidden /> Back to {clubName ?? 'club'}
+    </Link>
+  ) : null
+  // Visitors get the link above the page title (PublicFrame `back`); signed-in players keep it in the page.
+  const visitorFrame = Boolean(routeClubSlug && !user)
+
   const content: ReactNode = (
     <>
       {authDialogOpen ? (
         <LoginPage
           dialog
+          bookingSummary={loginSummary}
           clubName={clubName ?? activeClub?.name}
           onClose={() => {
             setAuthDialogOpen(false)
@@ -1228,14 +1244,7 @@ export function MemberBook() {
 
       {clubMissing ? null : <BookingSteps current={currentStep} visitor={!user} />}
 
-      {routeClubSlug && step === 'pick' && !clubMissing ? (
-        <Link
-          to={`/clubs/${routeClubSlug}`}
-          className="control-feedback inline-flex min-h-12 items-center gap-1 text-body font-semibold text-brand-800"
-        >
-          <ChevronLeft size={18} aria-hidden /> Back to {clubName ?? 'club'}
-        </Link>
-      ) : null}
+      {visitorFrame ? null : backToClub}
 
       {user && !member && !loading && !publicBrowsingMode ? (
         <section className="card p-4">
@@ -1884,9 +1893,9 @@ export function MemberBook() {
     </>
   )
 
-  if (routeClubSlug && !user) {
+  if (visitorFrame) {
     return (
-      <PublicFrame title={pageTitle}>
+      <PublicFrame title={pageTitle} back={backToClub}>
         {content}
       </PublicFrame>
     )

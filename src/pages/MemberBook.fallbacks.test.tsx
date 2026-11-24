@@ -167,6 +167,18 @@ beforeEach(() => {
   apiMock.publicClubProfile.mockResolvedValue(null)
 })
 
+describe('visitor log-in during booking', () => {
+  it('shows what the visitor picked in the log-in sheet, and the way back above the title', async () => {
+    const user = userEvent.setup()
+    renderClub()
+    expect(await screen.findByRole('link', { name: /Back to Rally Point Davao/ })).toHaveAttribute('href', '/clubs/rally-point-davao')
+    await user.click(await screen.findByRole('button', { name: /^12:00 PM/ }))
+    await user.click(screen.getByRole('button', { name: /^Continue/ }))
+    const sheet = await screen.findByRole('dialog', { name: /Log in to book at Rally Point Davao/ })
+    expect(within(sheet).getByText(/^Court B · .+ · 12:00 PM–1:00 PM · Php 500\.00$/)).toBeInTheDocument()
+  })
+})
+
 describe('booking steps on the booking screen', () => {
   it('shows a visitor the log-in step and a player only choose, pay and confirmed', async () => {
     const first = renderClub()
