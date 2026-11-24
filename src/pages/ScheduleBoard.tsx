@@ -466,8 +466,8 @@ export function TvBoard() {
   if (!canLookUp) return <ScheduleBoard tv />
   if (club === undefined) {
     return (
-      <div className="min-h-screen bg-slate-950">
-        <p role="status" className="sr-only">Loading the court board…</p>
+      <div className="grid min-h-screen place-items-center bg-slate-950 p-6 text-center">
+        <p role="status" className="text-2xl font-semibold text-white">Loading the court board…</p>
       </div>
     )
   }
