@@ -1,3 +1,5 @@
+-- (Renumbered from 20261123090000 on 2026-11-24 so it follows the member codes and booking length
+-- release on staging; it was never applied anywhere hosted.)
 -- Coach booking: club-scoped coach accounts, bookable coach time, requests and
 -- private player/coach messages. Coaching does not reserve a court or collect payment.
 do $$
@@ -62,7 +64,6 @@ create table public.coach_booking_requests (
   responded_at timestamptz,
   constraint coach_booking_requests_slot_club_fk
     foreign key (slot_id, club_id) references public.coach_booking_slots (id, club_id) on delete restrict,
-  constraint coach_booking_requests_student_count_check check (student_count >= 1),
   unique (id, club_id)
 );
 create index coach_booking_requests_player on public.coach_booking_requests (player_user_id, created_at desc);
@@ -79,6 +80,11 @@ create table public.coach_request_messages (
   created_at timestamptz not null default now()
 );
 create index coach_request_messages_thread on public.coach_request_messages (request_id, created_at, id);
+-- Every foreign key gets an index in its own column order (the Supabase advisor suites check this).
+create index club_coaches_account_user_id on public.club_coaches (account_user_id);
+create index coach_booking_slots_coach_club on public.coach_booking_slots (coach_id, club_id);
+create index coach_booking_requests_slot_club on public.coach_booking_requests (slot_id, club_id);
+create index coach_request_messages_sender on public.coach_request_messages (sender_user_id);
 
 alter table public.coach_booking_slots enable row level security;
 alter table public.coach_booking_requests enable row level security;

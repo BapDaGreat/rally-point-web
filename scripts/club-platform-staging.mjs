@@ -326,7 +326,7 @@ export const memberGcashCheckoutRelease = Object.freeze({
 // ends by midnight). Two migrations. No new write path: the reservation-write pause, the nine
 // paused booking functions and the five checkout functions' grants are unchanged. No trigger is
 // added to auth.users (handle_new_user is replaced in place), so the capture's sign-up trigger step holds.
-// Staging does not have 20261123090000_rent_a_coach.sql; this release does not depend on it.
+// Rent-a-coach is not part of this release and does not depend on it.
 export const memberCodesBookingLengthRelease = Object.freeze({
   id: 'member-codes-booking-length-20261124',
   title: 'Member codes and booking length',
@@ -373,11 +373,66 @@ export const memberCodesBookingLengthRelease = Object.freeze({
   databases: Object.freeze({ restore: 'rally_staging_backup_20261124_r1_restore', dryRun: 'rally_staging_backup_20261124_r1_dryrun' }),
 })
 
+// Rent-a-coach (owner, 2026-11-24, after it was found missing from staging): coach time slots,
+// lesson requests and private player/coach messages. One migration, renumbered to
+// 20261124110000 (it was 20261123090000 and never applied anywhere hosted), fixed so it applies:
+// a duplicate check name removed and the four new foreign keys indexed. Three new tables closed to
+// API roles; fifteen definer functions for signed-in callers. No court is reserved and no payment is
+// taken, so the reservation-write pause is unchanged. No trigger is added to auth.users.
+export const rentACoachRelease = Object.freeze({
+  id: 'rent-a-coach-20261124',
+  title: 'Rent-a-coach',
+  baseVersions: Object.freeze([...memberCodesBookingLengthRelease.baseVersions, '20261124090000', '20261124100000'].sort()),
+  migrations: Object.freeze(['20261124110000_rent_a_coach.sql']),
+  // The SQL that runs and the code that runs it. Approval pins all of these bytes.
+  files: Object.freeze(['supabase/migrations/20261124110000_rent_a_coach.sql',
+    'supabase/verification/rent_a_coach_postflight.sql',
+    'supabase/verification/member_codes_booking_length_postflight.sql',
+    'supabase/verification/member_gcash_checkout_postflight.sql', 'supabase/verification/owner_onboarding_postflight.sql',
+    'supabase/verification/club_profile_postflight.sql', 'supabase/verification/court_photos_postflight.sql',
+    'supabase/verification/court_marketplace_postflight.sql', 'supabase/verification/supabase_advisor_followup_postflight.sql',
+    'supabase/verification/supabase_advisor_postflight.sql', 'supabase/verification/club_platform_postflight.sql',
+    'supabase/verification/two_club_isolation.sql', 'supabase/verification/schema_fingerprint.sql',
+    'supabase/verification/backup_content_inventory.sql', 'supabase/verification/reservation_write_pause_readonly.sql',
+    'supabase/verification/staging_privacy_readonly_preflight.sql', 'scripts/run-staging-release-apply.mjs',
+    'scripts/club-platform-staging.mjs', 'scripts/club-platform-checks.mjs', 'scripts/restore-catalog-checks.mjs',
+    'scripts/restore-data-checks.mjs']),
+  stateCheck: Object.freeze({ file: 'member_codes_booking_length_postflight.sql', kind: 'memberCodesBookingLength' }),
+  postChecks: Object.freeze([
+    Object.freeze({ file: 'rent_a_coach_postflight.sql', kind: 'rentACoach', ignore: Object.freeze([]) }),
+    // Earlier postflights count 22 to 33 migrations; this release brings staging to 34.
+    Object.freeze({ file: 'member_codes_booking_length_postflight.sql', kind: 'memberCodesBookingLength',
+      ignore: Object.freeze(['ledger_has_codes_and_length']) }),
+    Object.freeze({ file: 'member_gcash_checkout_postflight.sql', kind: 'memberGcashCheckout',
+      ignore: Object.freeze(['ledger_has_member_gcash_checkout']) }),
+    Object.freeze({ file: 'owner_onboarding_postflight.sql', kind: 'ownerOnboarding',
+      ignore: Object.freeze(['ledger_has_owner_onboarding']) }),
+    Object.freeze({ file: 'club_profile_postflight.sql', kind: 'clubProfile', ignore: Object.freeze(['ledger_has_club_profile']) }),
+    Object.freeze({ file: 'court_photos_postflight.sql', kind: 'courtPhotos', ignore: Object.freeze(['ledger_has_court_photos']) }),
+    Object.freeze({ file: 'court_marketplace_postflight.sql', kind: 'courtMarketplace',
+      ignore: Object.freeze(['ledger_has_court_marketplace', 'venues_open_all_day']) }),
+    Object.freeze({ file: 'supabase_advisor_followup_postflight.sql', kind: 'advisorFollowup',
+      ignore: Object.freeze(['ledger_has_followup']) }),
+    Object.freeze({ file: 'supabase_advisor_postflight.sql', kind: 'advisor',
+      ignore: Object.freeze(['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']) }),
+    Object.freeze({ file: 'club_platform_postflight.sql', kind: 'postflight', ignore: Object.freeze(['ledger_has_every_migration']) }),
+  ]),
+  isolation: Object.freeze({ file: 'two_club_isolation.sql', plan: 55 }),
+  dirs: Object.freeze({
+    capture: 'docs/release-private/staging-backup-20261124-r2',
+    restore: 'docs/release-private/staging-backup-restore-20261124-r2',
+    dryRun: 'docs/release-private/rent-a-coach-staging-dryrun-20261124-r1',
+    apply: 'docs/release-private/rent-a-coach-staging-apply-20261124-r1',
+  }),
+  databases: Object.freeze({ restore: 'rally_staging_backup_20261124_r2_restore', dryRun: 'rally_staging_backup_20261124_r2_dryrun' }),
+})
+
 export const releases = Object.freeze({ [advisorFixesRelease.id]: advisorFixesRelease,
   [advisorFollowupRelease.id]: advisorFollowupRelease, [courtMarketplaceRelease.id]: courtMarketplaceRelease,
   [courtPhotosRelease.id]: courtPhotosRelease, [clubProfileRelease.id]: clubProfileRelease,
   [ownerOnboardingRelease.id]: ownerOnboardingRelease, [memberGcashCheckoutRelease.id]: memberGcashCheckoutRelease,
-  [memberCodesBookingLengthRelease.id]: memberCodesBookingLengthRelease })
+  [memberCodesBookingLengthRelease.id]: memberCodesBookingLengthRelease,
+  [rentACoachRelease.id]: rentACoachRelease })
 
 export function getRelease(id) {
   assert.ok(Object.hasOwn(releases, id ?? ''), `Unknown release: ${id}. Known: ${Object.keys(releases).join(', ')}`)

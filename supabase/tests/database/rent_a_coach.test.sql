@@ -35,7 +35,7 @@ select extensions.ok(
 select extensions.ok(
   has_function_privilege('authenticated', 'public.member_request_coach_slot(uuid, integer, text)', 'EXECUTE')
   and not has_function_privilege('anon', 'public.member_request_coach_slot(uuid, integer, text)', 'EXECUTE')
-  and not has_function_privilege('authenticated', 'public.coach_request_messages'::regclass, 'SELECT'),
+  and not has_table_privilege('authenticated', 'public.coach_request_messages', 'SELECT'),
   'only authenticated callers can reach booking RPCs, not private message rows');
 
 select set_config('request.headers', '', true);
@@ -61,9 +61,12 @@ select set_config('test.slot_id',
 select set_config('request.jwt.claim.sub', 'd4000000-0000-4000-8000-000000000002', true);
 select set_config('test.request_id',
   (public.member_request_coach_slot(current_setting('test.slot_id')::uuid, 3, 'Three players, please.')).id::text, true);
+-- The table is closed to API roles (functions only), so the stored row is read as postgres.
+set local role postgres;
 select extensions.is(
   (select status from public.coach_booking_requests where id = current_setting('test.request_id')::uuid),
   'requested', 'a new lesson request waits for the coach');
+set local role authenticated;
 select extensions.is(
   (select count(*)::int from public.member_list_coach_slots(
     timestamptz '2099-06-01 00:00+08', timestamptz '2099-06-02 00:00+08')),

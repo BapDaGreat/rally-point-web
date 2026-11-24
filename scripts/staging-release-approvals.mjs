@@ -28,4 +28,7 @@ export const releaseApprovals = Object.freeze({
   // (staging-backup-20261124-r1), the restore check and the dry run on a restored copy of staging
   // passed (all checks, isolation 55/55).
   'member-codes-booking-length-20261124': '6eeb2efcafb9ac41a7a401656ec0557f1bc2a96bcf3eb116dc689ff1ab7233e2',
+  // Owner, 2026-11-24: "yes do that" (fix the rent-a-coach migration and release it). Recorded only
+  // after the capture, the restore check and the dry run on a restored copy of staging pass.
+  'rent-a-coach-20261124': null,
 })

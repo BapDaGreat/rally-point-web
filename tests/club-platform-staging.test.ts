@@ -406,6 +406,68 @@ describe('staging releases', () => {
     expect(postflight).toContain('= 31')
   })
 
+  it('builds the member codes and booking length release on the 31-migration state and re-runs every earlier check', async () => {
+    const { memberGcashCheckoutRelease, memberCodesBookingLengthRelease, releaseManifest, releases } = await load()
+    const { memberCodesBookingLengthChecks } = await import('../scripts/club-platform-checks.mjs')
+    const { releaseApprovals } = await import('../scripts/staging-release-approvals.mjs')
+    expect(memberCodesBookingLengthRelease.baseVersions).toEqual([...memberGcashCheckoutRelease.baseVersions, '20261122090000'])
+    expect(memberCodesBookingLengthRelease.baseVersions).toHaveLength(31)
+    expect(memberCodesBookingLengthRelease.migrations)
+      .toEqual(['20261124090000_member_code_prefix.sql', '20261124100000_booking_any_length.sql'])
+    expect(memberCodesBookingLengthRelease.stateCheck).toEqual({ file: 'member_gcash_checkout_postflight.sql', kind: 'memberGcashCheckout' })
+    expect(memberCodesBookingLengthRelease.postChecks.map((check: { kind: string, ignore: string[] }) => [check.kind, [...check.ignore]])).toEqual([
+      ['memberCodesBookingLength', []],
+      ['memberGcashCheckout', ['ledger_has_member_gcash_checkout']],
+      ['ownerOnboarding', ['ledger_has_owner_onboarding']],
+      ['clubProfile', ['ledger_has_club_profile']],
+      ['courtPhotos', ['ledger_has_court_photos']],
+      ['courtMarketplace', ['ledger_has_court_marketplace', 'venues_open_all_day']],
+      ['advisorFollowup', ['ledger_has_followup']],
+      ['advisor', ['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']],
+      ['postflight', ['ledger_has_every_migration']],
+    ])
+    // Approved after the capture, restore check and dry run passed, and applied to staging.
+    expect(releaseApprovals['member-codes-booking-length-20261124']).toMatch(/^[a-f0-9]{64}$/)
+    const earlier = Object.values(releases).filter(release => release !== memberCodesBookingLengthRelease)
+      .flatMap((release: { dirs: object, databases: object }) => [...Object.values(release.dirs), ...Object.values(release.databases)])
+    expect([...Object.values(memberCodesBookingLengthRelease.dirs), ...Object.values(memberCodesBookingLengthRelease.databases)]
+      .filter(name => earlier.includes(name))).toEqual([])
+    const { contents } = releaseManifest(memberCodesBookingLengthRelease)
+    for (const migration of memberCodesBookingLengthRelease.migrations) expect(contents.has(`supabase/migrations/${migration}`)).toBe(true)
+    const postflight = contents.get('supabase/verification/member_codes_booking_length_postflight.sql')?.toString('utf8') ?? ''
+    expect([...postflight.matchAll(/select \d+, '([a-z_]+)'/g)].map(match => match[1])).toEqual([...memberCodesBookingLengthChecks])
+    expect(postflight).toContain("version = '20261124090000'")
+    expect(postflight).toContain("version = '20261124100000'")
+    expect(postflight).toContain('= 33')
+  })
+
+  it('builds the rent-a-coach release on the 33-migration state and re-runs every earlier check', async () => {
+    const { memberCodesBookingLengthRelease, rentACoachRelease, releaseManifest, releases } = await load()
+    const { rentACoachChecks } = await import('../scripts/club-platform-checks.mjs')
+    expect(rentACoachRelease.baseVersions)
+      .toEqual([...memberCodesBookingLengthRelease.baseVersions, '20261124090000', '20261124100000'])
+    expect(rentACoachRelease.baseVersions).toHaveLength(33)
+    expect(rentACoachRelease.migrations).toEqual(['20261124110000_rent_a_coach.sql'])
+    expect(rentACoachRelease.stateCheck).toEqual({ file: 'member_codes_booking_length_postflight.sql', kind: 'memberCodesBookingLength' })
+    expect(rentACoachRelease.postChecks.map((check: { kind: string, ignore: string[] }) => [check.kind, [...check.ignore]]).slice(0, 2)).toEqual([
+      ['rentACoach', []],
+      ['memberCodesBookingLength', ['ledger_has_codes_and_length']],
+    ])
+    const earlier = Object.values(releases).filter(release => release !== rentACoachRelease)
+      .flatMap((release: { dirs: object, databases: object }) => [...Object.values(release.dirs), ...Object.values(release.databases)])
+    expect([...Object.values(rentACoachRelease.dirs), ...Object.values(rentACoachRelease.databases)]
+      .filter(name => earlier.includes(name))).toEqual([])
+    const { contents } = releaseManifest(rentACoachRelease)
+    const migration = contents.get('supabase/migrations/20261124110000_rent_a_coach.sql')?.toString('utf8') ?? ''
+    // Fixed so it applies on a clean chain: no duplicate check name, every new foreign key indexed.
+    expect(migration).not.toContain('constraint coach_booking_requests_student_count_check')
+    expect(migration).toContain('create index coach_request_messages_sender')
+    const postflight = contents.get('supabase/verification/rent_a_coach_postflight.sql')?.toString('utf8') ?? ''
+    expect([...postflight.matchAll(/select \d+, '([a-z_]+)'/g)].map(match => match[1])).toEqual([...rentACoachChecks])
+    expect(postflight).toContain("version = '20261124110000'")
+    expect(postflight).toContain('= 34')
+  })
+
   it('hashes the release definition and every file, and returns the bytes it hashed', async () => {
     const { releaseManifest } = await load()
     const { dir, release } = releaseFixture()
