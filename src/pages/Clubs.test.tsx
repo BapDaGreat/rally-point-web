@@ -450,4 +450,14 @@ describe('Find a court', () => {
     expect(screen.queryByRole('link', { name: /^Book/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Book/ })).not.toBeInTheDocument()
   })
+
+  it('lets a signed-in club admin book, since admins book as players', async () => {
+    auth.user = { ...player, id: 'admin-1', role: 'admin' }
+    renderAt('/clubs/rally-point-davao')
+
+    const summary = within(await screen.findByRole('complementary', { name: 'Booking summary' }))
+    expect(summary.getByRole('link', { name: 'Book a court' }))
+      .toHaveAttribute('href', '/clubs/rally-point-davao/book?venue=venue-davao')
+    expect(screen.queryByText(/Staff accounts cannot book online/)).not.toBeInTheDocument()
+  })
 })

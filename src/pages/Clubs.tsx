@@ -387,7 +387,8 @@ export function ClubDetailPage() {
   }
 
   const isPlatform = user?.role === 'superadmin'
-  const isClubStaff = user?.role === 'staff' || user?.role === 'admin'
+  // Club admins book as players (as on the booking page); only desk staff are turned away.
+  const isClubStaff = user?.role === 'staff'
   const canBook = !isPlatform && !isClubStaff
   // Only this club's profile: a slower answer for a previous club page is never shown here.
   const info = profile?.slug === slug ? profile.data : null

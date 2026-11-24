@@ -757,10 +757,12 @@ export function MemberBook() {
           setConfirmEnds(null)
           setStartHour(null)
           // The player may want to ring the club; its phone is on its public profile, if it lists one.
+          // Clear any number from an earlier rejection, which may have been at another club.
+          setClubPhone(null)
           if (clubPageSlug && typeof api.publicClubProfile === 'function') {
             void api.publicClubProfile(clubPageSlug)
               .then((profile) => setClubPhone(profile?.phone?.trim() || null))
-              .catch(() => undefined)
+              .catch(() => setClubPhone(null))
           }
           // The club's reason is in the player's notifications; the hours may have gone for another reason too.
           setNotice({
@@ -1368,6 +1370,11 @@ export function MemberBook() {
                     ))}
                   </div>
                 </section>
+
+                {/* The booking summary, which normally shows errors, is hidden in these two states. */}
+                {(loading || allOutOfService) && error && !(staffCannotBook && error === NOT_A_PLAYER) ? (
+                  <p role="alert" className="text-sm text-red-600 font-medium">{error}</p>
+                ) : null}
 
                 {loading ? (
                   <AvailabilityLoading />

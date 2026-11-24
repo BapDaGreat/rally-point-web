@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -350,5 +350,33 @@ describe('booking screen dead ends', () => {
     await sendReference(user)
     expect(await screen.findByRole('link', { name: 'Open your notifications' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Call the club/ })).not.toBeInTheDocument()
+  })
+
+  it('i: a later turned-down payment does not keep a phone number from an earlier one', async () => {
+    authState.user = memberUser
+    authState.activeClub = gensanClub
+    apiMock.publicClubProfile.mockResolvedValueOnce({ phone: '0917 555 0000' })
+    apiMock.myBooking.mockImplementation(async () => ({ ...sent(), status: 'cancelled' }))
+    const user = userEvent.setup()
+    renderOwnClub()
+    await openCheckout(user)
+    await sendReference(user)
+    expect(await screen.findByRole('link', { name: 'Call the club: 0917 555 0000' })).toBeInTheDocument()
+
+    // The second time, the club's profile does not load.
+    apiMock.publicClubProfile.mockRejectedValueOnce(new Error('offline'))
+    await openCheckout(user)
+    await sendReference(user)
+    await waitFor(() => expect(apiMock.publicClubProfile).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByRole('link', { name: /Call the club/ })).not.toBeInTheDocument())
+  })
+
+  it('c: still shows an error when every court is out of service', async () => {
+    authState.user = memberUser
+    apiMock.availability.mockResolvedValue([{ court: { ...court, status: 'maintenance' }, slots: slots(false) }])
+    apiMock.myBookings.mockRejectedValue(new Error('Bookings are down'))
+    renderOwnClub()
+    expect(await screen.findByText('No courts are open for booking right now.')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Bookings are down')
   })
 })
