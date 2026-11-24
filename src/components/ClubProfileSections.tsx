@@ -4,7 +4,7 @@ import { Photo } from './Photo'
 import { stagger } from '../lib/motion'
 import { addonPriceLabel, amenityLabel, isSafeLink } from '../lib/clubProfile'
 import type { PublicClubProfile } from '../types'
-import { peso } from '../types'
+import { PLAIN_EMAIL, clubContactLinks, pesoKeep } from '../lib/clubFormat'
 
 /**
  * The parts of a club page that come from the club's business profile. Every
@@ -14,20 +14,16 @@ import { peso } from '../types'
  */
 
 const linkButton =
-  'control-feedback inline-flex min-h-12 items-center gap-2 rounded-[10px] border-[1.5px] border-field bg-white px-4 text-body font-semibold text-ink'
+  'control-feedback inline-flex min-h-12 items-center gap-2 rounded-[10px] border-[1.5px] border-field bg-white px-4 text-subtitle font-semibold text-ink'
 
 function telHref(phone: string) {
   return `tel:${phone.replace(/[^0-9+]/g, '')}`
 }
 
-// Only a plain address becomes an email link, so a stored value can never add extra
-// mail fields (such as ?bcc=) to the message it opens.
-const PLAIN_EMAIL = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/
-
 function Card({ id, title, index, children }: { id: string; title: string; index: number; children: ReactNode }) {
   return (
     <section className="enter-rise card p-5 space-y-3" style={stagger(index)} aria-labelledby={id}>
-      <h2 id={id} className="text-title font-semibold text-ink">{title}</h2>
+      <h2 id={id} className="text-heading-3 font-semibold text-ink">{title}</h2>
       {children}
     </section>
   )
@@ -48,15 +44,14 @@ function ExternalButton({ href, children }: { href: string | null; children: Rea
  * and for a club that has not listed its courts yet. Nothing shows when the club gave none.
  */
 export function ClubContactLinks({ profile, title }: { profile: PublicClubProfile | null; title?: string }) {
-  if (!profile) return null
-  const email = profile.email && PLAIN_EMAIL.test(profile.email) ? profile.email : null
-  const messenger = isSafeLink(profile.messenger_url) ? profile.messenger_url : null
-  if (!profile.phone && !email && !messenger) return null
+  const links = clubContactLinks(profile)
+  if (!links) return null
+  const { phone, email, messenger } = links
   return (
     <div className="space-y-2">
       {title ? <h2 className="text-subtitle font-semibold text-ink">{title}</h2> : null}
       <div className="flex flex-wrap gap-2">
-        {profile.phone ? <a className={linkButton} href={telHref(profile.phone)}>Call {profile.phone}</a> : null}
+        {phone ? <a className={linkButton} href={telHref(phone)}>Call {phone}</a> : null}
         {email ? <a className={linkButton} href={`mailto:${email}`}>Email the club</a> : null}
         <ExternalButton href={messenger}>Messenger</ExternalButton>
       </div>
@@ -71,7 +66,7 @@ export function ClubAboutCard({ clubName, profile, index }: { clubName: string; 
   if (!profile.about && profile.amenities.length === 0 && !hasContact) return null
   return (
     <Card id="club-about" title={`About ${clubName}`} index={index}>
-      {profile.about ? <p className="text-body font-normal text-ink whitespace-pre-line">{profile.about}</p> : null}
+      {profile.about ? <p className="text-subtitle font-normal text-ink whitespace-pre-line">{profile.about}</p> : null}
       {profile.amenities.length ? (
         <div>
           <h3 className="text-subtitle font-semibold text-ink">Amenities</h3>
@@ -122,7 +117,7 @@ export function ClubGallery({ clubName, profile, index }: { clubName: string; pr
               className="block aspect-[4/3] w-full rounded-[10px]"
               lazy
             />
-            {photo.caption ? <p className="mt-1 text-body font-normal text-muted">{photo.caption}</p> : null}
+            {photo.caption ? <p className="mt-1 text-subtitle font-normal text-muted">{photo.caption}</p> : null}
           </li>
         ))}
       </ul>
@@ -135,15 +130,15 @@ export function ClubAddonsCard({ profile, index }: { profile: PublicClubProfile;
   if (profile.addons.length === 0) return null
   return (
     <Card id="club-addons" title="Add-ons" index={index}>
-      <p className="text-body font-normal text-muted">Ask at the desk when you arrive. Add-ons are paid at the club.</p>
+      <p className="text-subtitle font-normal text-muted">Ask at the desk when you arrive. Add-ons are paid at the club.</p>
       <ul className="divide-y divide-line">
         {profile.addons.map((addon) => (
           <li key={addon.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
             <div className="min-w-0">
               <p className="text-subtitle font-semibold text-ink">{addon.name}</p>
-              {addon.description ? <p className="text-body font-normal text-muted">{addon.description}</p> : null}
+              {addon.description ? <p className="text-subtitle font-normal text-muted">{addon.description}</p> : null}
             </div>
-            <p className="shrink-0 text-body font-semibold text-ink">{addonPriceLabel(addon.price, addon.unit)}</p>
+            <p className="shrink-0 text-subtitle font-semibold text-ink">{addonPriceLabel(addon.price, addon.unit)}</p>
           </li>
         ))}
       </ul>
@@ -172,13 +167,13 @@ export function ClubCoachesCard({ profile, index }: { profile: PublicClubProfile
               )}
               <div className="min-w-0">
                 <p className="text-subtitle font-semibold text-ink">{coach.full_name}</p>
-                {coach.headline ? <p className="text-body font-normal text-muted">{coach.headline}</p> : null}
+                {coach.headline ? <p className="text-subtitle font-normal text-muted">{coach.headline}</p> : null}
                 {coach.hourly_rate != null ? (
-                  <p className="text-body font-semibold text-ink">{coach.hourly_rate === 0 ? 'Free' : `${peso(coach.hourly_rate)} per hour`}</p>
+                  <p className="text-subtitle font-semibold text-ink">{coach.hourly_rate === 0 ? 'Free' : `${pesoKeep(coach.hourly_rate)} per hour`}</p>
                 ) : null}
               </div>
             </div>
-            {coach.bio ? <p className="text-body font-normal text-ink whitespace-pre-line">{coach.bio}</p> : null}
+            {coach.bio ? <p className="text-subtitle font-normal text-ink whitespace-pre-line">{coach.bio}</p> : null}
             <div className="flex flex-wrap gap-2">
               {coach.contact_phone ? (
                 <a className={linkButton} href={telHref(coach.contact_phone)}>
@@ -192,7 +187,7 @@ export function ClubCoachesCard({ profile, index }: { profile: PublicClubProfile
           </li>
         ))}
       </ul>
-      <p className="text-body font-normal text-muted">Arrange lessons with the coach or the club.</p>
+      <p className="text-subtitle font-normal text-muted">Arrange lessons with the coach or the club.</p>
     </Card>
   )
 }
@@ -202,14 +197,14 @@ export function ClubPaymentCard({ clubName, profile, index }: { clubName: string
   if (!profile.payment_note && profile.payment_methods.length === 0) return null
   return (
     <Card id="club-payment" title={`How to pay ${clubName}`} index={index}>
-      {profile.payment_note ? <p className="text-body font-normal text-ink whitespace-pre-line">{profile.payment_note}</p> : null}
+      {profile.payment_note ? <p className="text-subtitle font-normal text-ink whitespace-pre-line">{profile.payment_note}</p> : null}
       {profile.payment_methods.length ? (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {profile.payment_methods.map((method) => (
             <li key={method.id} className="rounded-[10px] border border-line p-4">
               <p className="text-subtitle font-semibold text-ink">{method.label}</p>
-              {method.account_name ? <p className="text-body font-normal text-ink">{method.account_name}</p> : null}
-              {method.account_number ? <p className="text-body font-semibold text-ink tabular-nums">{method.account_number}</p> : null}
+              {method.account_name ? <p className="text-subtitle font-normal text-ink">{method.account_name}</p> : null}
+              {method.account_number ? <p className="text-subtitle font-semibold text-ink tabular-nums">{method.account_number}</p> : null}
               {method.qr_url ? (
                 <Photo
                   src={method.qr_url}
@@ -223,7 +218,7 @@ export function ClubPaymentCard({ clubName, profile, index }: { clubName: string
           ))}
         </ul>
       ) : null}
-      <p className="text-body font-normal text-muted" role="note">
+      <p className="text-subtitle font-normal text-muted" role="note">
         You pay {clubName} directly. bRineLy does not receive or check this payment. Keep your receipt and show it at the desk.
       </p>
     </Card>
@@ -238,7 +233,7 @@ function Policy({ title, text }: { title: string; text: string | null }) {
         {title}
         <ChevronDown size={18} className="shrink-0 text-muted transition-transform group-open:rotate-180" aria-hidden />
       </summary>
-      <p className="px-4 pb-4 text-body font-normal text-ink whitespace-pre-line">{text}</p>
+      <p className="px-4 pb-4 text-subtitle font-normal text-ink whitespace-pre-line">{text}</p>
     </details>
   )
 }
