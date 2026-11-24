@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -19,6 +19,7 @@ import { BrinelyLogo } from '../components/BrinelyLogo'
 import { helpFaqs } from '../lib/helpContent'
 import { privacyNoticePath, type PrivacyNoticeState } from '../lib/privacyNotice'
 import { homeFor } from '../lib/roleHome'
+import { useModalDialog } from '../lib/useModalDialog'
 
 const demos: { role: Role; email: string; password: string; label: string }[] = [
   {
@@ -128,27 +129,30 @@ function authenticationErrorMessage(mode: Mode, error: unknown) {
     : 'Unable to create an account. Please check your details or try again.'
 }
 
-/** With `joinClub` (from a club's join link) the page signs up into that club. */
-export default function LoginPage({
-  joinClub,
-  clubName,
-  dialog = false,
-  onClose,
-  onAuthenticated,
-}: {
-  joinClub?: PublicClub
-  clubName?: string
-  dialog?: boolean
-  onClose?: () => void
-  onAuthenticated?: (profile: Profile) => void
-} = {}) {
+type LoginPageProps =
+  | { joinClub?: PublicClub; dialog?: false; clubName?: never; onClose?: never; onAuthenticated?: never }
+  | {
+      dialog: true
+      /** Shown at the top of the dialog, so people see which club they are booking with. */
+      clubName?: string
+      onClose: () => void
+      onAuthenticated: (profile: Profile) => void
+      joinClub?: never
+    }
+
+/**
+ * Log in or join. With `joinClub` (from a club's join link) the page signs up into that club.
+ * With `dialog` it opens over the current page instead, as the booking page does before payment:
+ * it calls `onAuthenticated` once the person is signed in, and the caller then closes it.
+ * `onClose` runs when the person closes it without signing in.
+ */
+export default function LoginPage({ joinClub, clubName, dialog = false, onClose, onAuthenticated }: LoginPageProps = {}) {
   const { user, loading, signIn, signInWithGoogle, signUpMember, verifySignupCode, resendSignupCode, resetPassword, demo } =
     useAuth()
   const nav = useNavigate()
-  // A club page sends visitors here to sign in, then expects them back to finish booking.
   // The Find a court "Sign up" button opens the sign-up tab directly.
   const location = useLocation()
-  const navState = location.state as { returnTo?: unknown; mode?: unknown; owner?: unknown } | null
+  const navState = location.state as { mode?: unknown; owner?: unknown } | null
   // The court-owner page opens sign-up with a note: owners use the email they gave Rally Point.
   const ownerSignup = navState?.owner === true && !joinClub
   const [mode, setMode] = useState<Mode>(joinClub || navState?.mode === 'join' ? 'join' : 'login')
@@ -171,19 +175,15 @@ export default function LoginPage({
   const codeInputRef = useRef<HTMLInputElement>(null)
   const emailInputRef = useRef<HTMLInputElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
-  const closeRef = useRef(onClose)
-  const busyRef = useRef(busy)
+  // Set once onAuthenticated has run. The submit handler and the signed-in check below can
+  // both see the same sign-in, and the caller should hear about it only once.
   const authenticationReported = useRef(false)
-  closeRef.current = onClose
-  busyRef.current = busy
   // Set when leaving the code step from inside it, so focus returns to the email box.
   const focusEmailNext = useRef(false)
   const modeFade = modeSwitches === 0 ? undefined : modeSwitches % 2 ? 'enter-fade' : 'enter-fade-again'
   // Keep the join link's club, so returning from the notice still signs up into it.
   const privacyPath = privacyNoticePath(joinClub?.slug)
   const privacyState: PrivacyNoticeState = { from: joinClub ? `/join/${joinClub.slug}` : '/login' }
-  const requested = navState?.returnTo
-  const returnTo = typeof requested === 'string' && requested.startsWith('/clubs/') ? requested : null
 
   // Count down to when a new code may be sent; each tick schedules the next one.
   useEffect(() => {
@@ -203,74 +203,42 @@ export default function LoginPage({
     }
   }, [codeEmail])
 
-  useEffect(() => {
-    if (!dialog) return
-
-    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const appRoot = document.getElementById('root')
-    const wasInert = appRoot?.inert ?? false
-    const previousOverflow = document.body.style.overflow
-    if (appRoot) appRoot.inert = true
-    document.body.style.overflow = 'hidden'
-    emailInputRef.current?.focus()
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        if (!busyRef.current) closeRef.current?.()
-        return
-      }
-      if (event.key !== 'Tab') return
-
-      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), input:not(:disabled), a[href], summary, [tabindex]:not([tabindex="-1"])',
-      )
-      if (!focusable?.length) {
-        event.preventDefault()
-        return
-      }
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      const active = document.activeElement
-      if (!dialogRef.current?.contains(active)) {
-        event.preventDefault()
-        ;(event.shiftKey ? last : first).focus()
-      } else if (event.shiftKey && active === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && active === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      if (appRoot) appRoot.inert = wasInert
-      document.body.style.overflow = previousOverflow
-      if (trigger?.isConnected) trigger.focus()
-    }
-  }, [dialog])
-
-  useEffect(() => {
-    if (!dialog || loading || !user || !onAuthenticated || authenticationReported.current) return
-    authenticationReported.current = true
-    onAuthenticated(user)
-  }, [dialog, loading, user, onAuthenticated])
-
-  if (!loading && user) {
-    return onAuthenticated ? null : <Navigate to={returnTo ?? homeFor(user.role)} replace />
+  // Closing while a sign-in is running would drop its result, so the dialog waits for it.
+  function closeDialog() {
+    if (!busy) onClose?.()
   }
 
-  /** Where a new member goes once signed in: back to the club page, or their home. */
-  function finishSignup(profile: Profile) {
-    if (onAuthenticated) {
-      if (!authenticationReported.current) {
-        authenticationReported.current = true
-        onAuthenticated(profile)
-      }
-      return
-    }
-    nav(returnTo ?? homeFor(profile.role), { replace: true })
+  useModalDialog(dialog, {
+    dialogRef,
+    initialFocusRef: emailInputRef,
+    onEscape: closeDialog,
+    lockScroll: true,
+  })
+
+  /** Tells the dialog's caller about the sign-in, once. */
+  const reportAuthenticated = useCallback(
+    (profile: Profile) => {
+      if (!onAuthenticated || authenticationReported.current) return
+      authenticationReported.current = true
+      onAuthenticated(profile)
+    },
+    [onAuthenticated],
+  )
+
+  // Someone already signed in, or whose saved session finishes loading, needs no dialog.
+  useEffect(() => {
+    if (dialog && !loading && user) reportAuthenticated(user)
+  }, [dialog, loading, user, reportAuthenticated])
+
+  if (!loading && user) {
+    // The dialog's caller closes it once told; the page sends the person to their home.
+    return dialog ? null : <Navigate to={homeFor(user.role)} replace />
+  }
+
+  /** Once signed in: the dialog tells its caller; the page goes to `next`, or the person's home. */
+  function finishSignIn(profile: Profile, next?: string) {
+    if (dialog) reportAuthenticated(profile)
+    else nav(next ?? homeFor(profile.role), { replace: true })
   }
 
   function openCodeStep(sentTo: string, options?: { cooldownSeconds?: number; notice?: string | null }) {
@@ -304,7 +272,7 @@ export default function LoginPage({
     setBusy(true)
     try {
       const profile = await verifySignupCode(codeEmail, code)
-      finishSignup(profile)
+      finishSignIn(profile)
     } catch (err) {
       const message = err instanceof Error ? err.message : ''
       if (ownerNotice.test(message)) {
@@ -368,7 +336,7 @@ export default function LoginPage({
           setPasswordVisible(false)
           openCodeStep(result.email)
         } else {
-          finishSignup(result.profile)
+          finishSignIn(result.profile)
         }
       } else if (mode === 'reset') {
         await resetPassword(email)
@@ -376,13 +344,7 @@ export default function LoginPage({
       } else {
         const profile = await signIn(email, password)
         // From a join link, existing players come back to confirm joining the club.
-        if (onAuthenticated) {
-          if (!authenticationReported.current) {
-            authenticationReported.current = true
-            onAuthenticated(profile)
-          }
-        }
-        else nav(joinClub ? `/join/${joinClub.slug}` : returnTo ?? homeFor(profile.role), { replace: true })
+        finishSignIn(profile, joinClub ? `/join/${joinClub.slug}` : undefined)
       }
     } catch (err) {
       if (mode === 'login' && isEmailNotConfirmedError(err)) {
@@ -429,7 +391,8 @@ export default function LoginPage({
         ? 'fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-slate-950/60 p-4'
         : 'app-shell app-shell-bleed relative min-h-[100dvh] text-white overflow-hidden'}
       onClick={dialog ? (event: MouseEvent<HTMLDivElement>) => {
-        if (event.target === event.currentTarget && !busyRef.current) closeRef.current?.()
+        // A tap on the dimmed backdrop closes, like the X button.
+        if (event.target === event.currentTarget) closeDialog()
       } : undefined}
     >
       {!dialog ? (
@@ -522,9 +485,9 @@ export default function LoginPage({
                 <p className="text-lg font-extrabold text-slate-900">Login to continue</p>
                 <button
                   type="button"
-                  onClick={() => closeRef.current?.()}
+                  onClick={closeDialog}
                   disabled={busy}
-                  className="control-feedback inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                  className="control-feedback inline-flex min-h-12 min-w-12 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                   aria-label="Close sign-in"
                 >
                   <X size={20} aria-hidden />
