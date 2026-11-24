@@ -1,11 +1,11 @@
 {
-  "name": "bRineLy — Stay in the brine. Play more.",
+  "name": "bRineLy — Book a pickleball court",
   "short_name": "bRineLy",
-  "description": "Stay in the brine. Play more. Book courts, join open play, show QR, pay dues on brinely.info.",
+  "description": "Find a pickleball court in the Philippines, book 1 to 3 hours, and pay the club by GCash.",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#020617",
-  "theme_color": "#0f172a",
+  "background_color": "#fafaf7",
+  "theme_color": "#fafaf7",
   "lang": "en",
   "icons": [
     {
