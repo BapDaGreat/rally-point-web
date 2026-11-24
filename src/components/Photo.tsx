@@ -8,6 +8,8 @@ type PhotoState = 'loading' | 'loaded' | 'error'
  * `className` sizes the frame (aspect, height, rounding), so the space is held either way.
  * A photo that fails to load leaves the labelled placeholder, never a broken-image icon.
  * `fit="contain"` shows the whole picture (for QR codes), instead of filling the frame.
+ * `onError` lets a parent show something else (the next photo, a sample) when this one fails.
+ * `priority` loads the first picture on a page straight away instead of lazily.
  */
 export function Photo({
   src,
@@ -15,12 +17,20 @@ export function Photo({
   className = '',
   lazy = false,
   fit = 'cover',
+  srcSet,
+  sizes,
+  priority = false,
+  onError,
 }: {
   src: string
   alt: string
   className?: string
   lazy?: boolean
   fit?: 'cover' | 'contain'
+  srcSet?: string
+  sizes?: string
+  priority?: boolean
+  onError?: () => void
 }) {
   const [status, setStatus] = useState<{ src: string; state: PhotoState }>({ src, state: 'loading' })
   const state = status.src === src ? status.state : 'loading'
@@ -43,12 +53,18 @@ export function Photo({
       <img
         ref={checkLoaded}
         src={src}
+        srcSet={srcSet}
+        sizes={srcSet ? sizes : undefined}
         alt={alt}
         className={`photo-img absolute inset-0 h-full w-full ${fit === 'contain' ? 'object-contain' : 'object-cover'}`}
-        loading={lazy ? 'lazy' : undefined}
+        loading={lazy && !priority ? 'lazy' : undefined}
+        fetchPriority={priority ? 'high' : undefined}
         decoding="async"
         onLoad={() => setStatus({ src, state: 'loaded' })}
-        onError={() => setStatus({ src, state: 'error' })}
+        onError={() => {
+          setStatus({ src, state: 'error' })
+          onError?.()
+        }}
       />
     </div>
   )
