@@ -22,6 +22,8 @@ import { demoCourtPhotos, demoVenueCover, photoOperations } from './demo/photos'
 import { clubProfileOperations, publicClubProfileFor } from './demo/clubProfile'
 import { coachingOperations } from './demo/coaching'
 import { accountOperations } from './demo/account'
+import { leaderboardOperations } from './demo/leaderboard'
+import { tournamentOperations } from './demo/tournaments'
 
 export type { DemoDB } from './demo/model'
 
@@ -465,4 +467,6 @@ export const demoStore = {
   ...clubProfileOperations,
   ...coachingOperations,
   ...accountOperations,
+  ...leaderboardOperations,
+  ...tournamentOperations,
 }

@@ -81,6 +81,19 @@ export function normalizeStored(
     notifications: Array.isArray(withoutLegacy.notifications) ? withoutLegacy.notifications : [],
     inquiries: Array.isArray(withoutLegacy.inquiries) ? withoutLegacy.inquiries : [],
     walkins: Array.isArray(withoutLegacy.walkins) ? withoutLegacy.walkins : [],
+    clubTournaments: Array.isArray(withoutLegacy.clubTournaments) ? withoutLegacy.clubTournaments : defaults.clubTournaments,
+    clubTournamentPlayers: Array.isArray(withoutLegacy.clubTournamentPlayers)
+      ? withoutLegacy.clubTournamentPlayers
+      : defaults.clubTournamentPlayers,
+    clubTournamentTeams: Array.isArray(withoutLegacy.clubTournamentTeams)
+      ? withoutLegacy.clubTournamentTeams
+      : defaults.clubTournamentTeams,
+    clubTournamentMatches: Array.isArray(withoutLegacy.clubTournamentMatches)
+      ? withoutLegacy.clubTournamentMatches
+      : defaults.clubTournamentMatches,
+    clubTournamentScorers: Array.isArray(withoutLegacy.clubTournamentScorers)
+      ? withoutLegacy.clubTournamentScorers
+      : [],
   }
   if (
     db.clubRoles.some((role) => role.user_id === 'user_staff' && role.club_id === DEMO_CLUB_ID && role.role === 'staff' && role.is_active) &&
@@ -116,7 +129,31 @@ export function normalizeStored(
   const reminders = db.reminders.map((reminder) => ({ ...reminder, club_id: reminder.club_id ?? DEMO_CLUB_ID }))
   const inquiries = db.inquiries.map((inquiry) => ({ ...inquiry, club_id: inquiry.club_id ?? DEMO_CLUB_ID }))
   const walkins = db.walkins.map((walkin) => ({ ...walkin, club_id: walkin.club_id ?? DEMO_CLUB_ID }))
-  const normalizedOwnership = { ...db, courts, members: membersWithOwnership, sessions, bookings, openPlays, openPlaySignups, checkins, transactions, notifications, reminders, inquiries, walkins }
+  const clubMatches = !Array.isArray(withoutLegacy.clubTournaments) && Array.isArray(db.clubMatches)
+    ? db.clubMatches.map((match) =>
+        match.id === 'match_01' && match.tournament_id == null
+          ? { ...match, tournament_id: 'tour_live_bracket' }
+          : match.id === 'match_03' && match.tournament_id == null
+            ? { ...match, tournament_id: 'tour_live_queue' }
+            : match,
+      )
+    : db.clubMatches
+  const normalizedOwnership = {
+    ...db,
+    courts,
+    members: membersWithOwnership,
+    sessions,
+    bookings,
+    openPlays,
+    openPlaySignups,
+    checkins,
+    transactions,
+    notifications,
+    reminders,
+    inquiries,
+    walkins,
+    ...(clubMatches ? { clubMatches } : {}),
+  }
   const members = normalizedOwnership.members.map((member) =>
     member.qr_token
       ? member
@@ -155,7 +192,12 @@ export function normalizeStored(
     !Array.isArray(withoutLegacy.openPlaySignups) ||
     !Array.isArray(withoutLegacy.reminders) ||
     !Array.isArray(withoutLegacy.inquiries) ||
-    db.inquiries.some((inquiry) => !inquiry.club_id)
+    db.inquiries.some((inquiry) => !inquiry.club_id) ||
+    !Array.isArray(withoutLegacy.clubTournaments) ||
+    !Array.isArray(withoutLegacy.clubTournamentPlayers) ||
+    !Array.isArray(withoutLegacy.clubTournamentTeams) ||
+    !Array.isArray(withoutLegacy.clubTournamentMatches) ||
+    !Array.isArray(withoutLegacy.clubTournamentScorers)
 
   return { db: normalizedDb, repaired }
 }

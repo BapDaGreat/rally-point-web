@@ -1,13 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { Maximize2, RefreshCw } from 'lucide-react'
+import { LeaderboardView } from '../components/LeaderboardView'
+import { TournamentLiveView } from '../components/TournamentView'
 import { AppHeader, AppShell, SignOutButton } from '../components/Shell'
 import { LoadingShapes, SkeletonBlock, SkeletonLine } from '../components/Skeleton'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
+import { useClubLiveRefresh } from '../lib/livePulse'
 import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
-import type { PublicClub, Venue } from '../types'
-import type { Court, Role, ScheduleBlock } from '../types'
+import type {
+  ClubLeaderboardSnapshot,
+  Court,
+  LeaderboardFormatFilter,
+  LeaderboardPeriod,
+  PublicClub,
+  Role,
+  ScheduleBlock,
+  TournamentDetail,
+  TournamentSummary,
+  Venue,
+} from '../types'
 import { APP_TIME_ZONE, appHour, fmtTime, hourLabel, ymdLocal } from '../types'
 import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, venueHours } from '../types'
 
@@ -100,15 +113,104 @@ export function ScheduleBoard({
   const [venueId, setVenueId] = useState('')
   const [loading, setLoading] = useState(true)
   const [clock, setClock] = useState(new Date())
-  // The TV board's location choice lives in its link (?venue=<id>), so each screen keeps its own.
+  // The TV board's location and mode choices live in its link (?venue=<id>&view=leaderboard|tournament).
   const [searchParams, setSearchParams] = useSearchParams()
   const tvVenueId = tv ? searchParams.get('venue') ?? '' : ''
+  const tvViewParam = searchParams.get('view')
+  const tvView: 'schedule' | 'leaderboard' | 'tournament' = tv
+    ? tvViewParam === 'tournament'
+      ? 'tournament'
+      : tvViewParam === 'leaderboard'
+        ? 'leaderboard'
+        : 'schedule'
+    : 'schedule'
+  const tvTournamentParam = tv ? searchParams.get('tournament') ?? '' : ''
+
+  const [lbPeriod, setLbPeriod] = useState<LeaderboardPeriod>('month')
+  const [lbFormat, setLbFormat] = useState<LeaderboardFormatFilter>('all')
+  const [lbSnapshot, setLbSnapshot] = useState<ClubLeaderboardSnapshot | null>(null)
+  const [lbLoading, setLbLoading] = useState(tvView === 'leaderboard')
+  const [lbError, setLbError] = useState<string | null>(null)
+  const latestLeaderboardRequest = useRef(0)
+
+  const [trList, setTrList] = useState<TournamentSummary[]>([])
+  const [trDetail, setTrDetail] = useState<TournamentDetail | null>(null)
+  const [trLoading, setTrLoading] = useState(tvView === 'tournament')
+  const [trError, setTrError] = useState<string | null>(null)
+  const latestTournamentRequest = useRef(0)
 
   const [refreshing, setRefreshing] = useState(false)
   const [updateFailed, setUpdateFailed] = useState(false)
   // Each reload takes a number; only the newest one may change the board, so a slow,
   // older request can't overwrite a newer date or location or end its loading early.
   const latestRequest = useRef(0)
+
+  function updateTvParams(
+    nextVenue: string,
+    nextView: 'schedule' | 'leaderboard' | 'tournament',
+    nextTournamentId?: string,
+  ) {
+    if (nextView === 'leaderboard' && !lbSnapshot) setLbLoading(true)
+    if (nextView === 'tournament' && !trDetail) setTrLoading(true)
+    const next: Record<string, string> = {}
+    if (nextVenue) next.venue = nextVenue
+    if (nextView === 'leaderboard') next.view = 'leaderboard'
+    if (nextView === 'tournament') {
+      next.view = 'tournament'
+      const chosen = nextTournamentId ?? tvTournamentParam
+      if (chosen) next.tournament = chosen
+    }
+    setSearchParams(next, { replace: true })
+  }
+
+  async function reloadLeaderboard(quiet = false) {
+    if (!tv || tvView !== 'leaderboard' || typeof api.publicClubLeaderboard !== 'function') return
+    const req = ++latestLeaderboardRequest.current
+    if (!quiet) setLbLoading(true)
+    setLbError(null)
+    try {
+      const next = await Promise.resolve(
+        api.publicClubLeaderboard(club?.slug ?? DEFAULT_CLUB_SLUG, lbPeriod, lbFormat, 50),
+      )
+      if (req !== latestLeaderboardRequest.current) return
+      setLbSnapshot(next)
+    } catch (cause) {
+      if (req === latestLeaderboardRequest.current) {
+        setLbError(cause instanceof Error && cause.message ? cause.message : 'Could not load club leaderboard.')
+      }
+    } finally {
+      if (req === latestLeaderboardRequest.current) setLbLoading(false)
+    }
+  }
+
+  async function reloadTournament(quiet = false) {
+    if (!tv || tvView !== 'tournament' || typeof api.listPublicClubTournaments !== 'function') return
+    const req = ++latestTournamentRequest.current
+    if (!quiet) setTrLoading(true)
+    setTrError(null)
+    const clubSlug = club?.slug ?? DEFAULT_CLUB_SLUG
+    try {
+      const rows = (await Promise.resolve(api.listPublicClubTournaments(clubSlug, 20))) ?? []
+      if (req !== latestTournamentRequest.current) return
+      setTrList(rows)
+      const selected = rows.find((row) => row.id === tvTournamentParam)
+        ?? rows.find((row) => row.status === 'live')
+        ?? rows[0]
+      if (!selected || typeof api.publicTournament !== 'function') {
+        setTrDetail(null)
+        return
+      }
+      const nextDetail = await Promise.resolve(api.publicTournament(clubSlug, selected.id))
+      if (req !== latestTournamentRequest.current) return
+      setTrDetail(nextDetail)
+    } catch (cause) {
+      if (req === latestTournamentRequest.current) {
+        setTrError(cause instanceof Error && cause.message ? cause.message : 'Could not load tournament.')
+      }
+    } finally {
+      if (req === latestTournamentRequest.current) setTrLoading(false)
+    }
+  }
 
   // The 30-second poll and the Refresh button reload quietly: the board stays on screen and
   // updates in place, instead of flashing back to the placeholder and fading in again.
@@ -188,6 +290,24 @@ export function ScheduleBoard({
     return () => clearInterval(t)
   }, [])
 
+  useEffect(() => {
+    if (tv && tvView === 'leaderboard') {
+      void reloadLeaderboard(false)
+    } else if (tv && tvView === 'tournament') {
+      void reloadTournament(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tv, tvView, tvTournamentParam, club?.slug, lbPeriod, lbFormat])
+
+  useClubLiveRefresh(
+    tv && tvView !== 'schedule' ? [club?.id, club?.slug ?? DEFAULT_CLUB_SLUG] : [],
+    () => {
+      if (tvView === 'leaderboard') void reloadLeaderboard(true)
+      else if (tvView === 'tournament') void reloadTournament(true)
+    },
+    10000,
+  )
+
   // Each venue keeps its own opening hours. The grid runs from the earliest opening to the
   // latest closing of the venues on screen; hours when a court's own venue is closed are shaded.
   const hoursByVenue = useMemo(
@@ -238,20 +358,75 @@ export function ScheduleBoard({
               {courts.length} {courts.length === 1 ? 'court' : 'courts'} · {blocks.length} {blocks.length === 1 ? 'booking' : 'bookings'} today
             </p>
           </div>
-          {venues.length > 1 ? (
-            <div className="w-full">
-              <label className="sr-only" htmlFor="tv-venue">Location</label>
-              <select
-                id="tv-venue"
-                className="min-h-12 rounded-xl border border-slate-700 bg-slate-900 px-3 text-white"
-                value={tvVenueId}
-                onChange={(event) => setSearchParams(event.target.value ? { venue: event.target.value } : {}, { replace: true })}
+          <div className="w-full flex flex-wrap items-center gap-2">
+            {venues.length > 1 ? (
+              <div>
+                <label className="sr-only" htmlFor="tv-venue">Location</label>
+                <select
+                  id="tv-venue"
+                  className="min-h-12 rounded-xl border border-slate-700 bg-slate-900 px-3 text-white"
+                  value={tvVenueId}
+                  onChange={(event) => updateTvParams(event.target.value, tvView)}
+                >
+                  <option value="">All locations</option>
+                  {venues.map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}
+                </select>
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-2" role="group" aria-label="TV board mode">
+              <button
+                type="button"
+                aria-pressed={tvView === 'schedule'}
+                onClick={() => updateTvParams(tvVenueId, 'schedule')}
+                className={`control-feedback min-h-12 rounded-xl border px-4 text-body font-semibold ${
+                  tvView === 'schedule'
+                    ? 'border-brand-400 bg-brand-600 text-white'
+                    : 'border-slate-700 bg-slate-900 text-slate-200'
+                }`}
               >
-                <option value="">All locations</option>
-                {venues.map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}
-              </select>
+                Court schedule
+              </button>
+              <button
+                type="button"
+                aria-pressed={tvView === 'leaderboard'}
+                onClick={() => updateTvParams(tvVenueId, 'leaderboard')}
+                className={`control-feedback min-h-12 rounded-xl border px-4 text-body font-semibold ${
+                  tvView === 'leaderboard'
+                    ? 'border-brand-400 bg-brand-600 text-white'
+                    : 'border-slate-700 bg-slate-900 text-slate-200'
+                }`}
+              >
+                Leaderboard
+              </button>
+              <button
+                type="button"
+                aria-pressed={tvView === 'tournament'}
+                onClick={() => updateTvParams(tvVenueId, 'tournament')}
+                className={`control-feedback min-h-12 rounded-xl border px-4 text-body font-semibold ${
+                  tvView === 'tournament'
+                    ? 'border-brand-400 bg-brand-600 text-white'
+                    : 'border-slate-700 bg-slate-900 text-slate-200'
+                }`}
+              >
+                Tournament
+              </button>
             </div>
-          ) : null}
+            {tvView === 'tournament' && trList.length > 1 ? (
+              <div>
+                <label className="sr-only" htmlFor="tv-tournament-select">Tournament</label>
+                <select
+                  id="tv-tournament-select"
+                  className="min-h-12 rounded-xl border border-slate-700 bg-slate-900 px-3 text-white"
+                  value={trDetail?.tournament.id ?? tvTournamentParam}
+                  onChange={(event) => updateTvParams(tvVenueId, 'tournament', event.target.value)}
+                >
+                  {trList.map((item) => (
+                    <option key={item.id} value={item.id}>{item.title}</option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+          </div>
         </header>
       ) : (
         <section className="card p-3 flex flex-wrap gap-2 items-center">
@@ -284,6 +459,35 @@ export function ScheduleBoard({
         </section>
       )}
 
+      {tv && tvView === 'leaderboard' ? (
+        <LeaderboardView
+          tone="dark"
+          snapshot={lbSnapshot}
+          loading={lbLoading}
+          error={lbError}
+          period={lbPeriod}
+          onPeriodChange={setLbPeriod}
+          format={lbFormat}
+          onFormatChange={setLbFormat}
+          onRetry={() => void reloadLeaderboard(false)}
+        />
+      ) : tv && tvView === 'tournament' ? (
+        trDetail || trLoading || trError ? (
+          <TournamentLiveView
+            tone="dark"
+            detail={trDetail}
+            loading={trLoading}
+            error={trError}
+            onRetry={() => void reloadTournament(false)}
+          />
+        ) : (
+          <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6 text-center text-slate-300">
+            <p className="text-title font-bold text-white">No live tournament on this board yet</p>
+            <p className="text-body mt-1">Once an admin starts a bracket or queue mixer, it will show up here live.</p>
+          </section>
+        )
+      ) : (
+        <>
       {updateFailed ? (
         <p role="status" className={tv ? 'text-base text-slate-300 mb-3' : 'text-body text-slate-600 px-1'}>
           Couldn't update. Trying again.
@@ -420,6 +624,8 @@ export function ScheduleBoard({
               <i className="w-2.5 h-2.5 rounded-sm bg-violet-500 inline-block" /> Open play
             </span>
           </div>
+        </>
+      )}
         </>
       )}
     </div>

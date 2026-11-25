@@ -1,4 +1,4 @@
-import type { Booking, CheckIn, Club, ClubAccount, ClubAddon, ClubCoach, CoachBookingRequest, CoachBookingSlot, CoachRequestMessage, ClubGalleryPhoto, ClubPaymentMethod, ClubProfileFields, ClubStaffRole, Court, CourtSession, Member, MembershipRequestStatus, MembershipType, Notification, OpenPlaySession, OpenPlaySignup, OwnerCallRequest, Profile, Reminder, StaffVenueGrant, SupportInquiry, Transaction, Venue, WalkIn } from '../../types'
+import type { Booking, CheckIn, Club, ClubAccount, ClubAddon, ClubCoach, CoachBookingRequest, CoachBookingSlot, CoachRequestMessage, ClubGalleryPhoto, ClubPaymentMethod, ClubProfileFields, ClubStaffRole, Court, CourtSession, MatchFormat, MatchSide, Member, MembershipRequestStatus, MembershipType, Notification, OpenPlaySession, OpenPlaySignup, OwnerCallRequest, Profile, Reminder, StaffVenueGrant, SupportInquiry, TournamentFormat, TournamentMatchStatus, TournamentStatus, Transaction, Venue, WalkIn } from '../../types'
 
 /** Platform role, granted by trusted provisioning only. */
 export interface DemoPlatformRole {
@@ -104,7 +104,116 @@ export interface DemoDB {
   ownerInvites?: DemoOwnerInvite[]
   /** Membership requests (mirrors public.membership_requests). Optional so older browser data still loads. */
   membershipRequests?: DemoMembershipRequest[]
+  /** Recorded singles/doubles matches (mirrors public.club_matches). Optional so older browser data still loads. */
+  clubMatches?: DemoClubMatch[]
+  /** Staff designated as match scorers (mirrors public.club_leaderboard_scorers). */
+  leaderboardScorers?: DemoLeaderboardScorer[]
+  /** Phase 2 tournaments and live draws (mirrors public.club_tournaments*). */
+  clubTournaments?: DemoTournament[]
+  clubTournamentPlayers?: DemoTournamentPlayer[]
+  clubTournamentTeams?: DemoTournamentTeam[]
+  clubTournamentMatches?: DemoTournamentMatch[]
+  clubTournamentScorers?: DemoTournamentScorer[]
   sessionUserId: string | null
+}
+
+/** A recorded club match as stored in the demo store. */
+export interface DemoClubMatch {
+  id: string
+  club_id: string
+  venue_id: string | null
+  court_id: string | null
+  tournament_id: string | null
+  format: MatchFormat
+  team_a_ids: string[]
+  team_b_ids: string[]
+  winner_side: MatchSide
+  score_a: number | null
+  score_b: number | null
+  notes: string | null
+  status: 'completed' | 'voided'
+  recorded_by: string | null
+  voided_by: string | null
+  voided_at: string | null
+  void_reason: string | null
+  played_at: string
+  created_at: string
+}
+
+/** A staff member authorized to record club matches. */
+export interface DemoLeaderboardScorer {
+  club_id: string
+  user_id: string
+  granted_by: string | null
+  created_at: string
+}
+
+/** A club tournament or queue mixer as stored in the demo store. */
+export interface DemoTournament {
+  id: string
+  club_id: string
+  venue_id: string | null
+  title: string
+  format: TournamentFormat
+  team_size: 1 | 2
+  status: TournamentStatus
+  counts_for_leaderboard: boolean
+  scheduled_at: string | null
+  notes: string | null
+  created_by: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+}
+
+export interface DemoTournamentPlayer {
+  club_id: string
+  tournament_id: string
+  member_id: string
+  seed_order: number
+  created_at: string
+}
+
+export interface DemoTournamentTeam {
+  id: string
+  club_id: string
+  tournament_id: string
+  seed: number
+  name: string
+  player_1_id: string
+  player_2_id: string | null
+  created_at: string
+}
+
+export interface DemoTournamentMatch {
+  id: string
+  club_id: string
+  tournament_id: string
+  round_number: number
+  match_order: number
+  court_id: string | null
+  team_a_id: string | null
+  team_b_id: string | null
+  team_a_player_ids: string[]
+  team_b_player_ids: string[]
+  status: TournamentMatchStatus
+  winner_side: MatchSide | null
+  score_a: number | null
+  score_b: number | null
+  next_match_id: string | null
+  next_match_side: MatchSide | null
+  club_match_id: string | null
+  recorded_by: string | null
+  completed_at: string | null
+  created_at: string
+}
+
+export interface DemoTournamentScorer {
+  club_id: string
+  tournament_id: string
+  user_id: string
+  granted_by: string | null
+  created_at: string
 }
 
 /** A court owner's request, as stored; mirrors public.owner_call_requests. */

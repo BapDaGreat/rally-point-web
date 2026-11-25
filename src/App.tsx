@@ -33,6 +33,22 @@ import { HelpPage } from './pages/HelpPage'
 import { SuperadminPage } from './pages/Superadmin'
 
 import { JoinClubPage } from './pages/JoinClub'
+import {
+  AdminLeaderboardPage,
+  MemberLeaderboardPage,
+  PublicClubLeaderboardPage,
+  StaffLeaderboardPage,
+} from './pages/Leaderboard'
+import {
+  AdminTournamentDetailPage,
+  AdminTournamentsPage,
+  MemberTournamentDetailPage,
+  MemberTournamentsPage,
+  PublicClubTournamentsPage,
+  PublicTournamentDetailPage,
+  StaffTournamentDetailPage,
+  StaffTournamentsPage,
+} from './pages/Tournaments'
 import { homeFor } from './lib/roleHome'
 import { PrivacyNoticePage } from './pages/PrivacyNoticePage'
 import { ClubDetailPage, ClubDirectory } from './pages/Clubs'
@@ -82,6 +98,9 @@ function AppRoutes() {
         {/* Find a court & court booking environment: open to visitors; payment asks them to sign in. */}
         <Route path="/clubs" element={<ClubDirectory />} />
         <Route path="/clubs/:slug" element={<ClubDetailPage />} />
+        <Route path="/clubs/:slug/leaderboard" element={<PublicClubLeaderboardPage />} />
+        <Route path="/clubs/:slug/tournaments" element={<PublicClubTournamentsPage />} />
+        <Route path="/clubs/:slug/tournaments/:tournamentId" element={<PublicTournamentDetailPage />} />
         <Route path="/clubs/:slug/book" element={<MemberBook />} />
         {/* Court owners: how listing works, and a request for a call. Open to visitors. */}
         <Route path="/owners" element={<OwnersPage />} />
@@ -97,6 +116,9 @@ function AppRoutes() {
           <Route path="/member" element={<MemberAccount />} />
           <Route path="/member/book" element={<MemberBook />} />
           <Route path="/member/open" element={<MemberOpenPlay />} />
+          <Route path="/member/leaderboard" element={<MemberLeaderboardPage />} />
+          <Route path="/member/tournaments" element={<MemberTournamentsPage />} />
+          <Route path="/member/tournaments/:tournamentId" element={<MemberTournamentDetailPage />} />
           <Route path="/member/pass" element={<MemberPass />} />
           {/* Memberships are asked for on Account and confirmed by club staff; old links land there. */}
           <Route path="/member/pay" element={<Navigate to="/member" replace />} />
@@ -121,6 +143,9 @@ function AppRoutes() {
           <Route path="/staff/bookings" element={<StaffBookings />} />
           <Route path="/staff/board" element={<StaffBoard />} />
           <Route path="/staff/open" element={<StaffOpenPlay />} />
+          <Route path="/staff/leaderboard" element={<StaffLeaderboardPage />} />
+          <Route path="/staff/tournaments" element={<StaffTournamentsPage />} />
+          <Route path="/staff/tournaments/:tournamentId" element={<StaffTournamentDetailPage />} />
           <Route path="/staff/courts" element={<StaffCourts />} />
           <Route path="/staff/help" element={<HelpPage />} />
         </Route>
@@ -134,6 +159,9 @@ function AppRoutes() {
           <Route path="/admin/ops" element={<AdminOps />} />
           <Route path="/admin/board" element={<AdminBoard />} />
           <Route path="/admin/open" element={<AdminOpenPlay />} />
+          <Route path="/admin/leaderboard" element={<AdminLeaderboardPage />} />
+          <Route path="/admin/tournaments" element={<AdminTournamentsPage />} />
+          <Route path="/admin/tournaments/:tournamentId" element={<AdminTournamentDetailPage />} />
           <Route path="/admin/bookings" element={<AdminBookings />} />
           <Route path="/admin/transactions" element={<AdminTransactions />} />
           <Route path="/admin/users" element={<AdminUsers />} />

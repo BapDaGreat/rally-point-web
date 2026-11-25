@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Clock3, Pencil, Plus, Search, UserPlus, Users } from 'lucide-react'
+import { Clock3, Pencil, Plus, Search, Shuffle, Trophy, UserPlus, Users } from 'lucide-react'
 import { AppHeader, AppShell, SignOutButton } from '../components/Shell'
 import { BackButton } from '../components/BackButton'
 import { LoadingShapes, SkeletonBlock, SkeletonLine } from '../components/Skeleton'
@@ -179,6 +179,12 @@ export function AdminHome() {
                           </Link>
                           <Link to="/admin/profile" className="btn-secondary text-sm">
                             Business profile
+                          </Link>
+                          <Link to="/admin/leaderboard" className="btn-secondary text-sm">
+                            <Trophy size={16} /> Leaderboard & scorers
+                          </Link>
+                          <Link to="/admin/tournaments" className="btn-secondary text-sm">
+                            <Shuffle size={16} /> Tournaments
                           </Link>
                         </div>
 

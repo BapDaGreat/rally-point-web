@@ -68,9 +68,25 @@ import type {
   OwnerCallRequestInput,
   OwnerCallStatus,
   OwnerClub,
+  ClubLeaderboardSnapshot,
+  ClubMatch,
+  LeaderboardEntry,
+  LeaderboardFormatFilter,
+  LeaderboardPeriod,
+  LeaderboardPlayerSummary,
+  LeaderboardScorerStaff,
+  RecordMatchInput,
+  CreateTournamentInput,
+  ScoreTournamentMatchInput,
+  TournamentDetail,
+  TournamentMatch,
+  TournamentScorerStaff,
+  TournamentSummary,
+  TournamentTeam,
 } from '../types'
 import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, fmtDateTime, fmtTime, localRangeISO, timeSlot, venueHours } from '../types'
 import { CLUB_HEADER, getActiveClubId, notifyClubUnavailable, requireActiveClubId } from './clubContext'
+import { emitClubLiveUpdate } from './livePulse'
 import { MEMBER_PHOTO_BUCKET, PHOTO_BUCKET, memberPhotoUrl, photoUrl, shrinkPhoto, shrinkPhotoToDataUrl } from './photos'
 import { emptyClubProfile, normalizeProfile } from './clubProfile'
 
@@ -2026,6 +2042,361 @@ export const api = {
       if (error) throw error
       return data as SupportSnapshot
     },
+
+    // ---- Club leaderboard and match scoring ----
+
+    async publicClubLeaderboard(
+      slug: string,
+      period: LeaderboardPeriod = 'month',
+      format: LeaderboardFormatFilter = 'all',
+      limit = 50,
+    ): Promise<ClubLeaderboardSnapshot | null> {
+      if (isDemoMode) return demoStore.publicClubLeaderboard(slug, period, format, limit)
+      const { data, error } = await supabase!.rpc('get_public_club_leaderboard', {
+        p_slug: slug,
+        p_period: period,
+        p_format: format,
+        p_limit: limit,
+      })
+      if (error) {
+        if (isMissingFunction(error)) return null
+        throw error
+      }
+      return data ? normalizeLeaderboardSnapshot(data as ClubLeaderboardSnapshot) : null
+    },
+
+    async publicPlayerMatches(slug: string, memberId: string, limit = 15): Promise<ClubMatch[] | null> {
+      if (isDemoMode) return demoStore.publicPlayerMatches(slug, memberId, limit)
+      const { data, error } = await supabase!.rpc('get_public_player_matches', {
+        p_slug: slug,
+        p_member_id: memberId,
+        p_limit: limit,
+      })
+      if (error) {
+        if (isMissingFunction(error)) return []
+        throw error
+      }
+      return data ? ((data as ClubMatch[]).map(normalizeClubMatch)) : null
+    },
+
+    async clubLeaderboard(
+      period: LeaderboardPeriod = 'month',
+      format: LeaderboardFormatFilter = 'all',
+      limit = 100,
+    ): Promise<ClubLeaderboardSnapshot> {
+      if (isDemoMode) return demoStore.clubLeaderboard(period, format, limit)
+      const { data, error } = await supabase!.rpc('get_club_leaderboard', {
+        p_period: period,
+        p_format: format,
+        p_limit: limit,
+      })
+      if (error) throw error
+      return normalizeLeaderboardSnapshot(data as ClubLeaderboardSnapshot)
+    },
+
+    async recordClubMatch(input: RecordMatchInput, clubSlug?: string): Promise<ClubMatch> {
+      if (isDemoMode) {
+        const match = demoStore.recordClubMatch(input)
+        emitClubLiveUpdate([match.club_id, getActiveClubId(), clubSlug])
+        return match
+      }
+      const { data, error } = await supabase!.rpc('staff_record_club_match', {
+        p_format: input.format,
+        p_team_a: input.team_a,
+        p_team_b: input.team_b,
+        p_winner_side: input.winner_side,
+        p_score_a: input.score_a ?? null,
+        p_score_b: input.score_b ?? null,
+        p_venue_id: input.venue_id ?? null,
+        p_court_id: input.court_id ?? null,
+        p_notes: input.notes ?? null,
+      })
+      if (error) throw error
+      const match = normalizeClubMatch(data as ClubMatch)
+      emitClubLiveUpdate([match.club_id, getActiveClubId(), clubSlug])
+      return match
+    },
+
+    async voidClubMatch(matchId: string, reason?: string, clubSlug?: string): Promise<void> {
+      if (isDemoMode) {
+        demoStore.voidClubMatch(matchId, reason)
+        emitClubLiveUpdate([getActiveClubId(), clubSlug])
+        return
+      }
+      const { error } = await supabase!.rpc('staff_void_club_match', {
+        p_match_id: matchId,
+        p_reason: reason ?? null,
+      })
+      if (error) throw error
+      emitClubLiveUpdate([getActiveClubId(), clubSlug])
+    },
+
+    async listLeaderboardScorers(): Promise<LeaderboardScorerStaff[]> {
+      if (isDemoMode) return demoStore.listLeaderboardScorers()
+      const { data, error } = await supabase!.rpc('admin_list_leaderboard_scorers')
+      if (error) throw error
+      return (data ?? []) as LeaderboardScorerStaff[]
+    },
+
+    async setLeaderboardScorer(userId: string, canScore: boolean): Promise<void> {
+      if (isDemoMode) return demoStore.setLeaderboardScorer(userId, canScore)
+      const { error } = await supabase!.rpc('admin_set_leaderboard_scorer', {
+        p_user_id: userId,
+        p_can_score: canScore,
+      })
+      if (error) throw error
+    },
+
+    // ---- Phase 2: Club tournaments & matchmaking ----
+
+    async listPublicClubTournaments(slug: string, limit = 20): Promise<TournamentSummary[] | null> {
+      if (isDemoMode) return demoStore.listPublicClubTournaments(slug, limit)
+      const { data, error } = await supabase!.rpc('list_public_club_tournaments', {
+        p_slug: slug,
+        p_limit: limit,
+      })
+      if (error) {
+        if (isMissingFunction(error)) return []
+        throw error
+      }
+      return data ? (data as TournamentSummary[]).map(normalizeTournamentSummary) : null
+    },
+
+    async publicTournament(slug: string, tournamentId: string): Promise<TournamentDetail | null> {
+      if (isDemoMode) return demoStore.publicTournament(slug, tournamentId)
+      const { data, error } = await supabase!.rpc('get_public_tournament', {
+        p_slug: slug,
+        p_tournament_id: tournamentId,
+      })
+      if (error) {
+        if (isMissingFunction(error)) return null
+        throw error
+      }
+      return data ? normalizeTournamentDetail(data as TournamentDetail) : null
+    },
+
+    async listClubTournaments(limit = 50): Promise<TournamentSummary[]> {
+      if (isDemoMode) return demoStore.listClubTournaments(limit)
+      const { data, error } = await supabase!.rpc('list_club_tournaments', { p_limit: limit })
+      if (error) throw error
+      return ((data ?? []) as TournamentSummary[]).map(normalizeTournamentSummary)
+    },
+
+    async clubTournament(tournamentId: string): Promise<TournamentDetail> {
+      if (isDemoMode) return demoStore.clubTournament(tournamentId)
+      const { data, error } = await supabase!.rpc('get_club_tournament', {
+        p_tournament_id: tournamentId,
+      })
+      if (error) throw error
+      return normalizeTournamentDetail(data as TournamentDetail)
+    },
+
+    async createTournament(input: CreateTournamentInput, clubSlug?: string): Promise<TournamentDetail> {
+      if (isDemoMode) {
+        const detail = demoStore.createTournament(input)
+        emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+        return detail
+      }
+      const { data, error } = await supabase!.rpc('admin_create_tournament', {
+        p_title: input.title,
+        p_format: input.format,
+        p_team_size: input.team_size,
+        p_venue_id: input.venue_id ?? null,
+        p_counts_for_leaderboard: input.counts_for_leaderboard ?? true,
+        p_scheduled_at: input.scheduled_at ?? null,
+        p_notes: input.notes ?? null,
+        p_player_ids: input.player_ids ?? [],
+      })
+      if (error) throw error
+      const detail = normalizeTournamentDetail(data as TournamentDetail)
+      emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+      return detail
+    },
+
+    async setTournamentPlayers(
+      tournamentId: string,
+      playerIds: string[],
+      clubSlug?: string,
+    ): Promise<TournamentDetail> {
+      if (isDemoMode) {
+        const detail = demoStore.setTournamentPlayers(tournamentId, playerIds)
+        emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+        return detail
+      }
+      const { data, error } = await supabase!.rpc('admin_set_tournament_players', {
+        p_tournament_id: tournamentId,
+        p_player_ids: playerIds,
+      })
+      if (error) throw error
+      const detail = normalizeTournamentDetail(data as TournamentDetail)
+      emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+      return detail
+    },
+
+    async generateTournamentDraw(tournamentId: string, clubSlug?: string): Promise<TournamentDetail> {
+      if (isDemoMode) {
+        const detail = demoStore.generateTournamentDraw(tournamentId)
+        emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+        return detail
+      }
+      const { data, error } = await supabase!.rpc('admin_generate_tournament_draw', {
+        p_tournament_id: tournamentId,
+      })
+      if (error) throw error
+      const detail = normalizeTournamentDetail(data as TournamentDetail)
+      emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+      return detail
+    },
+
+    async startTournament(tournamentId: string, clubSlug?: string): Promise<TournamentDetail> {
+      if (isDemoMode) {
+        const detail = demoStore.startTournament(tournamentId)
+        emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+        return detail
+      }
+      const { data, error } = await supabase!.rpc('admin_start_tournament', {
+        p_tournament_id: tournamentId,
+      })
+      if (error) throw error
+      const detail = normalizeTournamentDetail(data as TournamentDetail)
+      emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+      return detail
+    },
+
+    async setTournamentScorer(
+      tournamentId: string,
+      userId: string,
+      canScore: boolean,
+      clubSlug?: string,
+    ): Promise<void> {
+      if (isDemoMode) {
+        demoStore.setTournamentScorer(tournamentId, userId, canScore)
+        emitClubLiveUpdate([getActiveClubId(), clubSlug])
+        return
+      }
+      const { error } = await supabase!.rpc('admin_set_tournament_scorer', {
+        p_tournament_id: tournamentId,
+        p_user_id: userId,
+        p_can_score: canScore,
+      })
+      if (error) throw error
+      emitClubLiveUpdate([getActiveClubId(), clubSlug])
+    },
+
+    async completeTournament(tournamentId: string, clubSlug?: string): Promise<TournamentDetail> {
+      if (isDemoMode) {
+        const detail = demoStore.completeTournament(tournamentId)
+        emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+        return detail
+      }
+      const { data, error } = await supabase!.rpc('admin_complete_tournament', {
+        p_tournament_id: tournamentId,
+      })
+      if (error) throw error
+      const detail = normalizeTournamentDetail(data as TournamentDetail)
+      emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+      return detail
+    },
+
+    async cancelTournament(tournamentId: string, clubSlug?: string): Promise<TournamentDetail> {
+      if (isDemoMode) {
+        const detail = demoStore.cancelTournament(tournamentId)
+        emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+        return detail
+      }
+      const { data, error } = await supabase!.rpc('admin_cancel_tournament', {
+        p_tournament_id: tournamentId,
+      })
+      if (error) throw error
+      const detail = normalizeTournamentDetail(data as TournamentDetail)
+      emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+      return detail
+    },
+
+    async drawTournamentQueueMatch(
+      tournamentId: string,
+      courtId?: string | null,
+      clubSlug?: string,
+    ): Promise<TournamentDetail> {
+      if (isDemoMode) {
+        const detail = demoStore.drawTournamentQueueMatch(tournamentId, courtId)
+        emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+        return detail
+      }
+      const { data, error } = await supabase!.rpc('staff_draw_tournament_queue_match', {
+        p_tournament_id: tournamentId,
+        p_court_id: courtId ?? null,
+      })
+      if (error) throw error
+      const detail = normalizeTournamentDetail(data as TournamentDetail)
+      emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+      return detail
+    },
+
+    async assignTournamentMatchCourt(
+      tournamentId: string,
+      matchId: string,
+      courtId?: string | null,
+      clubSlug?: string,
+    ): Promise<TournamentDetail> {
+      if (isDemoMode) {
+        const detail = demoStore.assignTournamentMatchCourt(tournamentId, matchId, courtId)
+        emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+        return detail
+      }
+      const { data, error } = await supabase!.rpc('staff_assign_tournament_match_court', {
+        p_tournament_id: tournamentId,
+        p_match_id: matchId,
+        p_court_id: courtId ?? null,
+      })
+      if (error) throw error
+      const detail = normalizeTournamentDetail(data as TournamentDetail)
+      emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+      return detail
+    },
+
+    async cancelTournamentQueueMatch(
+      tournamentId: string,
+      matchId: string,
+      clubSlug?: string,
+    ): Promise<TournamentDetail> {
+      if (isDemoMode) {
+        const detail = demoStore.cancelTournamentQueueMatch(tournamentId, matchId)
+        emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+        return detail
+      }
+      const { data, error } = await supabase!.rpc('staff_cancel_tournament_queue_match', {
+        p_tournament_id: tournamentId,
+        p_match_id: matchId,
+      })
+      if (error) throw error
+      const detail = normalizeTournamentDetail(data as TournamentDetail)
+      emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+      return detail
+    },
+
+    async scoreTournamentMatch(
+      input: ScoreTournamentMatchInput,
+      clubSlug?: string,
+    ): Promise<TournamentDetail> {
+      if (isDemoMode) {
+        const detail = demoStore.scoreTournamentMatch(input)
+        emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+        return detail
+      }
+      const { data, error } = await supabase!.rpc('staff_score_tournament_match', {
+        p_tournament_id: input.tournament_id,
+        p_match_id: input.match_id,
+        p_winner_side: input.winner_side,
+        p_score_a: input.score_a ?? null,
+        p_score_b: input.score_b ?? null,
+        p_court_id: input.court_id ?? null,
+      })
+      if (error) throw error
+      const detail = normalizeTournamentDetail(data as TournamentDetail)
+      emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+      return detail
+    },
   }
 
 /** PostgREST answers PGRST202 (and Postgres 42883) when a database function is not there yet. */
@@ -2087,6 +2458,95 @@ function normalizeCommission(row: PlatformCommission): PlatformCommission {
     commission_rate: Number(row.commission_rate),
     commission_amount: Number(row.commission_amount),
     club_net_amount: Number(row.club_net_amount),
+  }
+}
+
+function normalizeLeaderboardPlayer(player: LeaderboardPlayerSummary): LeaderboardPlayerSummary {
+  const path = player.photo_path ?? null
+  return {
+    ...player,
+    photo_url: player.photo_url ?? (path ? memberPhotoUrl(path) : null),
+  }
+}
+
+function normalizeLeaderboardEntry(entry: LeaderboardEntry): LeaderboardEntry {
+  return {
+    ...normalizeLeaderboardPlayer(entry),
+    rank: Number(entry.rank),
+    points: Number(entry.points),
+    wins: Number(entry.wins),
+    losses: Number(entry.losses),
+    games_played: Number(entry.games_played),
+    win_pct: Number(entry.win_pct),
+    score_diff: Number(entry.score_diff),
+    streak: Number(entry.streak),
+  }
+}
+
+function normalizeClubMatch(match: ClubMatch): ClubMatch {
+  return {
+    ...match,
+    score_a: match.score_a == null ? null : Number(match.score_a),
+    score_b: match.score_b == null ? null : Number(match.score_b),
+    team_a: (match.team_a ?? []).map(normalizeLeaderboardPlayer),
+    team_b: (match.team_b ?? []).map(normalizeLeaderboardPlayer),
+  }
+}
+
+function normalizeLeaderboardSnapshot(raw: ClubLeaderboardSnapshot): ClubLeaderboardSnapshot {
+  return {
+    ...raw,
+    entries: (raw.entries ?? []).map(normalizeLeaderboardEntry),
+    recent_matches: (raw.recent_matches ?? []).map(normalizeClubMatch),
+    total_players: Number(raw.total_players ?? 0),
+    total_matches: Number(raw.total_matches ?? 0),
+    my_entry: raw.my_entry ? normalizeLeaderboardEntry(raw.my_entry) : null,
+  }
+}
+
+function normalizeTournamentSummary(raw: TournamentSummary): TournamentSummary {
+  return {
+    ...raw,
+    team_size: Number(raw.team_size) === 1 ? 1 : 2,
+    player_count: Number(raw.player_count ?? 0),
+    team_count: Number(raw.team_count ?? 0),
+    active_matches: Number(raw.active_matches ?? 0),
+    completed_matches: Number(raw.completed_matches ?? 0),
+    total_matches: Number(raw.total_matches ?? 0),
+  }
+}
+
+function normalizeTournamentTeam(raw: TournamentTeam): TournamentTeam {
+  return {
+    ...raw,
+    seed: Number(raw.seed),
+    players: (raw.players ?? []).map(normalizeLeaderboardPlayer),
+  }
+}
+
+function normalizeTournamentMatch(raw: TournamentMatch): TournamentMatch {
+  return {
+    ...raw,
+    round_number: Number(raw.round_number),
+    match_order: Number(raw.match_order),
+    team_a_seed: raw.team_a_seed == null ? null : Number(raw.team_a_seed),
+    team_b_seed: raw.team_b_seed == null ? null : Number(raw.team_b_seed),
+    score_a: raw.score_a == null ? null : Number(raw.score_a),
+    score_b: raw.score_b == null ? null : Number(raw.score_b),
+    team_a_players: (raw.team_a_players ?? []).map(normalizeLeaderboardPlayer),
+    team_b_players: (raw.team_b_players ?? []).map(normalizeLeaderboardPlayer),
+  }
+}
+
+function normalizeTournamentDetail(raw: TournamentDetail): TournamentDetail {
+  return {
+    ...raw,
+    tournament: normalizeTournamentSummary(raw.tournament),
+    players: (raw.players ?? []).map(normalizeLeaderboardPlayer),
+    teams: (raw.teams ?? []).map(normalizeTournamentTeam),
+    matches: (raw.matches ?? []).map(normalizeTournamentMatch),
+    standings: (raw.standings ?? []).map(normalizeLeaderboardEntry),
+    scorers: (raw.scorers ?? []) as TournamentScorerStaff[],
   }
 }
 
