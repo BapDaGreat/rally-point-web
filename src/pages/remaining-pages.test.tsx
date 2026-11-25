@@ -69,12 +69,14 @@ const apiMock = vi.hoisted(() => ({
   submitBookingPayment: vi.fn(),
   myBooking: vi.fn(),
   paymentsToConfirm: vi.fn(),
+  membershipRequests: vi.fn(),
   confirmBookingPayment: vi.fn(),
   rejectBookingPayment: vi.fn(),
   sendBookingConfirmationEmail: vi.fn(),
   publicClubDetail: vi.fn(),
   publicClubAvailability: vi.fn(),
   ensureMemberQr: vi.fn(),
+  myMemberPasses: vi.fn(),
   daySchedule: vi.fn(),
   listBookings: vi.fn(),
   listVenues: vi.fn(),
@@ -268,6 +270,7 @@ function resetMocks() {
   apiMock.submitBookingPayment.mockImplementation(async ({ reference }: { reference: string }) => sentBooking(reference))
   apiMock.myBooking.mockImplementation(async () => sentBooking())
   apiMock.paymentsToConfirm.mockResolvedValue([])
+  apiMock.membershipRequests.mockResolvedValue([])
   apiMock.confirmBookingPayment.mockResolvedValue(booking)
   apiMock.rejectBookingPayment.mockResolvedValue({ ...booking, status: 'cancelled' })
   apiMock.sendBookingConfirmationEmail.mockResolvedValue({ sent: true, preview: RECEIPT })
@@ -1098,14 +1101,19 @@ describe('member booking and pass pages', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('renders a member QR pass and the no-membership state', async () => {
+  it('renders a member QR pass and the no-club state', async () => {
+    apiMock.myMemberPasses.mockResolvedValueOnce([{
+      club_id: 'club-gensan', club_slug: 'gensan', club_name: 'Rally Point Gensan', member_id: member.id,
+      member_code: 'RP-1001', full_name: member.full_name, membership_type: 'standard', status: 'active',
+      expiry_date: '2099-12-31', is_active_member: true, qr_token: 'token-1', request: null,
+    }])
     const first = render(<MemoryRouter><MemberPass /></MemoryRouter>)
-    expect(await screen.findByRole('img', { name: 'Check-in QR code' })).toBeInTheDocument()
+    expect(await screen.findByRole('img', { name: 'Check-in QR code for Rally Point Gensan' })).toBeInTheDocument()
     expect(screen.getByText('RP-1001')).toBeInTheDocument()
     first.unmount()
-    apiMock.memberForUser.mockResolvedValueOnce(null)
+    apiMock.myMemberPasses.mockResolvedValueOnce([])
     render(<MemoryRouter><MemberPass /></MemoryRouter>)
-    expect(await screen.findByText(/No membership linked/)).toBeInTheDocument()
+    expect(await screen.findByText(/You have no club pass yet/)).toBeInTheDocument()
   })
 })
 

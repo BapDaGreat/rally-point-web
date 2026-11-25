@@ -4,7 +4,9 @@ import { paymentConfig } from './payments'
 import type {
   AdminClubProfile,
   Booking,
+  AccountInput,
   CheckIn,
+  CheckInResult,
   CheckoutPaymentMethod,
   Club,
   ClubAddon,
@@ -31,6 +33,10 @@ import type {
   CourtSession,
   DashboardStats,
   Member,
+  MemberPass,
+  MembershipApproval,
+  MembershipRequest,
+  MembershipRequestStatus,
   MembershipType,
   MemberStatus,
   Notification,
@@ -65,7 +71,7 @@ import type {
 } from '../types'
 import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, fmtDateTime, fmtTime, localRangeISO, timeSlot, venueHours } from '../types'
 import { CLUB_HEADER, getActiveClubId, notifyClubUnavailable, requireActiveClubId } from './clubContext'
-import { PHOTO_BUCKET, photoUrl, shrinkPhoto, shrinkPhotoToDataUrl } from './photos'
+import { MEMBER_PHOTO_BUCKET, PHOTO_BUCKET, memberPhotoUrl, photoUrl, shrinkPhoto, shrinkPhotoToDataUrl } from './photos'
 import { emptyClubProfile, normalizeProfile } from './clubProfile'
 
 type OccupiedInterval = { court_id: string | null; start_at: string; end_at: string }
@@ -136,6 +142,43 @@ async function deleteReplacedPicture(old: unknown, kept: string | null = null): 
 }
 
 /** Uploads a prepared photo to `path`, never overwriting a file; returns the path. */
+/**
+ * Deletes files in the person's own photo folder other than their current photo: leftovers from a
+ * swap whose clean-up failed. Best effort; the folder limit (3 files) is enforced by the database.
+ */
+async function clearLeftoverMemberPhotos(userId: string, keepPath: string | null | undefined) {
+  const { data, error } = await supabase!.storage.from(MEMBER_PHOTO_BUCKET).list(userId, { limit: 100 })
+  if (error || !data) return
+  const leftovers = data.map((file) => `${userId}/${file.name}`).filter((path) => path !== keepPath)
+  if (leftovers.length) await supabase!.storage.from(MEMBER_PHOTO_BUCKET).remove(leftovers)
+}
+
+/** A row of list_my_member_passes: the pass with its latest request flattened into columns. */
+interface MemberPassRow extends Omit<MemberPass, 'request'> {
+  request_id: string | null
+  request_status: MembershipRequestStatus | null
+  request_decline_reason: string | null
+  request_requested_at: string | null
+  request_decided_at: string | null
+}
+
+function passFromRow(row: MemberPassRow): MemberPass {
+  const { request_id, request_status, request_decline_reason, request_requested_at, request_decided_at, ...pass } = row
+  return {
+    ...pass,
+    request:
+      request_id && request_status && request_requested_at
+        ? {
+            id: request_id,
+            status: request_status,
+            decline_reason: request_decline_reason,
+            requested_at: request_requested_at,
+            decided_at: request_decided_at,
+          }
+        : null,
+  }
+}
+
 async function storePhoto(path: string, prepared: Awaited<ReturnType<typeof shrinkPhoto>>) {
   const { error } = await supabase!.storage.from(PHOTO_BUCKET).upload(path, prepared.blob, {
     contentType: prepared.type,
@@ -1289,6 +1332,117 @@ export const api = {
     throw new Error('Online renewal is not available yet. Renew at the desk.')
   },
 
+  // ---- Member account: name, nickname and photo (the person's own profile) ----
+
+  /** Changes the person's full name (on their account and every club's member card) and nickname. */
+  async updateMyAccount(userId: string, input: AccountInput): Promise<void> {
+    if (isDemoMode) return demoStore.updateMyAccount(userId, input)
+    const { error } = await supabase!.rpc('update_my_account', {
+      p_full_name: input.full_name,
+      p_nickname: input.nickname?.trim() ? input.nickname : null,
+    })
+    if (error) throw error
+  },
+
+  /**
+   * Sets the person's profile photo, or removes it when `file` is null. Uploads into their own
+   * folder of the public member-photos bucket, then deletes the photo it replaced.
+   * Returns the new photo's link, or null when removed.
+   */
+  async setMyPhoto(userId: string, file: File | null, previousPath?: string | null): Promise<string | null> {
+    if (isDemoMode) {
+      const dataUrl = file ? await shrinkPhotoToDataUrl(file) : null
+      return demoStore.setMyPhoto(userId, dataUrl)
+    }
+    let path: string | null = null
+    if (file) {
+      // A face needs far less than a court photo.
+      const prepared = await shrinkPhoto(file, 800)
+      // The folder holds at most 3 files, so clear anything left by an earlier failed swap first.
+      await clearLeftoverMemberPhotos(userId, previousPath)
+      path = `${userId}/${crypto.randomUUID()}.${prepared.ext}`
+      const { error: uploadError } = await supabase!.storage.from(MEMBER_PHOTO_BUCKET).upload(path, prepared.blob, {
+        contentType: prepared.type,
+        // A day, not a year: a removed photo should stop showing soon after.
+        cacheControl: '86400',
+        upsert: false,
+      })
+      if (uploadError) {
+        if (/row-level security/i.test(uploadError.message)) {
+          throw new Error('You have too many photo files saved. Remove your photo, then add the new one.')
+        }
+        throw new Error(`The photo could not be uploaded: ${uploadError.message}`)
+      }
+    }
+    const { error } = await supabase!.rpc('set_my_photo', { p_path: path })
+    if (error) {
+      if (path) await supabase!.storage.from(MEMBER_PHOTO_BUCKET).remove([path])
+      throw error
+    }
+    // The old file is no longer linked; a failed clean-up leaves only an unlisted file behind.
+    if (previousPath && previousPath !== path && !previousPath.startsWith('data:')) {
+      await supabase!.storage.from(MEMBER_PHOTO_BUCKET).remove([previousPath])
+    }
+    return path ? memberPhotoUrl(path) : null
+  },
+
+  // ---- QR wallet and membership requests ----
+
+  /** One check-in pass per club the person belongs to; ignores the active club. */
+  async myMemberPasses(userId: string): Promise<MemberPass[]> {
+    if (isDemoMode) return demoStore.myMemberPasses(userId)
+    const { data, error } = await supabase!.rpc('list_my_member_passes')
+    if (error) throw error
+    return ((data ?? []) as MemberPassRow[]).map(passFromRow)
+  },
+
+  /** Asks a club the person already belongs to for a membership (or a renewal). Returns the request id. */
+  async requestMembership(userId: string, clubId: string): Promise<string> {
+    if (isDemoMode) return demoStore.requestMembership(userId, clubId)
+    const { data, error } = await supabase!.rpc('request_club_membership', { p_club_id: clubId })
+    if (error) throw error
+    return data as string
+  },
+
+  /** Withdraws the person's own pending request. */
+  async cancelMembershipRequest(userId: string, requestId: string): Promise<void> {
+    if (isDemoMode) return demoStore.cancelMembershipRequest(userId, requestId)
+    const { error } = await supabase!.rpc('cancel_my_membership_request', { p_request_id: requestId })
+    if (error) throw error
+  },
+
+  /** The active club's membership requests, for its staff and admins: pending ones, or recently decided ones. */
+  async membershipRequests(which: 'pending' | 'decided' = 'pending'): Promise<MembershipRequest[]> {
+    if (isDemoMode) return demoStore.membershipRequests(which)
+    const { data, error } = await supabase!.rpc('staff_list_membership_requests', { p_which: which })
+    if (error) throw error
+    return ((data ?? []) as (Omit<MembershipRequest, 'photo_url'> & { photo_path: string | null })[]).map(
+      ({ photo_path, ...row }) => ({
+        ...row,
+        amount: row.amount == null ? null : Number(row.amount),
+        photo_url: photo_path ? memberPhotoUrl(photo_path) : null,
+      }),
+    )
+  },
+
+  /** Starts or extends the membership by 30 days and records the amount received as a membership charge. */
+  async approveMembershipRequest(requestId: string, approval: MembershipApproval, staffId: string): Promise<void> {
+    if (isDemoMode) return demoStore.approveMembershipRequest(requestId, approval, staffId)
+    const { error } = await supabase!.rpc('staff_approve_membership_request', {
+      p_request_id: requestId,
+      p_membership_type: approval.membership_type,
+      p_amount: approval.amount,
+    })
+    if (error) throw error
+  },
+
+  /** Declines a request with a reason the player sees. */
+  async declineMembershipRequest(requestId: string, reason: string, staffId: string): Promise<void> {
+    if (isDemoMode) return demoStore.declineMembershipRequest(requestId, reason, staffId)
+    const { error } = await supabase!.rpc('staff_decline_membership_request', { p_request_id: requestId, p_reason: reason })
+    if (error) throw error
+  },
+
     async listOpenPlays(includePast = false, venueId?: string): Promise<OpenPlaySession[]> {
       if (isDemoMode) return demoStore.listOpenPlays(includePast, venueId)
       let query = supabase!
@@ -1481,14 +1635,19 @@ export const api = {
       return data as Member
     },
 
-    async checkInByQr(payload: string, staffId?: string, venueId?: string) {
+    async checkInByQr(payload: string, staffId?: string, venueId?: string): Promise<CheckInResult> {
       if (isDemoMode) return demoStore.checkInByQr(payload, staffId, venueId)
       const { data, error } = await supabase!.rpc('check_in_qr', {
         p_payload: payload,
         p_venue_id: venueId ?? null,
       })
       if (error) throw error
-      return data as { checkin: CheckIn; member: Member }
+      const result = data as {
+        checkin: CheckIn
+        member: Omit<CheckInResult['member'], 'photo_url'> & { photo_path?: string | null }
+      }
+      const { photo_path, ...member } = result.member
+      return { checkin: result.checkin, member: { ...member, photo_url: photo_path ? memberPhotoUrl(photo_path) : null } }
     },
 
     // ---- Club membership and access (club list ignores the active club) ----

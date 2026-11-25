@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { isDemoMode, supabase } from '../lib/supabase'
 import { demoStore } from '../lib/demoStore'
+import { clearCachedPasses } from '../lib/passCache'
 import { api } from '../lib/api'
 import {
   CLUB_UNAVAILABLE_EVENT,
@@ -96,6 +97,7 @@ function accessError(error: unknown) {
 const invalidClubLinkError = 'This club link is not valid. Ask the club for a new link.'
 
 async function clearUnauthorizedSession() {
+  clearCachedPasses()
   if (!supabase) return
   try {
     const { error } = await supabase.auth.signOut()
@@ -163,7 +165,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refresh()
     if (!isDemoMode && supabase) {
-      const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+        // Signed out in another tab, or the session ended: drop this phone's saved QR codes.
+        if (event === 'SIGNED_OUT') clearCachedPasses()
         void refresh()
       })
       return () => sub.subscription.unsubscribe()
@@ -384,6 +388,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signOut = useCallback(async () => {
+    // The next person on a shared phone must not see this person's QR codes.
+    clearCachedPasses()
     if (isDemoMode) {
       demoStore.logout()
       applyAccess(null)

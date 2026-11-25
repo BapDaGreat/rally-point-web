@@ -40,11 +40,10 @@ beforeEach(() => {
 
 const roleLinks: Record<Role, Array<[label: string, href: string]>> = {
   member: [
-    ['Home', '/member'],
+    ['Account', '/member'],
     ['Book', '/member/book'],
     ['Play', '/member/open'],
     ['My QR', '/member/pass'],
-    ['Account', '/member/profile'],
     ['Help', '/member/help'],
   ],
   staff: [
@@ -112,15 +111,15 @@ describe('BottomNav', () => {
     expect(screen.getByRole('link', { name: 'Book' })).toHaveClass(
       'bg-brand-50',
     )
-    expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Account' })).not.toHaveAttribute(
       'aria-current',
     )
   })
 
-  it('uses the end match for the member home route', () => {
+  it('uses the end match for the member Account route', () => {
     renderNav('member', '/member')
 
-    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Account' })).toHaveAttribute(
       'aria-current',
       'page',
     )
