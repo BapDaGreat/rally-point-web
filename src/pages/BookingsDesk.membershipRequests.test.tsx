@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -48,7 +48,8 @@ describe('membership requests on the Bookings desk', () => {
     expect(await screen.findByRole('heading', { name: 'Jonah Cruz (JC)' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Membership requests' })).toBeInTheDocument()
     expect(screen.getByText('Confirm GCash payments and memberships, and see player bookings')).toBeInTheDocument()
-    expect(apiMock.paymentsToConfirm).toHaveBeenCalled()
+    // Payments load once the venue list arrives, which can be after the membership list.
+    await waitFor(() => expect(apiMock.paymentsToConfirm).toHaveBeenCalled())
     expect(apiMock.membershipRequests).toHaveBeenCalledWith('pending')
   })
 

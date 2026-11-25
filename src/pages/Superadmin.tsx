@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Building2, Coins, LifeBuoy, Mail, Phone, PhoneCall, Plus, RefreshCw, TrendingUp, Users } from 'lucide-react'
+import { Building2, Clock3, Coins, History, LifeBuoy, Mail, Phone, Plus, ReceiptText, RefreshCw, TrendingUp, Users } from 'lucide-react'
 import { AppHeader, AppShell, LoadingBlock, SignOutButton } from '../components/Shell'
 import { LoadingShapes, SkeletonBlock, SkeletonLine } from '../components/Skeleton'
+import { AttentionList, Section, SortableTable, StatCard, UpdatedStamp } from '../components/dashboard'
+import { PlatformAnalyticsView } from './SuperadminAnalytics'
+import type { PlatformAnalytics } from '../lib/analytics'
 import { api, summarizePlatform } from '../lib/api'
-import { stagger } from '../lib/motion'
 import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
 import { callDayLabel, ownerCallTimeLabel } from '../lib/ownerRequests'
 import type {
@@ -22,7 +24,7 @@ import type {
 } from '../types'
 import { fmtDate, fmtDateTime, fmtTime, peso } from '../types'
 
-export type SuperadminSection = 'overview' | 'clubs' | 'ledger' | 'requests'
+export type SuperadminSection = 'overview' | 'analytics' | 'clubs' | 'ledger' | 'requests'
 
 type Notice = { tone: 'ok' | 'error'; text: string } | null
 
@@ -40,6 +42,7 @@ const statusStyle: Record<ClubStatus, string> = {
 
 const sectionTitle: Record<SuperadminSection, string> = {
   overview: 'Platform overview',
+  analytics: 'Platform analytics',
   clubs: 'Clubs',
   ledger: 'Commission ledger',
   requests: 'Owner requests',
@@ -69,28 +72,36 @@ export function SuperadminPage({ section = 'overview' }: { section?: SuperadminS
   const [setupDraft, setSetupDraft] = useState<SetupDraft | null>(null)
   // Null when the requests could not load; the rest of the portal still works.
   const [requests, setRequests] = useState<OwnerCallRequest[] | null>([])
+  // The last 30 days against the 30 before, for the overview cards. Null hides the trends.
+  const [recent, setRecent] = useState<PlatformAnalytics | null>(null)
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
+  // Changing it remounts the analytics view, so Refresh reloads its figures too.
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const load = useCallback(async () => {
     try {
-      const [clubRows, ledgerRows, actionRows, sessionRows, requestRows] = await Promise.all([
+      const [clubRows, ledgerRows, actionRows, sessionRows, requestRows, recentFigures] = await Promise.all([
         api.platformClubs(),
         api.platformLedger(ledgerClub || null, 200),
         api.platformRecentActions(20),
         api.mySupportSessions(),
         api.platformOwnerCallRequests().catch(() => null),
+        section === 'overview' ? Promise.resolve().then(() => api.platformAnalytics(30)).catch(() => null) : Promise.resolve(null),
       ])
       setClubs(clubRows)
       setLedger(ledgerRows)
       setActions(actionRows)
       setSupportSessions(sessionRows)
       setRequests(requestRows)
+      setRecent(recentFigures)
+      setUpdatedAt(new Date())
     } catch (error) {
       setNotice({ tone: 'error', text: errorText(error, 'Could not load platform information.') })
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [ledgerClub])
+  }, [ledgerClub, section])
 
   useEffect(() => {
     void load()
@@ -127,6 +138,7 @@ export function SuperadminPage({ section = 'overview' }: { section?: SuperadminS
               className="btn-secondary min-h-12"
               onClick={() => {
                 setRefreshing(true)
+                setRefreshKey((key) => key + 1)
                 void load()
               }}
               disabled={refreshing}
@@ -152,7 +164,9 @@ export function SuperadminPage({ section = 'overview' }: { section?: SuperadminS
           </p>
         ) : null}
 
-        {loading ? (
+        {section === 'analytics' ? (
+          <PlatformAnalyticsView key={refreshKey} />
+        ) : loading ? (
           section === 'overview' ? (
             <OverviewLoading />
           ) : (
@@ -161,7 +175,13 @@ export function SuperadminPage({ section = 'overview' }: { section?: SuperadminS
             />
           )
         ) : section === 'overview' ? (
-          <Overview clubs={clubs} actions={actions} newRequests={requests?.filter((request) => request.status === 'new').length ?? 0} />
+          <Overview
+            clubs={clubs}
+            actions={actions}
+            recent={recent}
+            updatedAt={updatedAt}
+            newRequests={requests?.filter((request) => request.status === 'new').length ?? 0}
+          />
         ) : section === 'clubs' ? (
           <ClubDirectory
             clubs={clubs}
@@ -208,7 +228,7 @@ export function SuperadminPage({ section = 'overview' }: { section?: SuperadminS
 function RecordedNote() {
   return (
     <p className="text-body text-slate-600">
-      Figures come from charges the clubs recorded. Payments are still simulated, so this is not collected money.
+      Figures come from charges the clubs recorded. Players pay the clubs directly, so this is not collected money.
     </p>
   )
 }
@@ -266,75 +286,181 @@ function OverviewLoading() {
   )
 }
 
-function Overview({ clubs, actions, newRequests }: { clubs: PlatformClub[]; actions: PlatformAction[]; newRequests: number }) {
+function Overview({
+  clubs,
+  actions,
+  recent,
+  updatedAt,
+  newRequests,
+}: {
+  clubs: PlatformClub[]
+  actions: PlatformAction[]
+  recent: PlatformAnalytics | null
+  updatedAt: Date | null
+  newRequests: number
+}) {
   const stats = summarizePlatform(clubs)
-  const cards: { label: string; value: string; icon: typeof Coins }[] = [
-    { label: 'Commission recorded', value: peso(stats.totalCommissionsEarned), icon: Coins },
-    { label: 'Court revenue recorded', value: peso(stats.totalGrossVolume), icon: TrendingUp },
-    { label: 'Active clubs', value: String(stats.activeClubsCount), icon: Building2 },
-    { label: 'Ledger entries', value: String(stats.totalEntriesCount), icon: Users },
-  ]
+  const inSetup = clubs.filter((club) => club.status === 'provisioning')
+  const suspended = clubs.filter((club) => club.status === 'suspended')
+  const recentByClub = new Map((recent?.top_clubs ?? []).map((club) => [club.club_id, club]))
+  const last30 = 'last 30 days vs the 30 before'
+  const attention = [
+    newRequests > 0
+      ? {
+          key: 'requests',
+          tone: 'warn' as const,
+          title: newRequests === 1 ? '1 court owner asked for a call' : `${newRequests} court owners asked for a call`,
+          detail: 'Call them back and set up their club',
+          count: newRequests,
+          to: '/superadmin/requests',
+        }
+      : null,
+    inSetup.length > 0
+      ? {
+          key: 'setup',
+          tone: 'brand' as const,
+          title: inSetup.length === 1 ? `${inSetup[0].name} is still in setup` : `${inSetup.length} clubs are still in setup`,
+          detail: 'They cannot take bookings until they are active',
+          count: inSetup.length,
+          to: '/superadmin/clubs',
+        }
+      : null,
+    suspended.length > 0
+      ? {
+          key: 'suspended',
+          tone: 'danger' as const,
+          title: suspended.length === 1 ? `${suspended[0].name} is suspended` : `${suspended.length} clubs are suspended`,
+          count: suspended.length,
+          to: '/superadmin/clubs',
+        }
+      : null,
+  ].filter((item): item is NonNullable<typeof item> => item !== null)
+
   return (
-    <div className="space-y-4">
-      {newRequests > 0 ? (
-        <Link
-          to="/superadmin/requests"
-          className="enter-rise control-feedback card flex min-h-14 items-center gap-3 p-4 text-body font-semibold text-slate-900"
-        >
-          <PhoneCall size={22} className="text-brand-700" aria-hidden />
-          {newRequests === 1 ? '1 court owner asked for a call' : `${newRequests} court owners asked for a call`}
-        </Link>
-      ) : null}
-      <section aria-label="Platform totals" className="enter-rise grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {cards.map(({ label, value, icon: Icon }) => (
-          <div key={label} className="card p-4">
-            <Icon size={22} className="text-brand-700" aria-hidden />
-            <p className="mt-2 text-body font-semibold text-slate-600">{label}</p>
-            <p className="text-heading-2 font-bold text-slate-900">{value}</p>
-          </div>
-        ))}
+    <div className="space-y-5">
+      <div className="enter-rise flex justify-end">
+        <UpdatedStamp at={updatedAt} />
+      </div>
+      <section aria-label="Platform totals" className="enter-rise grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Commission recorded"
+          value={peso(stats.totalCommissionsEarned)}
+          icon={Coins}
+          tone="ok"
+          sub={recent ? `${peso(recent.current.commission)} in the last 30 days` : 'All time'}
+          current={recent?.current.commission}
+          previous={recent?.previous.commission}
+          compareLabel={last30}
+          series={recent?.by_day.map((day) => day.commission)}
+        />
+        <StatCard
+          label="Court charges recorded"
+          value={peso(stats.totalGrossVolume)}
+          icon={TrendingUp}
+          sub={recent ? `${peso(recent.current.gross)} in the last 30 days` : 'All time'}
+          current={recent?.current.gross}
+          previous={recent?.previous.gross}
+          compareLabel={last30}
+          series={recent?.by_day.map((day) => day.gross)}
+        />
+        <StatCard
+          label="Active clubs"
+          value={String(stats.activeClubsCount)}
+          icon={Building2}
+          tone="ink"
+          sub={inSetup.length ? `${inSetup.length} more in setup` : `${clubs.length} clubs on the platform`}
+          to="/superadmin/clubs"
+        />
+        <StatCard
+          label="Ledger entries"
+          value={stats.totalEntriesCount.toLocaleString('en-PH')}
+          icon={Users}
+          tone="muted"
+          sub="All time"
+          current={recent?.current.lines}
+          previous={recent?.previous.lines}
+          compareLabel={last30}
+          to="/superadmin/ledger"
+        />
       </section>
       <RecordedNote />
 
-      <section className="enter-rise card p-4" style={stagger(1)} aria-labelledby="club-figures">
-        <h2 id="club-figures" className="text-subtitle font-bold text-slate-900">
-          Clubs at a glance
-        </h2>
-        <ul className="mt-3 divide-y divide-slate-100">
-          {clubs.map((club) => (
-            <li key={club.club_id} className="flex flex-wrap items-center justify-between gap-2 py-3">
-              <div>
-                <p className="text-base font-bold text-slate-900">{club.name}</p>
-                <StatusBadge status={club.status} />
-              </div>
-              <div className="text-right text-body text-slate-700">
-                <p>Court revenue {peso(club.gross_amount)}</p>
-                <p className="font-semibold">Commission {peso(club.commission_amount)}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <div className="grid gap-5 lg:grid-cols-[2fr_3fr]">
+        <Section title="Needs attention" icon={Clock3} id="platform-attention">
+          <AttentionList items={attention} empty="Nothing needs you right now." />
+        </Section>
 
-      <section className="enter-rise card p-4" style={stagger(2)} aria-labelledby="recent-actions">
-        <h2 id="recent-actions" className="text-subtitle font-bold text-slate-900">
-          Recent platform actions
-        </h2>
-        {actions.length === 0 ? (
-          <p className="mt-2 text-body text-slate-600">No platform actions yet.</p>
-        ) : (
-          <ul className="mt-3 divide-y divide-slate-100">
-            {actions.map((action) => (
-              <li key={action.id} className="py-2.5 text-body text-slate-700">
-                <span className="font-semibold text-slate-900">{describeAction(action)}</span>
-                <span className="block text-caption text-slate-500">
-                  {action.actor_email ?? 'System'} · {fmtDateTime(action.created_at)}
+        <Section title="Recent platform actions" icon={History} id="recent-actions">
+          {actions.length === 0 ? (
+            <p className="text-body text-slate-600">No platform actions yet.</p>
+          ) : (
+            <ul className="divide-y divide-line">
+              {actions.slice(0, 8).map((action) => (
+                <li key={action.id} className="py-2.5 text-body text-slate-700">
+                  <span className="font-semibold text-slate-900">{describeAction(action)}</span>
+                  <span className="block text-caption text-slate-500">
+                    {action.actor_email ?? 'System'} · {fmtDateTime(action.created_at)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+      </div>
+
+      <Section
+        title="Clubs at a glance"
+        description={recent ? 'Court charges in the last 30 days, and everything recorded so far.' : 'Everything recorded so far.'}
+        icon={ReceiptText}
+        id="club-figures"
+        actions={
+          <Link to="/superadmin/analytics" className="control-feedback inline-flex min-h-12 items-center px-2 text-body font-semibold text-brand-700">
+            Analytics
+          </Link>
+        }
+      >
+        <SortableTable
+          caption="Clubs at a glance"
+          rows={clubs}
+          rowKey={(club) => club.club_id}
+          initialSort={{ key: recent ? 'recent' : 'gross', dir: 'desc' }}
+          empty={<p className="text-body text-muted">No clubs yet.</p>}
+          columns={[
+            {
+              key: 'name',
+              header: 'Club',
+              render: (club) => (
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-ink">{club.name}</span>
+                  <StatusBadge status={club.status} />
                 </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+              ),
+              sortValue: (club) => club.name,
+            },
+            { key: 'courts', header: 'Courts', align: 'right', render: (club) => club.court_count, sortValue: (club) => club.court_count },
+            { key: 'members', header: 'Players', align: 'right', render: (club) => club.member_count, sortValue: (club) => club.member_count },
+            ...(recent
+              ? [
+                  {
+                    key: 'recent',
+                    header: 'Last 30 days',
+                    align: 'right' as const,
+                    render: (club: PlatformClub) => peso(recentByClub.get(club.club_id)?.gross ?? 0),
+                    sortValue: (club: PlatformClub) => recentByClub.get(club.club_id)?.gross ?? 0,
+                  },
+                ]
+              : []),
+            { key: 'gross', header: 'Court charges', align: 'right', render: (club) => peso(club.gross_amount), sortValue: (club) => club.gross_amount },
+            {
+              key: 'commission',
+              header: 'Commission',
+              align: 'right',
+              render: (club) => <span className="font-semibold">{peso(club.commission_amount)}</span>,
+              sortValue: (club) => club.commission_amount,
+            },
+          ]}
+        />
+      </Section>
     </div>
   )
 }

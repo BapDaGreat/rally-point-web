@@ -26,6 +26,7 @@ import {
 import { AdminBookings, StaffBookings } from './pages/BookingsDesk'
 import { AdminVenues } from './pages/AdminVenues'
 import { AdminProfile } from './pages/AdminProfile'
+import { AdminAnalytics } from './pages/AdminAnalytics'
 import { LoadingBlock } from './components/Shell'
 import { useEffect } from 'react'
 import { api } from './lib/api'
@@ -59,6 +60,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 
 function Protected({ roles }: { roles?: Role[] }) {
   const { user, loading } = useAuth()
+  const location = useLocation()
   useEffect(() => {
     if (user) void api.processDueReminders()
   }, [user])
@@ -69,7 +71,8 @@ function Protected({ roles }: { roles?: Role[] }) {
       </div>
     )
   }
-  if (!user) return <Navigate to="/login" replace />
+  // Remember the page, so signing in comes back to it.
+  if (!user) return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
   if (roles && !roles.includes(user.role)) {
     return <Navigate to={homeFor(user.role)} replace />
   }
@@ -153,6 +156,7 @@ function AppRoutes() {
         {/* Club admin screens. Platform superadmins have their own portal, not club access. */}
         <Route element={<Protected roles={['admin']} />}>
           <Route path="/admin" element={<AdminHome />} />
+          <Route path="/admin/analytics" element={<AdminAnalytics />} />
           <Route path="/admin/members" element={<AdminMembers />} />
           <Route path="/admin/members/new" element={<AdminMemberForm />} />
           <Route path="/admin/members/:id" element={<AdminMemberForm />} />
@@ -172,6 +176,7 @@ function AppRoutes() {
 
         <Route element={<Protected roles={['superadmin']} />}>
           <Route path="/superadmin" element={<SuperadminPage section="overview" />} />
+          <Route path="/superadmin/analytics" element={<SuperadminPage section="analytics" />} />
           <Route path="/superadmin/clubs" element={<SuperadminPage section="clubs" />} />
           <Route path="/superadmin/ledger" element={<SuperadminPage section="ledger" />} />
           <Route path="/superadmin/requests" element={<SuperadminPage section="requests" />} />
@@ -194,7 +199,8 @@ function RootRedirect() {
       </div>
     )
   }
-  // Visitors choose between playing (Find a court) and listing a club; signed-in people go to their own home.
-  if (!user) return <WelcomePage />
+  // Visitors, players and members see the welcome page (members with their account menu);
+  // staff, admins and superadmins go to their own desk.
+  if (!user || user.role === 'member') return <WelcomePage />
   return <Navigate to={homeFor(user.role)} replace />
 }

@@ -139,6 +139,6 @@ describe('MemberPass wallet', () => {
     vi.mocked(api.myMemberPasses).mockResolvedValue([])
     renderPass()
     expect(await screen.findByText(/You have no club pass yet/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Find a court' })).toHaveAttribute('href', '/clubs')
+    expect(within(screen.getByRole('main')).getByRole('link', { name: 'Find a court' })).toHaveAttribute('href', '/clubs')
   })
 })

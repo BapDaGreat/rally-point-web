@@ -290,7 +290,8 @@ describe('End-to-end user email verification & login journey (AuthProvider + Log
     expect(codeInput).toHaveValue(emailedToken)
     await user.click(screen.getByRole('button', { name: 'Confirm and continue' }))
 
-    expect(await screen.findByText('Landed at /member')).toBeInTheDocument()
+    // A new player with no page to go back to lands on Find a court.
+    expect(await screen.findByText('Landed at /clubs')).toBeInTheDocument()
     expect(sim.users.get('juan@example.com')?.confirmed).toBe(true)
   })
 

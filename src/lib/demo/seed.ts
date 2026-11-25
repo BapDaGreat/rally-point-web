@@ -110,7 +110,8 @@ export function seed(): DemoDB {
       phone: `+63 900 000 ${String(i).padStart(4, '0')}`,
       membership_type: (['basic', 'standard', 'premium'] as MembershipType[])[i % 3],
       status: i % 9 === 0 ? 'expired' : 'active',
-      join_date: daysFromNow(-30 - i),
+      // Spread over the last six months so the owner dashboard shows sign-ups over time.
+      join_date: daysFromNow(-(2 + ((i * 47) % 170))),
       expiry_date: daysFromNow(60 - (i % 20)),
       created_at: todayISO(),
     })
@@ -463,7 +464,8 @@ export function seed(): DemoDB {
       address: 'General Santos City',
       contact_email: 'gensan@brinely.info',
       contact_phone: '+63 917 555 0100',
-      created_at: todayISO(),
+      // On the platform well before the demo history starts.
+      created_at: `${daysFromNow(-400)}T02:00:00.000Z`,
       updated_at: todayISO(),
     },
     {
@@ -474,7 +476,8 @@ export function seed(): DemoDB {
       address: 'Davao City',
       contact_email: 'davao@brinely.info',
       contact_phone: '+63 917 555 0200',
-      created_at: todayISO(),
+      // Joined the platform during the demo history, so the superadmin sees a new club.
+      created_at: `${daysFromNow(-140)}T02:00:00.000Z`,
       updated_at: todayISO(),
     },
   ]

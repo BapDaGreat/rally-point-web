@@ -38,14 +38,8 @@ beforeEach(() => {
   auth.role = 'member'
 })
 
-const roleLinks: Record<Role, Array<[label: string, href: string]>> = {
-  member: [
-    ['Account', '/member'],
-    ['Book', '/member/book'],
-    ['Play', '/member/open'],
-    ['My QR', '/member/pass'],
-    ['Help', '/member/help'],
-  ],
+// Players and members have no app menu: they use the public site's account menu (see AppShell below).
+const roleLinks: Partial<Record<Role, Array<[label: string, href: string]>>> = {
   staff: [
     ['Home', '/staff'],
     ['Check in', '/staff/checkin'],
@@ -65,6 +59,7 @@ const roleLinks: Record<Role, Array<[label: string, href: string]>> = {
   // The platform portal only; superadmins have no club screens.
   superadmin: [
     ['Overview', '/superadmin'],
+    ['Analytics', '/superadmin/analytics'],
     ['Clubs', '/superadmin/clubs'],
     ['Ledger', '/superadmin/ledger'],
     ['Requests', '/superadmin/requests'],
@@ -101,25 +96,25 @@ describe('BottomNav', () => {
     },
   )
 
-  it('preserves exact active-route styling for member routes', () => {
-    renderNav('member', '/member/book')
+  it('preserves exact active-route styling for staff routes', () => {
+    renderNav('staff', '/staff/checkin')
 
-    expect(screen.getByRole('link', { name: 'Book' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Check in' })).toHaveAttribute(
       'aria-current',
       'page',
     )
-    expect(screen.getByRole('link', { name: 'Book' })).toHaveClass(
+    expect(screen.getByRole('link', { name: 'Check in' })).toHaveClass(
       'bg-brand-50',
     )
-    expect(screen.getByRole('link', { name: 'Account' })).not.toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute(
       'aria-current',
     )
   })
 
-  it('uses the end match for the member Account route', () => {
-    renderNav('member', '/member')
+  it('uses the end match for the staff Home route', () => {
+    renderNav('staff', '/staff')
 
-    expect(screen.getByRole('link', { name: 'Account' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
       'aria-current',
       'page',
     )
@@ -238,10 +233,11 @@ describe('AppShell', () => {
   })
 
   it('shares a centered content rail while preserving both navigation variants', () => {
+    auth.role = 'staff'
     const { container } = render(
       <MemoryRouter>
-        <AppShell role="member">
-          <AppHeader title="Member home" />
+        <AppShell role="staff">
+          <AppHeader title="Staff home" />
           <main className="safe-bottom">Member content</main>
         </AppShell>
       </MemoryRouter>,
@@ -258,7 +254,25 @@ describe('AppShell', () => {
     expect(screen.getByText('Member content')).toHaveClass('safe-bottom')
   })
 
+  it('gives players and members the public site instead of an app menu', () => {
+    render(
+      <MemoryRouter>
+        <AppShell role="member">
+          <AppHeader title="My QR codes" subtitle="Show this at the desk" />
+          <main className="safe-bottom">Member content</main>
+        </AppShell>
+      </MemoryRouter>,
+    )
+    expect(screen.queryByRole('navigation', { name: 'Main menu' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Find a court' })).toHaveAttribute('href', '/clubs')
+    expect(screen.getByRole('button', { name: 'Account menu for Demo Member' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Log in' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'My QR codes' })).toBeInTheDocument()
+    expect(screen.getByRole('contentinfo')).toBeInTheDocument()
+  })
+
   it('shows a neutral badge instead of the Gensan logo for other clubs', () => {
+    auth.role = 'admin'
     auth.clubs = [davao]
     auth.activeClub = davao
     const { container } = render(
@@ -271,6 +285,7 @@ describe('AppShell', () => {
   })
 
   it('names the active club in the header', () => {
+    auth.role = 'staff'
     auth.clubs = [gensan]
     auth.activeClub = gensan
     render(

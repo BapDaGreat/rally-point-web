@@ -229,8 +229,10 @@ describe('MemberAccount', () => {
     expect(await screen.findByText('Payment 2')).toBeInTheDocument()
     expect(screen.queryByText('Payment 3')).not.toBeInTheDocument()
     expect(within(screen.getByRole('link', { name: /Messages/ })).getByLabelText('1 unread')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Find a court/ })).toHaveAttribute('href', '/clubs')
-    expect(screen.getByRole('link', { name: /Rent a coach/ })).toHaveAttribute('href', '/member/coaches')
+    // The site header and footer also link to Find a court; these are the page's own rows.
+    const page = within(screen.getByRole('main'))
+    expect(page.getByRole('link', { name: /Find a court/ })).toHaveAttribute('href', '/clubs')
+    expect(page.getByRole('link', { name: /Rent a coach/ })).toHaveAttribute('href', '/member/coaches')
   })
 
   it('points a person with no club to Find a court', async () => {

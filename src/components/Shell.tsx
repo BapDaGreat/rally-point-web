@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
+  BarChart3,
   Building2,
   CalendarDays,
   Coins,
@@ -10,7 +11,6 @@ import {
   PhoneCall,
   QrCode,
   Tv,
-  UserRound,
   Users,
 } from 'lucide-react'
 import { useRef, useState, type ReactNode } from 'react'
@@ -22,15 +22,10 @@ import { useDocumentTitle } from '../lib/useDocumentTitle'
 import { useModalDialog } from '../lib/useModalDialog'
 import { BrinelyLogo } from './BrinelyLogo'
 import { LoadingShapes, SkeletonBlock, SkeletonCard, SkeletonRows } from './Skeleton'
+import { SiteFooter } from './SiteFooter'
+import { SiteHeader } from './SiteHeader'
 
-/** Plain-language nav — short words players of any age recognize */
-const memberTabs = [
-  { to: '/member', end: true, label: 'Account', icon: UserRound },
-  { to: '/member/book', label: 'Book', icon: CalendarDays },
-  { to: '/member/open', label: 'Play', icon: Users },
-  { to: '/member/pass', label: 'My QR', icon: QrCode },
-  { to: '/member/help', label: 'Help', icon: HelpCircle },
-]
+// Players and members have no app menu: they use the public site and its account menu.
 
 const staffTabs = [
   { to: '/staff', end: true, label: 'Home', icon: LayoutDashboard },
@@ -41,8 +36,12 @@ const staffTabs = [
   { to: '/staff/help', label: 'Help', icon: HelpCircle },
 ]
 
-const adminTabs = [
+type NavTab = { to: string; end?: boolean; label: string; icon: typeof Home; sideOnly?: boolean }
+
+// Phones keep six tabs; Analytics is in the desktop menu and opens from Home on a phone.
+const adminTabs: NavTab[] = [
   { to: '/admin', end: true, label: 'Home', icon: LayoutDashboard },
+  { to: '/admin/analytics', label: 'Analytics', icon: BarChart3, sideOnly: true },
   { to: '/admin/ops', label: 'Floor', icon: Home },
   { to: '/admin/board', label: 'Schedule', icon: Tv },
   { to: '/admin/open', label: 'Open play', icon: Users },
@@ -80,8 +79,9 @@ export function ClubBadge({ name, size = 'small' }: { name: string; size?: 'smal
 }
 
 // The platform portal only: superadmins have no club screens.
-const superadminTabs = [
+const superadminTabs: NavTab[] = [
   { to: '/superadmin', end: true, label: 'Overview', icon: LayoutDashboard },
+  { to: '/superadmin/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/superadmin/clubs', label: 'Clubs', icon: Building2 },
   { to: '/superadmin/ledger', label: 'Ledger', icon: Coins },
   { to: '/superadmin/requests', label: 'Requests', icon: PhoneCall },
@@ -116,8 +116,10 @@ export function ClubSwitcher({ tone = 'light', className = '' }: { tone?: 'light
         onChange={(event) => {
           const next = clubs.find((club) => club.club_id === event.target.value)
           if (!next) return
+          const stayHere = auth.user?.role === 'member' && next.role === 'member'
           auth.switchClub(next.club_id)
-          navigate(homeFor(next.role), { replace: true })
+          // A player stays on the page they are on; staff and admins go to their desk in that club.
+          if (!stayHere) navigate(homeFor(next.role), { replace: true })
         }}
       >
         {clubs.map((club) => (
@@ -130,11 +132,11 @@ export function ClubSwitcher({ tone = 'light', className = '' }: { tone?: 'light
   )
 }
 
-function tabsFor(role: Role) {
+function tabsFor(role: Role): NavTab[] {
   if (role === 'superadmin') return superadminTabs
   if (role === 'admin') return adminTabs
   if (role === 'staff') return staffTabs
-  return memberTabs
+  return []
 }
 
 export function SideNav({ role }: { role: Role }) {
@@ -201,7 +203,7 @@ export function SideNav({ role }: { role: Role }) {
 }
 
 export function BottomNav({ role }: { role: Role }) {
-  const tabs = tabsFor(role)
+  const tabs = tabsFor(role).filter((tab) => !tab.sideOnly)
   const cols =
     tabs.length >= 6
       ? 'grid-cols-6'
@@ -240,6 +242,16 @@ export function AppShell({
   role: Role
   children: ReactNode
 }) {
+  // Players and members: the public site's header (with the account menu) and footer.
+  if (role === 'member') {
+    return (
+      <div className="app-shell app-shell-desktop app-shell-public flex flex-col">
+        <SiteHeader />
+        {children}
+        <SiteFooter />
+      </div>
+    )
+  }
   return (
     <div className="app-shell">
       <SideNav role={role} />
@@ -262,8 +274,24 @@ export function AppHeader({
   left?: ReactNode
   right?: ReactNode
 }) {
-  const clubName = useAuth().activeClub?.name ?? 'bRineLy'
+  const { activeClub, user } = useAuth()
+  const clubName = activeClub?.name ?? 'bRineLy'
   useDocumentTitle(title)
+  // On the public site (players and members) the page heading sits in the content, as on public pages.
+  if (user?.role === 'member') {
+    return (
+      <div className="app-content-rail pt-6 pb-2 flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          {left ? <div className="shrink-0 mt-1">{left}</div> : null}
+          <div className="min-w-0">
+            <h1 className="text-heading-1 font-semibold text-ink">{title}</h1>
+            {subtitle ? <p className="mt-1 text-subtitle text-muted">{subtitle}</p> : null}
+          </div>
+        </div>
+        {right ? <div className="shrink-0">{right}</div> : null}
+      </div>
+    )
+  }
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-line pt-4 pb-3.5">
       <div className="app-content-rail flex items-start justify-between gap-3">

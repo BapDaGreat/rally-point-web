@@ -8,6 +8,7 @@ import { initialsOf } from '../lib/memberPass'
  */
 export function MemberAvatar({ name, photoUrl, size = 'md' }: { name: string; photoUrl?: string | null; size?: 'sm' | 'md' | 'lg' }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  // 'sm' is the header's account button.
   const box = size === 'lg' ? 'h-20 w-20 text-2xl rounded-2xl' : size === 'sm' ? 'h-10 w-10 text-body rounded-xl' : 'h-14 w-14 text-lg rounded-2xl'
   if (photoUrl && failedUrl !== photoUrl) {
     return (
