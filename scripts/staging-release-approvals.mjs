@@ -32,4 +32,6 @@ export const releaseApprovals = Object.freeze({
   // the capture (staging-backup-20261124-r2), the restore check and the dry run on a restored copy of
   // staging passed (all checks, isolation 55/55, schema matches the build).
   'rent-a-coach-20261124': '38e6e692210d12f46e55ccf648a017c1cb76441fb1257f95aed0b58c4e4e7425',
+  // Not approved. The owner approves only after the capture, the restore check and the dry run pass.
+  'member-account-20261125': null,
 })

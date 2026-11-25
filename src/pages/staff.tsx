@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Clock3, Search, UserPlus } from 'lucide-react'
+import { MemberAvatar } from '../components/MemberIdentity'
 import { AppHeader, AppShell, SignOutButton } from '../components/Shell'
 import { LoadingShapes, SkeletonBlock, SkeletonLine } from '../components/Skeleton'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import { stagger } from '../lib/motion'
 import { isDemoMode } from '../lib/supabase'
-import type { CheckIn, Court, CourtSession, Member, Venue } from '../types'
-import { fmtDateTime, fmtTime, peso } from '../types'
+import type { CheckIn, CheckInMember, Court, CourtSession, Member, Venue } from '../types'
+import { fmtDate, fmtDateTime, fmtTime, peso } from '../types'
 
 function useStaffVenues(userId?: string) {
   const [venues, setVenues] = useState<Venue[]>([])
@@ -323,6 +324,8 @@ export function StaffCheckIn() {
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [last, setLast] = useState<string | null>(null)
+  // Who the last scanned pass belongs to: photo, nickname and member status for the desk to check.
+  const [lastScanned, setLastScanned] = useState<CheckInMember | null>(null)
   const [rosterError, setRosterError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -350,6 +353,7 @@ export function StaffCheckIn() {
       const name = members.find((m) => m.id === memberId)?.full_name
       setMsg('Checked in successfully')
       setLast(name ?? 'Member')
+      setLastScanned(null)
       setNote('')
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Failed')
@@ -367,6 +371,7 @@ export function StaffCheckIn() {
       const r = await api.checkInByQr(qr.trim(), user?.id, venueId)
       setMsg(`Checked in ${r.member.full_name}`)
       setLast(r.member.full_name)
+      setLastScanned(r.member)
       setQr('')
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Failed')
@@ -450,7 +455,31 @@ export function StaffCheckIn() {
           </form>
         )}
 
-        {last ? (
+        {lastScanned ? (
+          <section className="card p-4 border-brand-200 bg-brand-50" aria-labelledby="last-checkin-title">
+            <p id="last-checkin-title" className="text-sm font-bold text-brand-800">Last check-in</p>
+            <div className="mt-2 flex items-center gap-3">
+              <MemberAvatar name={lastScanned.full_name} photoUrl={lastScanned.photo_url} size="lg" />
+              <div className="min-w-0">
+                <p className="break-words text-xl font-extrabold text-brand-950">
+                  {lastScanned.nickname?.trim() && lastScanned.nickname.trim().toLowerCase() !== lastScanned.full_name.trim().toLowerCase()
+                    ? `${lastScanned.full_name} (${lastScanned.nickname.trim()})`
+                    : lastScanned.full_name}
+                </p>
+                <p className="font-mono text-body font-bold text-slate-800">{lastScanned.member_code}</p>
+                {lastScanned.is_active_member ? (
+                  <p className="mt-1 inline-flex rounded-full bg-emerald-700 px-3 py-1 text-sm font-extrabold text-white">
+                    {lastScanned.expiry_date ? `Member until ${fmtDate(lastScanned.expiry_date)}` : 'Member'}
+                  </p>
+                ) : (
+                  <p className="mt-1 inline-flex rounded-full bg-slate-700 px-3 py-1 text-sm font-extrabold text-white">
+                    Player — regular rate
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        ) : last ? (
           <section className="card p-4 border-brand-200 bg-brand-50">
             <p className="text-xs font-semibold text-brand-800">Last check-in</p>
             <p className="font-extrabold text-lg text-brand-950">{last}</p>
