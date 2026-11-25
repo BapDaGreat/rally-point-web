@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Photo } from '../components/Photo'
+import { PrivacyAcknowledgement } from '../components/PrivacyAcknowledgement'
 import { PublicFrame } from '../components/PublicFrame'
 import { api } from '../lib/api'
 import { stagger } from '../lib/motion'
@@ -48,6 +49,8 @@ function emptyRequest(): OwnerCallRequestInput {
   }
 }
 
+const OWNER_CONSENT_ERROR = 'Tick the box so we may contact you and confirm you have read the Privacy Notice.'
+
 function errorText(error: unknown) {
   return error instanceof Error && error.message ? error.message : 'We could not send your request. Please try again.'
 }
@@ -56,6 +59,7 @@ function errorText(error: unknown) {
 export function OwnersPage() {
   const [form, setForm] = useState<OwnerCallRequestInput>(emptyRequest)
   const [consent, setConsent] = useState(false)
+  const consentRef = useRef<HTMLInputElement>(null)
   // Left empty by people; filled in by some automated form fillers.
   const [trap, setTrap] = useState('')
   const [busy, setBusy] = useState(false)
@@ -69,9 +73,11 @@ export function OwnersPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    const problem = ownerCallProblem(form) ?? (consent ? null : 'Tick the box so we may contact you')
+    const fieldProblem = ownerCallProblem(form)
+    const problem = fieldProblem ?? (consent ? null : OWNER_CONSENT_ERROR)
     if (problem) {
       setError(problem)
+      if (!fieldProblem && !consent) consentRef.current?.focus()
       return
     }
     setError(null)
@@ -221,15 +227,15 @@ export function OwnersPage() {
                   <input tabIndex={-1} autoComplete="off" name="website" value={trap} onChange={(event) => setTrap(event.target.value)} />
                 </label>
               </div>
-              <div>
-                <label className="flex min-h-12 items-start gap-3 text-subtitle text-ink">
-                  <input type="checkbox" className="mt-1 h-5 w-5 shrink-0" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-                  <span>bRineLy may contact me about listing my club.</span>
-                </label>
-                <Link to="/privacy" state={{ from: '/owners' }} className="text-link inline-flex min-h-12 items-center">
-                  Read the Privacy Notice
-                </Link>
-              </div>
+              <PrivacyAcknowledgement
+                checked={consent}
+                onChange={(checked) => {
+                  setConsent(checked)
+                  if (checked && error === OWNER_CONSENT_ERROR) setError(null)
+                }}
+                label="bRineLy may contact me about listing my club, and I have read and understood the Privacy Notice."
+                inputRef={consentRef}
+              />
               {error ? <p role="alert" className="notice notice-error text-body font-semibold">{error}</p> : null}
               <button type="submit" className={`btn-primary min-h-12 ${fitButton}`} disabled={busy} aria-busy={busy}>
                 {busy ? 'Sending…' : 'Ask for a call'}

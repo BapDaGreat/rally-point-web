@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import type { Profile, PublicClub, Role } from '../types'
 import { BrinelyLogo } from '../components/BrinelyLogo'
 import { Photo } from '../components/Photo'
+import { PRIVACY_ACK_ERROR, PrivacyAcknowledgement } from '../components/PrivacyAcknowledgement'
 import { ClubBadge } from '../components/Shell'
 import { PublicFrame } from '../components/PublicFrame'
 import { helpFaqs } from '../lib/helpContent'
@@ -124,6 +125,7 @@ type LoginPageProps =
       joinClub?: PublicClub
       dialog?: false
       clubName?: never
+      clubSlug?: never
       bookingSummary?: never
       onClose?: never
       onAuthenticated?: never
@@ -132,6 +134,8 @@ type LoginPageProps =
       dialog: true
       /** Shown at the top of the dialog, so people see which club they are booking with. */
       clubName?: string
+      /** The club slug for the Privacy Notice link inside the booking dialog. */
+      clubSlug?: string
       /** The booking being made, shown under the title, e.g. "Court A · Nov 25 · 6–7 AM · Php 500.00". */
       bookingSummary?: string
       onClose: () => void
@@ -148,6 +152,7 @@ type LoginPageProps =
 export default function LoginPage({
   joinClub,
   clubName,
+  clubSlug,
   bookingSummary,
   dialog = false,
   onClose,
@@ -167,6 +172,7 @@ export default function LoginPage({
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [resetSuccess, setResetSuccess] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -180,6 +186,7 @@ export default function LoginPage({
   const [codeNotice, setCodeNotice] = useState<string | null>(null)
   const codeInputRef = useRef<HTMLInputElement>(null)
   const emailInputRef = useRef<HTMLInputElement>(null)
+  const privacyCheckboxRef = useRef<HTMLInputElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   // Set once onAuthenticated has run. The submit handler and the signed-in check below can
   // both see the same sign-in, and the caller should hear about it only once.
@@ -187,8 +194,9 @@ export default function LoginPage({
   // Set when leaving the code step from inside it, so focus returns to the email box.
   const focusEmailNext = useRef(false)
   const modeFade = modeSwitches === 0 ? undefined : modeSwitches % 2 ? 'enter-fade' : 'enter-fade-again'
+  const effectiveClubSlug = joinClub?.slug ?? clubSlug
   // Keep the join link's club, so returning from the notice still signs up into it.
-  const privacyPath = privacyNoticePath(joinClub?.slug)
+  const privacyPath = privacyNoticePath(effectiveClubSlug)
   const privacyState: PrivacyNoticeState = { from: joinClub ? `/join/${joinClub.slug}` : '/login' }
 
   // Count down to when a new code may be sent; each tick schedules the next one.
@@ -324,6 +332,11 @@ export default function LoginPage({
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
+    if (mode === 'join' && !privacyAcknowledged) {
+      setError(PRIVACY_ACK_ERROR)
+      privacyCheckboxRef.current?.focus()
+      return
+    }
     setBusy(true)
     setError(null)
     setResetSuccess(false)
@@ -370,6 +383,11 @@ export default function LoginPage({
 
   async function onGoogleClick() {
     if (!signInWithGoogle) return
+    if (mode === 'join' && !privacyAcknowledged) {
+      setError(PRIVACY_ACK_ERROR)
+      privacyCheckboxRef.current?.focus()
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -387,6 +405,7 @@ export default function LoginPage({
     setMode(next)
     setPassword('')
     setPasswordVisible(false)
+    setPrivacyAcknowledged(false)
     setError(null)
     setResetSuccess(false)
   }
@@ -713,19 +732,16 @@ export default function LoginPage({
         ) : null}
 
         {mode === 'join' ? (
-          <p className="text-body text-muted">
-            By registering, you acknowledge that you have read our{' '}
-            {/* A new tab keeps the details already typed into this form. */}
-            <Link
-              className="text-link inline-flex min-h-12 items-center"
-              to={privacyPath}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Privacy Notice
-            </Link>{' '}
-            (opens in a new tab).
-          </p>
+          <PrivacyAcknowledgement
+            checked={privacyAcknowledged}
+            onChange={(checked) => {
+              setPrivacyAcknowledged(checked)
+              if (checked && error === PRIVACY_ACK_ERROR) setError(null)
+            }}
+            clubSlug={effectiveClubSlug}
+            inputRef={privacyCheckboxRef}
+            describedBy={error ? 'authentication-error' : undefined}
+          />
         ) : null}
 
         <button className="btn-primary" type="submit" disabled={busy} aria-busy={busy}>

@@ -58,29 +58,41 @@ describe('PrivacyNoticePage', () => {
     })
   })
 
-  it('shows the requested privacy topics and provisional contact details', () => {
+  it('shows the requested privacy topics, current app flows, and provisional contact details', () => {
     renderNotice()
 
     expect(screen.getByRole('heading', { level: 1, name: 'Privacy Notice' })).toBeInTheDocument()
     expect(screen.getByText('For bRineLy booking portal users')).toBeInTheDocument()
     // A legal page carries no marketing tagline; the site footer has it.
     expect(within(screen.getByRole('main')).queryByText('Stay in the brine. Play more.')).not.toBeInTheDocument()
-    expect(screen.getByText('Last updated: November 22, 2026')).toBeInTheDocument()
+    expect(screen.getByText('Last updated: November 25, 2026')).toBeInTheDocument()
     expect(screen.queryByText(/Rally Point Gensan/)).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Who we are' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'At a glance' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Who we are and club responsibilities' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Personal information we collect' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Why we use information and lawful bases' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Who can see information' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Who can see information and service providers' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Club pages and public information' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Browser storage and cookies' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Minors and youth players' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Retention and security' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Your rights under RA 10173' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Privacy contact' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Details to confirm before this notice is official' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Privacy contact and notice updates' })).toBeInTheDocument()
     expect(screen.getByText(/whether that invitation was claimed or cancelled/)).toBeInTheDocument()
-    expect(screen.getByText(/embeds OpenStreetMap/)).toBeInTheDocument()
-    expect(screen.getByText(/through Resend/)).toBeInTheDocument()
-    expect(screen.getByText(/no-reply@brinely\.info/)).toBeInTheDocument()
-    expect(screen.getByText(/live setting has not been verified/)).toBeInTheDocument()
+    expect(screen.getByText(/6-to-30-character GCash reference number/)).toBeInTheDocument()
+    expect(screen.getByText(/Membership renewal checkout in the app is currently simulated/)).toBeInTheDocument()
+    expect(screen.getByText(/linked coach account receives your full name, email address/)).toBeInTheDocument()
+    expect(screen.getByText(/Ordinary members in the same club cannot view each other's bookings/)).toBeInTheDocument()
+    expect(screen.getByText(/public TV court boards never display player names/i)).toBeInTheDocument()
+    expect(
+      screen.getByText((_, node) => node?.tagName === 'LI' && /embeds OpenStreetMap/.test(node.textContent ?? '')),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/6-digit sign-up verification codes and booking confirmation emails/)).toBeInTheDocument()
+    expect(screen.getByText(/noreply@brinely\.info/)).toBeInTheDocument()
+    expect(screen.getByText(/bookings@brinely\.info/)).toBeInTheDocument()
+    expect(screen.getByText(/does not use advertising cookies/)).toBeInTheDocument()
+    expect(screen.getAllByText(/localStorage/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/sessionStorage/)).toBeInTheDocument()
     expect(screen.getByText(/payment instructions, including an account name or number and a QR image/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'admin@brinely.info' })).toHaveAttribute(
       'href',
@@ -91,13 +103,17 @@ describe('PrivacyNoticePage', () => {
     expect(api.publicClub).not.toHaveBeenCalled()
   })
 
-  it("names a join link's club, leaves out Gensan's email, and goes back to that join link", async () => {
+  it("names a join link's club, keeps platform contact available, leaves out Gensan, and goes back to that join link", async () => {
     renderNotice('/privacy?club=rally-point-davao')
 
     expect(await screen.findByText('For Rally Point Davao players on the bRineLy booking portal')).toBeInTheDocument()
     expect(api.publicClub).toHaveBeenCalledWith('rally-point-davao')
     expect(screen.queryByText(/Gensan/)).not.toBeInTheDocument()
     expect(screen.getByText(/ask the staff at Rally Point Davao/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'admin@brinely.info' })).toHaveAttribute(
+      'href',
+      'mailto:admin@brinely.info',
+    )
     expect(screen.getByRole('link', { name: 'Back to sign-up' })).toHaveAttribute('href', '/join/rally-point-davao')
   })
 
@@ -106,6 +122,10 @@ describe('PrivacyNoticePage', () => {
     renderNotice('/privacy?club=missing-club')
 
     expect(await screen.findByText(/ask the staff at your club/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'admin@brinely.info' })).toHaveAttribute(
+      'href',
+      'mailto:admin@brinely.info',
+    )
     expect(screen.getByText('For bRineLy booking portal users')).toBeInTheDocument()
     expect(screen.queryByText(/Gensan/)).not.toBeInTheDocument()
   })
@@ -129,15 +149,17 @@ describe('PrivacyNoticePage', () => {
     const contents = screen.getByRole('navigation', { name: 'On this page' })
     const links = within(contents).getAllByRole('link')
     expect(links.map((link) => link.textContent)).toEqual([
-      'Who we are',
+      'At a glance',
+      'Who we are and club responsibilities',
       'Personal information we collect',
       'Why we use information and lawful bases',
-      'Who can see information',
+      'Who can see information and service providers',
       'Club pages and public information',
+      'Browser storage and cookies',
+      'Minors and youth players',
       'Retention and security',
-      'Details to confirm before this notice is official',
       'Your rights under RA 10173',
-      'Privacy contact',
+      'Privacy contact and notice updates',
       'Photo credits',
     ])
     expect(scrolledTo).toEqual([])

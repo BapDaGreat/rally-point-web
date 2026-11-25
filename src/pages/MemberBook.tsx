@@ -1269,6 +1269,7 @@ export function MemberBook() {
           dialog
           bookingSummary={loginSummary}
           clubName={clubName ?? activeClub?.name}
+          clubSlug={routeClubSlug ?? activeClub?.slug}
           onClose={() => {
             setAuthDialogOpen(false)
             setAutoCheckoutPending(false)

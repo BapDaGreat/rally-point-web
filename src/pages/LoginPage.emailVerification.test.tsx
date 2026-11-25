@@ -268,6 +268,7 @@ describe('End-to-end user email verification & login journey (AuthProvider + Log
     await user.type(screen.getByLabelText('Full name'), 'Juan Dela Cruz')
     await user.type(screen.getByLabelText('Email'), 'Juan@Example.com')
     await user.type(screen.getByLabelText('Password'), 'secretpass123')
+    await user.click(screen.getByRole('checkbox', { name: /I have read and understood the Privacy Notice/ }))
     await user.click(screen.getAllByRole('button', { name: 'Sign up' }).find((button) => button.getAttribute('type') === 'submit')!)
 
     // Lands on 6-digit Check your email screen
