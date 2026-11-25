@@ -4,12 +4,10 @@ import { AuthProvider } from './context/AuthProvider'
 import type { Role } from './types'
 import LoginPage from './pages/LoginPage'
 import {
-  MemberHome,
   MemberNotifications,
-  MemberPay,
-  MemberProfile,
   MemberTransactions,
 } from './pages/member'
+import { MemberAccount } from './pages/MemberAccount'
 import { MemberBook } from './pages/MemberBook'
 import { MemberCoaches } from './pages/MemberCoaches'
 import { CoachPortal } from './pages/CoachPortal'
@@ -96,14 +94,16 @@ function AppRoutes() {
         <Route path="/board/tv/:slug" element={<TvBoard />} />
 
         <Route element={<Protected roles={['member', 'admin']} />}>
-          <Route path="/member" element={<MemberHome />} />
+          {/* No member dashboard: the member's home is their Account. */}
+          <Route path="/member" element={<MemberAccount />} />
           <Route path="/member/book" element={<MemberBook />} />
           <Route path="/member/open" element={<MemberOpenPlay />} />
           <Route path="/member/pass" element={<MemberPass />} />
-          <Route path="/member/pay" element={<MemberPay />} />
+          {/* Memberships are asked for on Account and confirmed by club staff; old links land there. */}
+          <Route path="/member/pay" element={<Navigate to="/member" replace />} />
           <Route path="/member/transactions" element={<MemberTransactions />} />
           <Route path="/member/notifications" element={<MemberNotifications />} />
-          <Route path="/member/profile" element={<MemberProfile />} />
+          <Route path="/member/profile" element={<Navigate to="/member" replace />} />
           <Route path="/member/help" element={<HelpPage />} />
         </Route>
 

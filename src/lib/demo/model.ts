@@ -1,4 +1,4 @@
-import type { Booking, CheckIn, Club, ClubAccount, ClubAddon, ClubCoach, CoachBookingRequest, CoachBookingSlot, CoachRequestMessage, ClubGalleryPhoto, ClubPaymentMethod, ClubProfileFields, ClubStaffRole, Court, CourtSession, Member, Notification, OpenPlaySession, OpenPlaySignup, OwnerCallRequest, Profile, Reminder, StaffVenueGrant, SupportInquiry, Transaction, Venue, WalkIn } from '../../types'
+import type { Booking, CheckIn, Club, ClubAccount, ClubAddon, ClubCoach, CoachBookingRequest, CoachBookingSlot, CoachRequestMessage, ClubGalleryPhoto, ClubPaymentMethod, ClubProfileFields, ClubStaffRole, Court, CourtSession, Member, MembershipRequestStatus, MembershipType, Notification, OpenPlaySession, OpenPlaySignup, OwnerCallRequest, Profile, Reminder, StaffVenueGrant, SupportInquiry, Transaction, Venue, WalkIn } from '../../types'
 
 /** Platform role, granted by trusted provisioning only. */
 export interface DemoPlatformRole {
@@ -102,12 +102,31 @@ export interface DemoDB {
   ownerCallRequests?: DemoOwnerCallRequest[]
   /** Owner invites (mirrors public.club_owner_invites). Optional so older browser data still loads. */
   ownerInvites?: DemoOwnerInvite[]
+  /** Membership requests (mirrors public.membership_requests). Optional so older browser data still loads. */
+  membershipRequests?: DemoMembershipRequest[]
   sessionUserId: string | null
 }
 
 /** A court owner's request, as stored; mirrors public.owner_call_requests. */
 export interface DemoOwnerCallRequest extends Omit<OwnerCallRequest, 'handled_by_email'> {
   handled_by: string | null
+}
+
+/** A player's request to become a member of a club, as stored; mirrors public.membership_requests. */
+export interface DemoMembershipRequest {
+  id: string
+  club_id: string
+  user_id: string
+  member_id: string
+  status: MembershipRequestStatus
+  /** The plan staff chose when approving. */
+  membership_type: MembershipType | null
+  /** The amount staff recorded as received when approving. */
+  amount: number | null
+  decline_reason: string | null
+  requested_at: string
+  decided_at: string | null
+  decided_by: string | null
 }
 
 /** An owner invite, as stored; mirrors public.club_owner_invites. */

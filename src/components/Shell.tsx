@@ -26,11 +26,10 @@ import { LoadingShapes, SkeletonBlock, SkeletonCard, SkeletonRows } from './Skel
 
 /** Plain-language nav — short words players of any age recognize */
 const memberTabs = [
-  { to: '/member', end: true, label: 'Home', icon: Home },
+  { to: '/member', end: true, label: 'Account', icon: UserRound },
   { to: '/member/book', label: 'Book', icon: CalendarDays },
   { to: '/member/open', label: 'Play', icon: Users },
   { to: '/member/pass', label: 'My QR', icon: QrCode },
-  { to: '/member/profile', label: 'Account', icon: UserRound },
   { to: '/member/help', label: 'Help', icon: HelpCircle },
 ]
 

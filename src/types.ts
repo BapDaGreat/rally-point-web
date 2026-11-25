@@ -69,6 +69,10 @@ export interface Profile {
   role: Role
   phone?: string | null
   avatar_url?: string | null
+  /** What the person likes to be called in the app (1–30 characters); null when not set. */
+  nickname?: string | null
+  /** Their profile photo in the public member-photos bucket: `<user id>/<uuid>.<ext>`. */
+  photo_path?: string | null
   created_at: string
   venue_ids?: string[]
 }
@@ -271,6 +275,71 @@ export interface Member {
   notes?: string | null
   qr_token?: string | null
   created_at: string
+}
+
+/** What the person can change on their own account; the full name also goes to every club's member card. */
+export interface AccountInput {
+  full_name: string
+  /** Empty or null clears the nickname. */
+  nickname?: string | null
+}
+
+export type MembershipRequestStatus = 'pending' | 'approved' | 'declined' | 'cancelled'
+
+/** The person's latest membership request at one club, as they see it on their pass. */
+export interface MyMembershipRequest {
+  id: string
+  status: MembershipRequestStatus
+  decline_reason: string | null
+  requested_at: string
+  decided_at: string | null
+}
+
+/**
+ * One club's check-in pass in the person's QR wallet (from list_my_member_passes).
+ * Each club's code works only at that club, so a person in two clubs holds two passes.
+ */
+export interface MemberPass {
+  club_id: string
+  club_slug: string
+  club_name: string
+  member_id: string
+  member_code: string
+  full_name: string
+  membership_type: MembershipType | null
+  status: MemberStatus
+  expiry_date: string | null
+  /** A plan, status 'active' and an expiry not yet passed (Philippine date): the member rate applies. */
+  is_active_member: boolean
+  qr_token: string
+  /** The latest request at this club, or null when there has never been one. */
+  request: MyMembershipRequest | null
+}
+
+/** A membership request as the club's staff and admins see it. */
+export interface MembershipRequest {
+  id: string
+  member_id: string
+  member_code: string
+  full_name: string
+  nickname: string | null
+  photo_url: string | null
+  /** The member's current plan, before this request is decided. */
+  membership_type: MembershipType | null
+  member_status: MemberStatus
+  expiry_date: string | null
+  status: MembershipRequestStatus
+  requested_at: string
+  decided_at: string | null
+  decline_reason: string | null
+  /** Amount staff recorded as received when approving; null otherwise. */
+  amount: number | null
+}
+
+/** What staff enter to approve a request: the plan and the amount the player paid (0 when free). */
+export interface MembershipApproval {
+  membership_type: MembershipType
+  amount: number
 }
 
 export interface Court {
@@ -692,6 +761,19 @@ export interface CheckIn {
   staff_id?: string | null
   note?: string | null
   member?: Member
+}
+
+/** The member a scanned pass belongs to, with what the desk needs to recognise them. */
+export interface CheckInMember extends Member {
+  nickname?: string | null
+  photo_url?: string | null
+  is_active_member: boolean
+}
+
+/** What check_in_qr returns: the new check-in and who it was for. */
+export interface CheckInResult {
+  checkin: CheckIn
+  member: CheckInMember
 }
 
 export interface Transaction {

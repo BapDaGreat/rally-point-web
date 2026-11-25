@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { MembershipRequests } from '../components/MembershipRequests'
 import { PaymentConfirmations } from '../components/PaymentConfirmations'
 import { AppHeader, AppShell, SignOutButton } from '../components/Shell'
 import { LoadingShapes, SkeletonLine } from '../components/Skeleton'
+import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import { isDemoMode } from '../lib/supabase'
 import type { Booking, Role, Venue } from '../types'
@@ -44,6 +46,7 @@ function deskStatusWord(b: Booking) {
 }
 
 export function BookingsDesk({ role }: { role: 'staff' | 'admin' }) {
+  const { user } = useAuth()
   const [selection, setSelection] = useState<VenueSelection | null>(null)
   const [venueError, setVenueError] = useState<{ role: DeskRole; message: string } | null>(null)
   const [bookingResult, setBookingResult] = useState<BookingResult | null>(null)
@@ -90,7 +93,7 @@ export function BookingsDesk({ role }: { role: 'staff' | 'admin' }) {
     <AppShell role={role as Role}>
       <AppHeader
         title="Online bookings"
-        subtitle="Confirm GCash payments and see player bookings"
+        subtitle="Confirm GCash payments and memberships, and see player bookings"
         right={<SignOutButton />}
       />
       <main className="safe-bottom px-4 pt-4 space-y-3">
@@ -114,6 +117,8 @@ export function BookingsDesk({ role }: { role: 'staff' | 'admin' }) {
             onDecided={() => setSelection((current) => current?.role === role ? { ...current, requestId: current.requestId + 1 } : current)}
           />
         ) : null}
+        {/* Club-wide, not per venue: players ask the club for a membership, and the desk approves once they have paid. */}
+        <MembershipRequests staffId={user?.id} />
         {loading ? (
           <BookingsLoading />
         ) : error ? (
