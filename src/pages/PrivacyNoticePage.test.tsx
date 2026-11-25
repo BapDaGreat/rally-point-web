@@ -110,13 +110,13 @@ describe('PrivacyNoticePage', () => {
     expect(screen.queryByText(/Gensan/)).not.toBeInTheDocument()
   })
 
-  it('keeps the menu for a signed-in member and returns them to Help', () => {
+  it('keeps the account menu for a signed-in member and returns them to Help', () => {
     auth.user = member
     auth.activeClub = davao
     renderNotice({ pathname: '/privacy', state: { from: '/member/help' } })
 
     expect(screen.getByText('For Rally Point Davao players on the bRineLy booking portal')).toBeInTheDocument()
-    expect(screen.getAllByRole('navigation', { name: 'Main menu' }).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /^Account menu for / })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back to Help' })).toHaveAttribute('href', '/member/help')
     expect(screen.queryByRole('link', { name: 'Back to login' })).not.toBeInTheDocument()
     expect(api.publicClub).not.toHaveBeenCalled()

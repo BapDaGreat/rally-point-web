@@ -6,9 +6,10 @@ import { initialsOf } from '../lib/memberPass'
  * Takes a ready link (api.ts turns stored member-photos paths into links).
  * Used on Account, the QR pass, membership requests and the desk's check-in result.
  */
-export function MemberAvatar({ name, photoUrl, size = 'md' }: { name: string; photoUrl?: string | null; size?: 'md' | 'lg' }) {
+export function MemberAvatar({ name, photoUrl, size = 'md' }: { name: string; photoUrl?: string | null; size?: 'sm' | 'md' | 'lg' }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
-  const box = size === 'lg' ? 'h-20 w-20 text-2xl' : 'h-14 w-14 text-lg'
+  // 'sm' is the header's account button.
+  const box = size === 'lg' ? 'h-20 w-20 text-2xl' : size === 'sm' ? 'h-9 w-9 text-sm' : 'h-14 w-14 text-lg'
   if (photoUrl && failedUrl !== photoUrl) {
     return (
       <img

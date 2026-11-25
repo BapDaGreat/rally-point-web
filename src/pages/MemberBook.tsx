@@ -1177,6 +1177,8 @@ export function MemberBook() {
       ? authDialogOpen ? 'login' : 'choose'
       : 'pay'
   const homeLink = homeFor(user?.role ?? 'member')
+  // Players and members have no home screen of their own: their way on is Find a court.
+  const homeLabel = homeLink === '/clubs' ? 'Find another court' : 'Go to my home'
   const summaryClubName = clubName ?? activeClub?.name ?? null
   const dateLabel = fmtDate(`${dateYmd}T12:00:00+08:00`)
   // The times are in for this club and day, so an empty or closed list means just that.
@@ -1332,7 +1334,7 @@ export function MemberBook() {
             Book another
           </button>
           <Link to={homeLink} className="text-link inline-flex min-h-12 items-center">
-            Go to my home
+            {homeLabel}
           </Link>
         </section>
       ) : null}
@@ -1479,7 +1481,7 @@ export function MemberBook() {
           </p>
           <div className="flex flex-wrap gap-x-6">
             <Link to={homeLink} className="text-link inline-flex min-h-12 items-center">
-              Go to my home
+              {homeLabel}
             </Link>
             <Link to="/member/notifications" className="text-link inline-flex min-h-12 items-center">
               Open notifications

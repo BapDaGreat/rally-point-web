@@ -6,6 +6,11 @@ import { PublicFrame } from '../components/PublicFrame'
 import { LoadingShapes, SkeletonBlock, SkeletonLine } from '../components/Skeleton'
 import { api } from '../lib/api'
 import { homeFor } from '../lib/roleHome'
+
+/** Players and members land on the club's own page; staff and admins on their desk there. */
+function clubHome(role: Parameters<typeof homeFor>[0], slug: string) {
+  return role === 'member' ? `/clubs/${encodeURIComponent(slug)}` : homeFor(role)
+}
 import type { PublicClub } from '../types'
 import LoginPage from './LoginPage'
 
@@ -96,7 +101,7 @@ export function JoinClubPage() {
           className="btn-primary"
           onClick={() => {
             switchClub(existing.club_id)
-            nav(homeFor(existing.role), { replace: true })
+            nav(clubHome(existing.role, club.slug), { replace: true })
           }}
         >
           Go to {club.name}
@@ -110,7 +115,7 @@ export function JoinClubPage() {
     setError(null)
     try {
       const joined = await joinClub(club.slug)
-      nav(homeFor(joined.role), { replace: true })
+      nav(clubHome(joined.role, club.slug), { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not join this club. Please try again.')
       setBusy(false)

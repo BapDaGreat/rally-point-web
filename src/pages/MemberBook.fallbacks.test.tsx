@@ -377,7 +377,7 @@ describe('booking screen dead ends', () => {
     await sendReference(user)
     expect(await screen.findByRole('heading', { name: 'Waiting for the club to confirm' })).toBeInTheDocument()
     expect(screen.getByText(/You can leave this screen/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Go to my home' })).toHaveAttribute('href', '/member')
+    expect(screen.getByRole('link', { name: 'Find another court' })).toHaveAttribute('href', '/clubs')
     expect(screen.getByRole('link', { name: 'Open notifications' })).toHaveAttribute('href', '/member/notifications')
   })
 
@@ -390,7 +390,7 @@ describe('booking screen dead ends', () => {
     await sendReference(user)
     expect(await screen.findByText('Booking confirmed')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Book another' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Go to my home' })).toHaveAttribute('href', '/member')
+    expect(screen.getByRole('link', { name: 'Find another court' })).toHaveAttribute('href', '/clubs')
   })
 
   it('i: a turned-down payment offers to call the club when it lists a phone', async () => {
@@ -472,14 +472,15 @@ function asPhone(navHeight = 72) {
 }
 
 describe('picking a time', () => {
-  it('on a phone, keeps the pick and the only Continue in a bar above the bottom menu', async () => {
+  it('on a phone, keeps the pick and the only Continue in a bar at the bottom of the screen', async () => {
     const restore = asPhone(72)
     try {
       authState.user = memberUser
       authState.activeClub = gensanClub
       renderOwnClub()
       const bar = await screen.findByRole('region', { name: 'Your pick' })
-      expect(bar).toHaveStyle({ bottom: '72px' })
+      // Players have no bottom menu any more, so the bar sits at the bottom of the screen.
+      expect(bar).toHaveStyle({ bottom: '0px' })
       expect(within(bar).getByText('Pick your hours to continue')).toBeInTheDocument()
       await waitFor(() => expect(within(bar).getByRole('button', { name: 'Continue' })).toBeDisabled())
       expect(within(bar).getByRole('button', { name: 'Continue' })).toHaveAttribute('aria-describedby', 'book-pick-hint')

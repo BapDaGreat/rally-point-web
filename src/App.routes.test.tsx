@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Profile } from './types'
@@ -68,7 +68,10 @@ describe('unknown addresses', () => {
     auth.user = { id: 'm1', email: 'm@example.com', full_name: 'Mia', role: 'member', created_at: '2026-09-01' }
     renderAt('/member/nowhere')
     expect(screen.getByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Go to my home' })).toHaveAttribute('href', '/member')
+    // Players and members have no home screen of their own: they carry on from the public site.
+    const page = within(screen.getByRole('main'))
+    expect(page.getByRole('link', { name: 'Go to the home page' })).toHaveAttribute('href', '/')
+    expect(page.getByRole('link', { name: 'Find a court' })).toHaveAttribute('href', '/clubs')
   })
 })
 

@@ -44,6 +44,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 
 function Protected({ roles }: { roles?: Role[] }) {
   const { user, loading } = useAuth()
+  const location = useLocation()
   useEffect(() => {
     if (user) void api.processDueReminders()
   }, [user])
@@ -54,7 +55,8 @@ function Protected({ roles }: { roles?: Role[] }) {
       </div>
     )
   }
-  if (!user) return <Navigate to="/login" replace />
+  // Remember the page, so signing in comes back to it.
+  if (!user) return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
   if (roles && !roles.includes(user.role)) {
     return <Navigate to={homeFor(user.role)} replace />
   }
@@ -169,7 +171,8 @@ function RootRedirect() {
       </div>
     )
   }
-  // Visitors choose between playing (Find a court) and listing a club; signed-in people go to their own home.
-  if (!user) return <WelcomePage />
+  // Visitors, players and members see the welcome page (members with their account menu);
+  // staff, admins and superadmins go to their own desk.
+  if (!user || user.role === 'member') return <WelcomePage />
   return <Navigate to={homeFor(user.role)} replace />
 }

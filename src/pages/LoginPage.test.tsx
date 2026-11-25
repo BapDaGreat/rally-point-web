@@ -429,12 +429,11 @@ describe("LoginPage page state", () => {
     expect(screen.queryByText(/Court owner\?/)).not.toBeInTheDocument();
   });
 
-  it("goes to the person's home even when the page state names a return path", async () => {
-    // Club pages now sign visitors in with the dialog, so nothing sends a return path any more.
+  it("takes a player back to the page they came from", async () => {
     const user = userEvent.setup();
     authState.signIn.mockResolvedValue({ id: "u1", email: "p@example.com", full_name: "Pia", role: "member", created_at: "2026-09-01" });
     render(
-      <MemoryRouter initialEntries={[{ pathname: "/login", state: { returnTo: "/clubs/rally-point-davao" } }]}>
+      <MemoryRouter initialEntries={[{ pathname: "/login", state: { from: "/clubs/rally-point-davao" } }]}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="*" element={<Where />} />
@@ -445,7 +444,43 @@ describe("LoginPage page state", () => {
     await user.type(screen.getByLabelText("Email"), "p@example.com");
     await user.type(screen.getByLabelText("Password"), "secret123");
     await user.click(loginSubmitButton());
-    expect(await screen.findByText("At /member")).toBeInTheDocument();
+    expect(await screen.findByText("At /clubs/rally-point-davao")).toBeInTheDocument();
+  });
+
+  it("sends staff to their desk whatever page they came from", async () => {
+    const user = userEvent.setup();
+    authState.signIn.mockResolvedValue({ id: "u2", email: "s@example.com", full_name: "Sam", role: "staff", created_at: "2026-09-01" });
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/login", state: { from: "/clubs/rally-point-davao" } }]}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="*" element={<Where />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.type(screen.getByLabelText("Email"), "s@example.com");
+    await user.type(screen.getByLabelText("Password"), "secret123");
+    await user.click(loginSubmitButton());
+    expect(await screen.findByText("At /staff")).toBeInTheDocument();
+  });
+
+  it("never returns to the sign-in page itself or to another site", async () => {
+    const user = userEvent.setup();
+    authState.signIn.mockResolvedValue({ id: "u1", email: "p@example.com", full_name: "Pia", role: "member", created_at: "2026-09-01" });
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/login", state: { from: "//evil.example/steal" } }]}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="*" element={<Where />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.type(screen.getByLabelText("Email"), "p@example.com");
+    await user.type(screen.getByLabelText("Password"), "secret123");
+    await user.click(loginSubmitButton());
+    expect(await screen.findByText("At /clubs")).toBeInTheDocument();
   });
 });
 
@@ -722,7 +757,7 @@ describe("LoginPage sign-up code step", () => {
     await user.click(screen.getByRole("button", { name: "Confirm and continue" }));
 
     expect(authState.verifySignupCode).toHaveBeenCalledWith("new@example.com", "123456");
-    expect(await screen.findByText("At /member")).toBeInTheDocument();
+    expect(await screen.findByText("At /clubs")).toBeInTheDocument();
   });
 
   it("reports a confirmed sign-up to the booking dialog instead of navigating away", async () => {
@@ -754,7 +789,7 @@ describe("LoginPage sign-up code step", () => {
     expect(await screen.findByText("Joining Rally Point Davao")).toBeInTheDocument();
     await user.type(screen.getByLabelText("6-digit code"), "123456");
     await user.click(screen.getByRole("button", { name: "Confirm and continue" }));
-    expect(await screen.findByText("At /member")).toBeInTheDocument();
+    expect(await screen.findByText("At /clubs")).toBeInTheDocument();
   });
 
   it("explains a wrong or expired code and stays on the code step", async () => {
@@ -914,7 +949,7 @@ describe("LoginPage sign-up code step", () => {
     renderJoin();
     await fillAndJoin(user);
 
-    expect(await screen.findByText("At /member")).toBeInTheDocument();
+    expect(await screen.findByText("At /clubs")).toBeInTheDocument();
     expect(authState.verifySignupCode).not.toHaveBeenCalled();
   });
 });

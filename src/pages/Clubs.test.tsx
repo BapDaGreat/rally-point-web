@@ -303,7 +303,8 @@ describe('Find a court', () => {
     const account = within(screen.getByRole('navigation', { name: 'Account' }))
     expect(account.getByRole('link', { name: 'Log in' })).toHaveAttribute('href', '/login')
     await userEvent.setup().click(account.getByRole('link', { name: 'Sign up' }))
-    expect(await screen.findByText('At /login {"mode":"join"}')).toBeInTheDocument()
+    // Sign up remembers this page, so signing up comes straight back to it.
+    expect(await screen.findByText('At /login {"mode":"join","from":"/clubs"}')).toBeInTheDocument()
   })
 
   it('shows real photos instead of the sample drawing once a club adds them', async () => {

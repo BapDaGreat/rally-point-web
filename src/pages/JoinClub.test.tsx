@@ -107,7 +107,8 @@ describe('JoinClubPage', () => {
     expect(screen.getByText('Sample photo')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Join Rally Point Davao' }))
     expect(state.joinClub).toHaveBeenCalledWith('rally-point-davao')
-    expect(await screen.findByText('At /member')).toBeInTheDocument()
+    // Players land on the club's own page.
+    expect(await screen.findByText('At /clubs/rally-point-davao')).toBeInTheDocument()
   })
 
   it('shows join errors without leaving the page', async () => {
@@ -127,7 +128,8 @@ describe('JoinClubPage', () => {
     renderJoin()
     await user.click(await screen.findByRole('button', { name: 'Go to Rally Point Davao' }))
     expect(state.switchClub).toHaveBeenCalledWith('club-davao')
-    expect(await screen.findByText('At /member')).toBeInTheDocument()
+    // Players land on the club's own page.
+    expect(await screen.findByText('At /clubs/rally-point-davao')).toBeInTheDocument()
   })
 
   it('tells platform accounts they cannot join clubs', async () => {

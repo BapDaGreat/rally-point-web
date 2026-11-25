@@ -10,7 +10,7 @@ import { ClubBadge } from '../components/Shell'
 import { PublicFrame } from '../components/PublicFrame'
 import { helpFaqs } from '../lib/helpContent'
 import { privacyNoticePath, type PrivacyNoticeState } from '../lib/privacyNotice'
-import { homeFor } from '../lib/roleHome'
+import { afterSignIn } from '../lib/roleHome'
 import { LOGIN_PHOTO, stockSrc, stockSrcSet } from '../lib/stockPhotos'
 import { useModalDialog } from '../lib/useModalDialog'
 
@@ -158,7 +158,9 @@ export default function LoginPage({
   const nav = useNavigate()
   // The Find a court "Sign up" button opens the sign-up tab directly.
   const location = useLocation()
-  const navState = location.state as { mode?: unknown; owner?: unknown } | null
+  const navState = location.state as { mode?: unknown; owner?: unknown; from?: unknown } | null
+  // The page they were on: players and members go back to it once signed in.
+  const returnTo = navState?.from
   // The court-owner page opens sign-up with a note: owners use the email they gave Rally Point.
   const ownerSignup = navState?.owner === true && !joinClub
   const [mode, setMode] = useState<Mode>(joinClub || navState?.mode === 'join' ? 'join' : 'login')
@@ -238,13 +240,16 @@ export default function LoginPage({
 
   if (!loading && user) {
     // The dialog's caller closes it once told; the page sends the person to their home.
-    return dialog ? null : <Navigate to={homeFor(user.role)} replace />
+    return dialog ? null : <Navigate to={afterSignIn(user.role, returnTo)} replace />
   }
 
-  /** Once signed in: the dialog tells its caller; the page goes to `next`, or the person's home. */
+  /**
+   * Once signed in: the dialog tells its caller; the page goes to `next` (a club join link),
+   * or back to the page the person came from (players and members), or their desk.
+   */
   function finishSignIn(profile: Profile, next?: string) {
     if (dialog) reportAuthenticated(profile)
-    else nav(next ?? homeFor(profile.role), { replace: true })
+    else nav(next ?? afterSignIn(profile.role, returnTo), { replace: true })
   }
 
   function openCodeStep(sentTo: string, options?: { cooldownSeconds?: number; notice?: string | null }) {
