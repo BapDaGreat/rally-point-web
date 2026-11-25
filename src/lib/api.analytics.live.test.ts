@@ -176,7 +176,7 @@ describe('range reads (live)', () => {
     expect(result[1499]).toMatchObject({ id: 'bk-0', hours: 1, amount: 500 })
     const ranges = live.calls.filter((call) => call.table === 'bookings' && call.op === 'range').map((call) => call.args)
     expect(ranges).toEqual([[0, 999], [1000, 1999], [1500, 2499]])
-    expect(live.calls).toContainEqual({ table: 'bookings', op: 'select', args: ['*, court:courts(*)'] })
+    expect(live.calls).toContainEqual({ table: 'bookings', op: 'select', args: ['*, court:courts!bookings_court_id_fkey(*)'] })
     expect(live.calls).toContainEqual({ table: 'bookings', op: 'eq', args: ['club_id', live.clubId] })
   })
 
