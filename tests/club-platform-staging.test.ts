@@ -177,6 +177,17 @@ describe('backup and approval gates', () => {
       .toThrow('unknown or changed Storage bucket')
     expect(knownBucketsOnly([{ ...buckets[0], public: false }])).toBe(false)
     expect(knownBucketsOnly([{ ...buckets[0], file_size_limit: 52428800 }])).toBe(false)
+    const memberPhotos = { ...buckets[0], id: 'member-photos' }
+    const withPhotos = ['20261023090000', '20261125090000']
+    expect(knownBucketsOnly([buckets[0], memberPhotos], withPhotos)).toBe(true)
+    // Before the member account release, staging has no member-photos bucket yet.
+    expect(knownBucketsOnly(buckets, ['20261023090000'])).toBe(true)
+    expect(knownBucketsOnly(buckets, withPhotos)).toBe(false)
+    expect(knownBucketsOnly([memberPhotos], withPhotos)).toBe(false)
+    expect(knownBucketsOnly([buckets[0], buckets[0]], ['20261023090000'])).toBe(false)
+    expect(knownBucketsOnly([buckets[0], { ...memberPhotos, public: false }], withPhotos)).toBe(false)
+    expect(publicObjectUrl('member-photos', 'u/p.webp'))
+      .toBe('https://iclrvvsiwypxlwrwgqia.supabase.co/storage/v1/object/public/member-photos/u/p.webp')
     expect(publicObjectUrl('court-photos', 'a/b c.webp'))
       .toBe('https://iclrvvsiwypxlwrwgqia.supabase.co/storage/v1/object/public/court-photos/a/b%20c.webp')
     expect(() => publicObjectUrl('court-photos', 'a/../secret.webp')).toThrow('Unsafe')
@@ -466,6 +477,66 @@ describe('staging releases', () => {
     expect([...postflight.matchAll(/select \d+, '([a-z_]+)'/g)].map(match => match[1])).toEqual([...rentACoachChecks])
     expect(postflight).toContain("version = '20261124110000'")
     expect(postflight).toContain('= 34')
+  })
+
+  it('builds the member account release on the 34-migration state, approved, and re-runs every earlier check', async () => {
+    const { memberAccountRelease, rentACoachRelease, releaseManifest, releases } = await load()
+    const { memberAccountChecks } = await import('../scripts/club-platform-checks.mjs')
+    const { releaseApprovals } = await import('../scripts/staging-release-approvals.mjs')
+    expect(memberAccountRelease.baseVersions).toEqual([...rentACoachRelease.baseVersions, '20261124110000'])
+    expect(memberAccountRelease.baseVersions).toHaveLength(34)
+    expect(memberAccountRelease.migrations)
+      .toEqual(['20261125090000_member_profile.sql', '20261125090100_membership_requests.sql'])
+    expect(memberAccountRelease.stateCheck).toEqual({ file: 'rent_a_coach_postflight.sql', kind: 'rentACoach' })
+    expect(memberAccountRelease.postChecks.map((check: { kind: string, ignore: string[] }) => [check.kind, [...check.ignore]]).slice(0, 2)).toEqual([
+      ['memberAccount', []],
+      ['rentACoach', ['ledger_has_rent_a_coach']],
+    ])
+    // Every earlier postflight still runs, after its own release's checks.
+    expect(memberAccountRelease.postChecks.slice(2).map((check: { file: string }) => check.file))
+      .toEqual(rentACoachRelease.postChecks.slice(1).map((check: { file: string }) => check.file))
+    expect(releaseApprovals['member-account-20261125']).toMatch(/^[a-f0-9]{64}$/)
+    const earlier = Object.values(releases).filter(release => release !== memberAccountRelease)
+      .flatMap((release: { dirs: object, databases: object }) => [...Object.values(release.dirs), ...Object.values(release.databases)])
+    expect([...Object.values(memberAccountRelease.dirs), ...Object.values(memberAccountRelease.databases)]
+      .filter(name => earlier.includes(name))).toEqual([])
+    const { contents } = releaseManifest(memberAccountRelease)
+    const profile = contents.get('supabase/migrations/20261125090000_member_profile.sql')?.toString('utf8') ?? ''
+    expect(profile).toContain("values ('member-photos', 'member-photos', true, 5242880")
+    const requests = contents.get('supabase/migrations/20261125090100_membership_requests.sql')?.toString('utf8') ?? ''
+    expect(requests).toContain('create policy no_direct_api_access on public.membership_requests')
+    const postflight = contents.get('supabase/verification/member_account_postflight.sql')?.toString('utf8') ?? ''
+    expect([...postflight.matchAll(/select \d+, '([a-z_]+)'/g)].map(match => match[1])).toEqual([...memberAccountChecks])
+    expect(postflight).toContain("version = '20261125090000'")
+    expect(postflight).toContain("version = '20261125090100'")
+    expect(postflight).toContain('= 36')
+  })
+
+  it('builds the dashboard analytics release on the 36-migration state and re-runs every earlier check', async () => {
+    const { memberAccountRelease, dashboardAnalyticsRelease, releaseManifest, releases } = await load()
+    const { dashboardAnalyticsChecks } = await import('../scripts/club-platform-checks.mjs')
+    expect(dashboardAnalyticsRelease.baseVersions).toEqual([...memberAccountRelease.baseVersions, '20261125090000', '20261125090100'])
+    expect(dashboardAnalyticsRelease.baseVersions).toHaveLength(36)
+    expect(dashboardAnalyticsRelease.migrations).toEqual(['20261125120000_dashboard_analytics.sql'])
+    expect(dashboardAnalyticsRelease.stateCheck).toEqual({ file: 'member_account_postflight.sql', kind: 'memberAccount' })
+    expect(dashboardAnalyticsRelease.postChecks.map((check: { kind: string, ignore: string[] }) => [check.kind, [...check.ignore]]).slice(0, 2)).toEqual([
+      ['dashboardAnalytics', []],
+      ['memberAccount', ['ledger_has_member_account']],
+    ])
+    const earlier = Object.values(releases).filter(release => release !== dashboardAnalyticsRelease)
+      .flatMap((release: { dirs: object, databases: object }) => [...Object.values(release.dirs), ...Object.values(release.databases)])
+    expect([...Object.values(dashboardAnalyticsRelease.dirs), ...Object.values(dashboardAnalyticsRelease.databases)]
+      .filter(name => earlier.includes(name))).toEqual([])
+    const { contents } = releaseManifest(dashboardAnalyticsRelease)
+    const migration = contents.get('supabase/migrations/20261125120000_dashboard_analytics.sql')?.toString('utf8') ?? ''
+    // Read-only summaries: definer functions with a pinned search path, never writing a table.
+    expect(migration).toContain('function public.admin_club_analytics(p_club_id uuid, p_days integer)')
+    expect(migration).toContain('function public.platform_analytics(p_days integer)')
+    expect(migration).not.toMatch(/\b(insert into|update public\.|delete from)\b/i)
+    const postflight = contents.get('supabase/verification/dashboard_analytics_postflight.sql')?.toString('utf8') ?? ''
+    expect([...postflight.matchAll(/select \d+, '([a-z_]+)'/g)].map(match => match[1])).toEqual([...dashboardAnalyticsChecks])
+    expect(postflight).toContain("version = '20261125120000'")
+    expect(postflight).toContain('= 37')
   })
 
   it('hashes the release definition and every file, and returns the bytes it hashed', async () => {

@@ -74,11 +74,13 @@ describe('demo platform access', () => {
       court_count: 2,
       member_count: 3,
       admin_count: 1,
-      gross_amount: 1350,
-      commission_amount: 81,
-      club_net_amount: 1269,
-      entry_count: 2,
     })
+    // Totals cover every recorded line: today's two seeded charges plus the generated past.
+    const davaoLines = demoStore.platformLedger(DEMO_DAVAO_CLUB_ID, 1000)
+    expect(davao.entry_count).toBe(davaoLines.length)
+    expect(davao.gross_amount).toBeCloseTo(davaoLines.reduce((total, line) => total + line.gross_amount, 0), 2)
+    expect(davao.commission_amount).toBeCloseTo(davao.gross_amount * 0.06, 0)
+    expect(davao.club_net_amount).toBeCloseTo(davao.gross_amount - davao.commission_amount, 2)
     expect(JSON.stringify(davao)).not.toMatch(/Rico|Ana Reyes|rico@email/)
     const gensan = clubs.find((club) => club.club_id === DEMO_CLUB_ID)!
     expect(gensan).toMatchObject({ status: 'active', commission_rate: 5, member_count: 40, admin_count: 1 })
@@ -229,11 +231,13 @@ describe('demo commission ledger', () => {
   it('lists ledger lines newest first, for every club or one club', () => {
     asSuperadmin()
     const davao = demoStore.platformLedger(DEMO_DAVAO_CLUB_ID)
-    expect(davao.map((line) => line.description)).toEqual(['Extend Davao Court 1 +1 hour', 'Davao Court 1 — 2 hours'])
+    // Today's two seeded charges come first; the generated past follows, all before today.
+    expect(davao.slice(0, 2).map((line) => line.description)).toEqual(['Extend Davao Court 1 +1 hour', 'Davao Court 1 — 2 hours'])
     expect(davao.every((line) => line.club_name === 'Rally Point Davao')).toBe(true)
-    expect(davao.map((line) => line.commission_amount)).toEqual([27, 54])
-    const all = demoStore.platformLedger()
-    expect(all.length).toBeGreaterThan(davao.length)
+    expect(davao.slice(0, 2).map((line) => line.commission_amount)).toEqual([27, 54])
+    expect(davao.every((line, index) => index === 0 || line.created_at <= davao[index - 1].created_at)).toBe(true)
+    const all = demoStore.platformLedger(null, 1000)
+    expect(all.length).toBeGreaterThan(demoStore.platformLedger(DEMO_DAVAO_CLUB_ID, 1000).length)
     expect(all.some((line) => line.club_id === DEMO_CLUB_ID)).toBe(true)
     expect(demoStore.platformLedger(null, 1)).toHaveLength(1)
   })

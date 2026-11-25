@@ -427,12 +427,126 @@ export const rentACoachRelease = Object.freeze({
   databases: Object.freeze({ restore: 'rally_staging_backup_20261124_r2_restore', dryRun: 'rally_staging_backup_20261124_r2_dryrun' }),
 })
 
+// Member account (owner, 2026-11-24: "yes", approving the member account plan): a nickname and one
+// profile photo per person (update_my_account and set_my_photo; profiles stay read-only for API
+// roles), the public member-photos Storage bucket with own-folder policies, and membership requests
+// that the club's staff or admins approve (plan, 30 days, amount received as a membership charge with
+// no commission) or decline, with the QR pass wallet (list_my_member_passes) and three more fields in
+// check_in_qr's member object. Two migrations. No booking is written, so the reservation-write pause
+// is unchanged. No trigger is added to auth.users. Once the bucket exists, captures copy its files
+// (knownStorageBuckets). Not approved: staging-release-approvals.mjs holds null for it.
+export const memberAccountRelease = Object.freeze({
+  id: 'member-account-20261125',
+  title: 'Member account and membership requests',
+  baseVersions: Object.freeze([...rentACoachRelease.baseVersions, '20261124110000'].sort()),
+  migrations: Object.freeze(['20261125090000_member_profile.sql', '20261125090100_membership_requests.sql']),
+  // The SQL that runs and the code that runs it. Approval pins all of these bytes.
+  files: Object.freeze(['supabase/migrations/20261125090000_member_profile.sql',
+    'supabase/migrations/20261125090100_membership_requests.sql',
+    'supabase/verification/member_account_postflight.sql', 'supabase/verification/rent_a_coach_postflight.sql',
+    'supabase/verification/member_codes_booking_length_postflight.sql',
+    'supabase/verification/member_gcash_checkout_postflight.sql', 'supabase/verification/owner_onboarding_postflight.sql',
+    'supabase/verification/club_profile_postflight.sql', 'supabase/verification/court_photos_postflight.sql',
+    'supabase/verification/court_marketplace_postflight.sql', 'supabase/verification/supabase_advisor_followup_postflight.sql',
+    'supabase/verification/supabase_advisor_postflight.sql', 'supabase/verification/club_platform_postflight.sql',
+    'supabase/verification/two_club_isolation.sql', 'supabase/verification/schema_fingerprint.sql',
+    'supabase/verification/backup_content_inventory.sql', 'supabase/verification/reservation_write_pause_readonly.sql',
+    'supabase/verification/staging_privacy_readonly_preflight.sql', 'scripts/run-staging-release-apply.mjs',
+    'scripts/club-platform-staging.mjs', 'scripts/club-platform-checks.mjs', 'scripts/restore-catalog-checks.mjs',
+    'scripts/restore-data-checks.mjs']),
+  stateCheck: Object.freeze({ file: 'rent_a_coach_postflight.sql', kind: 'rentACoach' }),
+  postChecks: Object.freeze([
+    Object.freeze({ file: 'member_account_postflight.sql', kind: 'memberAccount', ignore: Object.freeze([]) }),
+    // Earlier postflights count 22 to 34 migrations; this release brings staging to 36.
+    Object.freeze({ file: 'rent_a_coach_postflight.sql', kind: 'rentACoach', ignore: Object.freeze(['ledger_has_rent_a_coach']) }),
+    Object.freeze({ file: 'member_codes_booking_length_postflight.sql', kind: 'memberCodesBookingLength',
+      ignore: Object.freeze(['ledger_has_codes_and_length']) }),
+    Object.freeze({ file: 'member_gcash_checkout_postflight.sql', kind: 'memberGcashCheckout',
+      ignore: Object.freeze(['ledger_has_member_gcash_checkout']) }),
+    Object.freeze({ file: 'owner_onboarding_postflight.sql', kind: 'ownerOnboarding',
+      ignore: Object.freeze(['ledger_has_owner_onboarding']) }),
+    Object.freeze({ file: 'club_profile_postflight.sql', kind: 'clubProfile', ignore: Object.freeze(['ledger_has_club_profile']) }),
+    Object.freeze({ file: 'court_photos_postflight.sql', kind: 'courtPhotos', ignore: Object.freeze(['ledger_has_court_photos']) }),
+    Object.freeze({ file: 'court_marketplace_postflight.sql', kind: 'courtMarketplace',
+      ignore: Object.freeze(['ledger_has_court_marketplace', 'venues_open_all_day']) }),
+    Object.freeze({ file: 'supabase_advisor_followup_postflight.sql', kind: 'advisorFollowup',
+      ignore: Object.freeze(['ledger_has_followup']) }),
+    Object.freeze({ file: 'supabase_advisor_postflight.sql', kind: 'advisor',
+      ignore: Object.freeze(['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']) }),
+    Object.freeze({ file: 'club_platform_postflight.sql', kind: 'postflight', ignore: Object.freeze(['ledger_has_every_migration']) }),
+  ]),
+  isolation: Object.freeze({ file: 'two_club_isolation.sql', plan: 55 }),
+  dirs: Object.freeze({
+    capture: 'docs/release-private/staging-backup-20261125-member-account-r1',
+    restore: 'docs/release-private/staging-backup-restore-20261125-member-account-r1',
+    dryRun: 'docs/release-private/member-account-staging-dryrun-20261125-r1',
+    apply: 'docs/release-private/member-account-staging-apply-20261125-r1',
+  }),
+  // Own folder and database names: the dashboard analytics release (another worktree) used the plain
+  // 20261125-r1 capture folder first, and captures are one-shot.
+  databases: Object.freeze({ restore: 'rally_staging_backup_20261125_member_r1_restore', dryRun: 'rally_staging_backup_20261125_member_r1_dryrun' }),
+})
+
+// Staging at 36 migrations (member account applied) plus the two read-only dashboard summary
+// functions, numbered after the member-account migrations.
+export const dashboardAnalyticsRelease = Object.freeze({
+  id: 'dashboard-analytics-20261125',
+  title: 'Dashboard analytics',
+  baseVersions: Object.freeze([...memberAccountRelease.baseVersions, '20261125090000', '20261125090100'].sort()),
+  migrations: Object.freeze(['20261125120000_dashboard_analytics.sql']),
+  // The SQL that runs and the code that runs it. Approval pins all of these bytes.
+  files: Object.freeze(['supabase/migrations/20261125120000_dashboard_analytics.sql',
+    'supabase/verification/dashboard_analytics_postflight.sql', 'supabase/verification/member_account_postflight.sql',
+    'supabase/verification/rent_a_coach_postflight.sql', 'supabase/verification/member_codes_booking_length_postflight.sql',
+    'supabase/verification/member_gcash_checkout_postflight.sql', 'supabase/verification/owner_onboarding_postflight.sql',
+    'supabase/verification/club_profile_postflight.sql', 'supabase/verification/court_photos_postflight.sql',
+    'supabase/verification/court_marketplace_postflight.sql', 'supabase/verification/supabase_advisor_followup_postflight.sql',
+    'supabase/verification/supabase_advisor_postflight.sql', 'supabase/verification/club_platform_postflight.sql',
+    'supabase/verification/two_club_isolation.sql', 'supabase/verification/schema_fingerprint.sql',
+    'supabase/verification/backup_content_inventory.sql', 'supabase/verification/reservation_write_pause_readonly.sql',
+    'supabase/verification/staging_privacy_readonly_preflight.sql', 'scripts/run-staging-release-apply.mjs',
+    'scripts/club-platform-staging.mjs', 'scripts/club-platform-checks.mjs', 'scripts/restore-catalog-checks.mjs',
+    'scripts/restore-data-checks.mjs']),
+  stateCheck: Object.freeze({ file: 'member_account_postflight.sql', kind: 'memberAccount' }),
+  postChecks: Object.freeze([
+    Object.freeze({ file: 'dashboard_analytics_postflight.sql', kind: 'dashboardAnalytics', ignore: Object.freeze([]) }),
+    // Earlier postflights count 22 to 36 migrations; this release brings staging to 37.
+    Object.freeze({ file: 'member_account_postflight.sql', kind: 'memberAccount', ignore: Object.freeze(['ledger_has_member_account']) }),
+    Object.freeze({ file: 'rent_a_coach_postflight.sql', kind: 'rentACoach', ignore: Object.freeze(['ledger_has_rent_a_coach']) }),
+    Object.freeze({ file: 'member_codes_booking_length_postflight.sql', kind: 'memberCodesBookingLength',
+      ignore: Object.freeze(['ledger_has_codes_and_length']) }),
+    Object.freeze({ file: 'member_gcash_checkout_postflight.sql', kind: 'memberGcashCheckout',
+      ignore: Object.freeze(['ledger_has_member_gcash_checkout']) }),
+    Object.freeze({ file: 'owner_onboarding_postflight.sql', kind: 'ownerOnboarding',
+      ignore: Object.freeze(['ledger_has_owner_onboarding']) }),
+    Object.freeze({ file: 'club_profile_postflight.sql', kind: 'clubProfile', ignore: Object.freeze(['ledger_has_club_profile']) }),
+    Object.freeze({ file: 'court_photos_postflight.sql', kind: 'courtPhotos', ignore: Object.freeze(['ledger_has_court_photos']) }),
+    Object.freeze({ file: 'court_marketplace_postflight.sql', kind: 'courtMarketplace',
+      ignore: Object.freeze(['ledger_has_court_marketplace', 'venues_open_all_day']) }),
+    Object.freeze({ file: 'supabase_advisor_followup_postflight.sql', kind: 'advisorFollowup',
+      ignore: Object.freeze(['ledger_has_followup']) }),
+    Object.freeze({ file: 'supabase_advisor_postflight.sql', kind: 'advisor',
+      ignore: Object.freeze(['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']) }),
+    Object.freeze({ file: 'club_platform_postflight.sql', kind: 'postflight', ignore: Object.freeze(['ledger_has_every_migration']) }),
+  ]),
+  isolation: Object.freeze({ file: 'two_club_isolation.sql', plan: 55 }),
+  dirs: Object.freeze({
+    // r1 (staging-backup-20261125-r1) stopped after its dumps: the local database container was removed mid-run.
+    capture: 'docs/release-private/staging-backup-20261125-r2',
+    restore: 'docs/release-private/staging-backup-restore-20261125-r2',
+    dryRun: 'docs/release-private/dashboard-analytics-staging-dryrun-20261125-r1',
+    apply: 'docs/release-private/dashboard-analytics-staging-apply-20261125-r1',
+  }),
+  databases: Object.freeze({ restore: 'rally_staging_backup_20261125_r2_restore', dryRun: 'rally_staging_backup_20261125_r2_dryrun' }),
+})
+
 export const releases = Object.freeze({ [advisorFixesRelease.id]: advisorFixesRelease,
   [advisorFollowupRelease.id]: advisorFollowupRelease, [courtMarketplaceRelease.id]: courtMarketplaceRelease,
   [courtPhotosRelease.id]: courtPhotosRelease, [clubProfileRelease.id]: clubProfileRelease,
   [ownerOnboardingRelease.id]: ownerOnboardingRelease, [memberGcashCheckoutRelease.id]: memberGcashCheckoutRelease,
   [memberCodesBookingLengthRelease.id]: memberCodesBookingLengthRelease,
-  [rentACoachRelease.id]: rentACoachRelease })
+  [rentACoachRelease.id]: rentACoachRelease,
+  [memberAccountRelease.id]: memberAccountRelease, [dashboardAnalyticsRelease.id]: dashboardAnalyticsRelease })
 
 export function getRelease(id) {
   assert.ok(Object.hasOwn(releases, id ?? ''), `Unknown release: ${id}. Known: ${Object.keys(releases).join(', ')}`)
@@ -485,9 +599,15 @@ export const snapshotNames = Object.freeze(['fingerprint', 'grants', 'inventory'
 
 // Storage. The logical dump holds the bucket and file records (storage.buckets and
 // storage.objects); the files themselves live outside the database, so a capture copies
-// them. Only the bucket the court photos release created may exist; anything else stops it.
-export const knownStorageBuckets = Object.freeze([Object.freeze({ id: 'court-photos', public: true,
-  file_size_limit: 5242880, allowed_mime_types: Object.freeze(['image/jpeg', 'image/png', 'image/webp']) })])
+// them. Only these buckets may exist, with these settings; anything else stops it. A bucket
+// must exist once the migration that creates it is in the migration history; before that it
+// may be absent (so the capture before the member account release passes without member-photos).
+export const knownStorageBuckets = Object.freeze([
+  Object.freeze({ id: 'court-photos', migration: '20261023090000', public: true,
+    file_size_limit: 5242880, allowed_mime_types: Object.freeze(['image/jpeg', 'image/png', 'image/webp']) }),
+  Object.freeze({ id: 'member-photos', migration: '20261125090000', public: true,
+    file_size_limit: 5242880, allowed_mime_types: Object.freeze(['image/jpeg', 'image/png', 'image/webp']) }),
+])
 export const storageBucketsSql = `select id, public, file_size_limit, allowed_mime_types
   from storage.buckets order by id;`
 export const storageObjectsSql = `select bucket_id, name, (metadata->>'size')::bigint as size,
@@ -497,11 +617,19 @@ export const storageCaptureFiles = Object.freeze(['storage_buckets.json', 'stora
 export const storageObjectFile = index => `storage-object-${String(index + 1).padStart(5, '0')}.bin`
 const storageObjectFilePattern = /^storage-object-\d{5}\.bin$/
 
-/** True when staging's buckets are exactly the known ones, with the known settings. */
-export function knownBucketsOnly(rows) {
-  const shape = bucket => ({ id: bucket.id, public: bucket.public === true, file_size_limit: Number(bucket.file_size_limit),
-    allowed_mime_types: [...(bucket.allowed_mime_types ?? [])].sort() })
-  return Array.isArray(rows) && isDeepStrictEqual(rows.map(shape), knownStorageBuckets.map(shape))
+/**
+ * True when every bucket staging has is a known one with the known settings, none twice, and every
+ * known bucket whose migration is in `versions` (the migration history) is there.
+ */
+export function knownBucketsOnly(rows, versions = []) {
+  const shape = bucket => ({ id: bucket?.id, public: bucket?.public === true, file_size_limit: Number(bucket?.file_size_limit),
+    allowed_mime_types: [...(bucket?.allowed_mime_types ?? [])].sort() })
+  if (!Array.isArray(rows) || !Array.isArray(versions)) return false
+  const known = new Map(knownStorageBuckets.map(bucket => [bucket.id, shape(bucket)]))
+  const ids = rows.map(row => row?.id)
+  return new Set(ids).size === ids.length
+    && rows.every(row => known.has(row?.id) && isDeepStrictEqual(shape(row), known.get(row.id)))
+    && knownStorageBuckets.every(bucket => !versions.includes(bucket.migration) || ids.includes(bucket.id))
 }
 
 /** The public link of a stored file in a known (public) bucket; staging's unless a test names another host. */
@@ -539,7 +667,9 @@ export async function downloadStoredFile(object, label, { fetchImpl = fetch, hos
 export function verifyStorageCopies({ manifest, inventory, objects, buckets }) {
   const records = Number(inventory.find(row => row.schema_name === 'storage' && row.table_name === 'objects')?.row_count)
   assert.equal(records, manifest.storageObjects, 'The copied Storage files do not match the captured file records')
-  if (buckets !== undefined) assert.ok(knownBucketsOnly(buckets), 'The capture holds an unknown or changed Storage bucket')
+  if (buckets !== undefined) {
+    assert.ok(knownBucketsOnly(buckets, manifest.versions ?? []), 'The capture holds an unknown or changed Storage bucket')
+  }
   if (manifest.storageObjects === 0) return 0
   assert.ok(Array.isArray(objects) && objects.length === manifest.storageObjects, 'The Storage copy list does not match the count')
   const files = new Map(manifest.files.map(entry => [entry.file, entry]))
@@ -751,7 +881,8 @@ export function verifyCaptureFiles(manifest, readBytes, versions = expectedStagi
 
 // Storage policies are dumped with the managed Storage schema, but since the court photos release
 // (20261023) they call application functions (private.can_manage_court_photo, and later
-// private.can_manage_club_media), which exist only once the application schema is restored.
+// private.can_manage_club_media and private.is_own_member_photo), which exist only once the
+// application schema is restored.
 // So they move after it, as the signup trigger does. pg_dump writes each on one line.
 const storagePolicyStatement = /^CREATE POLICY "[^"\n]+" ON "storage"\."objects" [^\n]*;$/gm
 

@@ -28,6 +28,7 @@ import {
 import { AdminBookings, StaffBookings } from './pages/BookingsDesk'
 import { AdminVenues } from './pages/AdminVenues'
 import { AdminProfile } from './pages/AdminProfile'
+import { AdminAnalytics } from './pages/AdminAnalytics'
 import { LoadingBlock } from './components/Shell'
 import { useEffect } from 'react'
 import { api } from './lib/api'
@@ -128,6 +129,7 @@ function AppRoutes() {
         {/* Club admin screens. Platform superadmins have their own portal, not club access. */}
         <Route element={<Protected roles={['admin']} />}>
           <Route path="/admin" element={<AdminHome />} />
+          <Route path="/admin/analytics" element={<AdminAnalytics />} />
           <Route path="/admin/members" element={<AdminMembers />} />
           <Route path="/admin/members/new" element={<AdminMemberForm />} />
           <Route path="/admin/members/:id" element={<AdminMemberForm />} />
@@ -144,6 +146,7 @@ function AppRoutes() {
 
         <Route element={<Protected roles={['superadmin']} />}>
           <Route path="/superadmin" element={<SuperadminPage section="overview" />} />
+          <Route path="/superadmin/analytics" element={<SuperadminPage section="analytics" />} />
           <Route path="/superadmin/clubs" element={<SuperadminPage section="clubs" />} />
           <Route path="/superadmin/ledger" element={<SuperadminPage section="ledger" />} />
           <Route path="/superadmin/requests" element={<SuperadminPage section="requests" />} />

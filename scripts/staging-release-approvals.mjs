@@ -32,4 +32,13 @@ export const releaseApprovals = Object.freeze({
   // the capture (staging-backup-20261124-r2), the restore check and the dry run on a restored copy of
   // staging passed (all checks, isolation 55/55, schema matches the build).
   'rent-a-coach-20261124': '38e6e692210d12f46e55ccf648a017c1cb76441fb1257f95aed0b58c4e4e7425',
+  // Owner, 2026-11-25: "yes commit and open a pull req and merge, then do a staging release".
+  // Recorded after the capture (staging-backup-20261125-member-account-r1), the restore check and
+  // the dry run on a restored copy of staging passed (all checks, isolation 55/55, schema matches the build).
+  'member-account-20261125': 'ff18291722b2374a391972cc04bb3a263378e5c77124a45cf735b5813cbd490a',
+  // Owner, 2026-11-24: "yes, and yes on step 6" (step 6 of the dashboards plan: the server summary
+  // functions and their staging release); 2026-11-25, after the capture (staging-backup-20261125-r2),
+  // the restore check and the dry run on a restored copy of staging passed (all checks, isolation
+  // 55/55): "Apply to staging".
+  'dashboard-analytics-20261125': '7fd2ff1af880d7e33d0d34aac4757d6e899fc4ebfe440c95e31924b4c84788c8',
 })

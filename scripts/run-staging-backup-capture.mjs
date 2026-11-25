@@ -1,7 +1,7 @@
 // Fresh logical backup of staging before a release (see `releases` in club-platform-staging.mjs).
 // Usage: node scripts/run-staging-backup-capture.mjs --release <id> --verify-local|--capture
 // Read-only on staging: SELECTs inside read-only transactions, supabase db dump, and downloads
-// of the stored files through their public links (the court-photos bucket is public).
+// of the stored files through their public links (every known bucket is public).
 // It never restores, migrates, deploys or prints rows. One-shot: a used folder is never reused.
 import assert from 'node:assert/strict'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
@@ -127,11 +127,12 @@ async function main() {
   save('target.json', { project, pooler: target.host, database: identity.database, serverVersion: identity.version,
     versions: identity.versions, observedAt: new Date().toISOString() })
 
-  // Storage: only the known bucket may exist, and its files are copied first. The dump holds
+  // Storage: only known buckets may exist (each one whose migration staging has, with its
+  // settings), and their files are copied first. The dump holds
   // their records; the files live outside the database. Copying before the "before" snapshot
   // means a download that touched a record can never pass as a change made during the capture.
   const buckets = query(target, 'storage_buckets', storageBucketsSql)
-  assert.ok(knownBucketsOnly(buckets), 'Staging has an unknown or changed Storage bucket: STOP')
+  assert.ok(knownBucketsOnly(buckets, release.baseVersions), 'Staging has an unknown, changed or missing Storage bucket: STOP')
   save('storage_buckets.json', buckets)
   const stored = query(target, 'storage_objects', storageObjectsSql)
   const copies = []
