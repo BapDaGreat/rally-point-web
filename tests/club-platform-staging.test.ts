@@ -479,7 +479,7 @@ describe('staging releases', () => {
     expect(postflight).toContain('= 34')
   })
 
-  it('builds the member account release on the 34-migration state, unapproved, and re-runs every earlier check', async () => {
+  it('builds the member account release on the 34-migration state, approved, and re-runs every earlier check', async () => {
     const { memberAccountRelease, rentACoachRelease, releaseManifest, releases } = await load()
     const { memberAccountChecks } = await import('../scripts/club-platform-checks.mjs')
     const { releaseApprovals } = await import('../scripts/staging-release-approvals.mjs')
@@ -495,7 +495,7 @@ describe('staging releases', () => {
     // Every earlier postflight still runs, after its own release's checks.
     expect(memberAccountRelease.postChecks.slice(2).map((check: { file: string }) => check.file))
       .toEqual(rentACoachRelease.postChecks.slice(1).map((check: { file: string }) => check.file))
-    expect(releaseApprovals['member-account-20261125']).toBeNull()
+    expect(releaseApprovals['member-account-20261125']).toMatch(/^[a-f0-9]{64}$/)
     const earlier = Object.values(releases).filter(release => release !== memberAccountRelease)
       .flatMap((release: { dirs: object, databases: object }) => [...Object.values(release.dirs), ...Object.values(release.databases)])
     expect([...Object.values(memberAccountRelease.dirs), ...Object.values(memberAccountRelease.databases)]

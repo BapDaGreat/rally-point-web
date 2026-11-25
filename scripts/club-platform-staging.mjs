@@ -477,12 +477,14 @@ export const memberAccountRelease = Object.freeze({
   ]),
   isolation: Object.freeze({ file: 'two_club_isolation.sql', plan: 55 }),
   dirs: Object.freeze({
-    capture: 'docs/release-private/staging-backup-20261125-r1',
-    restore: 'docs/release-private/staging-backup-restore-20261125-r1',
+    capture: 'docs/release-private/staging-backup-20261125-member-account-r1',
+    restore: 'docs/release-private/staging-backup-restore-20261125-member-account-r1',
     dryRun: 'docs/release-private/member-account-staging-dryrun-20261125-r1',
     apply: 'docs/release-private/member-account-staging-apply-20261125-r1',
   }),
-  databases: Object.freeze({ restore: 'rally_staging_backup_20261125_r1_restore', dryRun: 'rally_staging_backup_20261125_r1_dryrun' }),
+  // Own folder and database names: the dashboard analytics release (another worktree) used the plain
+  // 20261125-r1 capture folder first, and captures are one-shot.
+  databases: Object.freeze({ restore: 'rally_staging_backup_20261125_member_r1_restore', dryRun: 'rally_staging_backup_20261125_member_r1_dryrun' }),
 })
 
 export const releases = Object.freeze({ [advisorFixesRelease.id]: advisorFixesRelease,
