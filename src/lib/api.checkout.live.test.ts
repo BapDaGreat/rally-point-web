@@ -128,7 +128,7 @@ describe('member checkout (live)', () => {
     live.tables.set('bookings', { ...live.booking, court: live.court })
     expect(await api.myBooking(live.booking.id)).toMatchObject({ id: live.booking.id, court: { id: live.court.id } })
     expect(readsOf('bookings')[0].calls).toEqual(expect.arrayContaining([
-      ['select', ['*, court:courts(*)']],
+      ['select', ['*, court:courts!bookings_court_id_fkey(*)']],
       ['eq', ['club_id', live.clubId]],
       ['eq', ['id', live.booking.id]],
       ['maybeSingle', []],

@@ -404,8 +404,10 @@ export const api = {
   async playingSessions(venueId?: string): Promise<CourtSession[]> {
     if (isDemoMode) return demoStore.sessionsPlaying(venueId)
     let query = supabase!
+      // Each of these tables links to courts three times (court_id plus two club/venue keys), so
+      // PostgREST needs the plain court_id link named, or it refuses the request as ambiguous.
       .from('court_sessions')
-      .select('*, court:courts(*)')
+      .select('*, court:courts!court_sessions_court_id_fkey(*)')
       .eq('club_id', requireActiveClubId())
       .in('status', ['playing', 'scheduled'])
       .order('start_at', { ascending: false })
@@ -517,7 +519,7 @@ export const api = {
     if (isDemoMode) return demoStore.myBooking(bookingId)
     const { data, error } = await supabase!
       .from('bookings')
-      .select('*, court:courts(*)')
+      .select('*, court:courts!bookings_court_id_fkey(*)')
       .eq('club_id', requireActiveClubId())
       .eq('id', bookingId)
       .maybeSingle()
@@ -547,7 +549,7 @@ export const api = {
     if (isDemoMode) return demoStore.paymentsToConfirm(venueId)
     let query = supabase!
       .from('bookings')
-      .select('*, court:courts(*)')
+      .select('*, court:courts!bookings_court_id_fkey(*)')
       .eq('club_id', requireActiveClubId())
       .eq('status', 'pending_payment')
       .not('payment_submitted_at', 'is', null)
@@ -609,7 +611,7 @@ export const api = {
     if (isDemoMode) return demoStore.myBookings(memberId, venueId)
     let query = supabase!
       .from('bookings')
-      .select('*, court:courts(*)')
+      .select('*, court:courts!bookings_court_id_fkey(*)')
       .eq('club_id', requireActiveClubId())
       .eq('member_id', memberId)
       .order('start_at', { ascending: false })
@@ -628,7 +630,7 @@ export const api = {
     if (isDemoMode) return demoStore.allBookings(venueId)
     let query = supabase!
       .from('bookings')
-      .select('*, court:courts(*)')
+      .select('*, court:courts!bookings_court_id_fkey(*)')
       .eq('club_id', requireActiveClubId())
       .order('start_at', { ascending: false })
       .limit(100)
@@ -654,7 +656,7 @@ export const api = {
     const clubId = requireActiveClubId()
     const rows = await readPages<Booking>((first, last) => supabase!
       .from('bookings')
-      .select('*, court:courts(*)')
+      .select('*, court:courts!bookings_court_id_fkey(*)')
       .eq('club_id', clubId)
       .gte('start_at', fromIso)
       .lt('start_at', toIso)
@@ -1545,7 +1547,7 @@ export const api = {
       if (isDemoMode) return demoStore.listOpenPlays(includePast, venueId)
       let query = supabase!
         .from('open_plays')
-        .select('*, court:courts(*)')
+        .select('*, court:courts!open_plays_court_id_fkey(*)')
         .eq('club_id', requireActiveClubId())
         .order('start_at', { ascending: true })
       if (venueId) query = query.eq('venue_id', venueId)
