@@ -89,13 +89,23 @@ describe('PublicFrame for visitors', () => {
 })
 
 describe('PublicFrame for signed-in people', () => {
-  it('uses the app header and menu instead of the site header and footer', () => {
-    auth.user = { id: 'u1', email: 'p@example.com', full_name: 'Pia', role: 'member', created_at: '2026-09-01' }
+  it('gives staff and admins their app header and menu instead of the site header and footer', () => {
+    auth.user = { id: 'u1', email: 's@example.com', full_name: 'Sam', role: 'staff', created_at: '2026-09-01' }
     renderFrame()
     expect(screen.getByRole('heading', { level: 1, name: 'Find a court' })).toBeInTheDocument()
     expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: 'Account' })).not.toBeInTheDocument()
     expect(document.title).toBe('Find a court · bRineLy')
+  })
+
+  it('keeps players and members on the public site, with the account menu instead of Log in and Sign up', () => {
+    auth.user = { id: 'u1', email: 'p@example.com', full_name: 'Pia Cruz', role: 'member', created_at: '2026-09-01' }
+    renderFrame()
+    expect(screen.getByRole('heading', { level: 1, name: 'Find a court' })).toBeInTheDocument()
+    expect(screen.getByRole('contentinfo')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Log in' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Sign up' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Account menu for Pia Cruz' })).toHaveAttribute('aria-expanded', 'false')
   })
 })
 
