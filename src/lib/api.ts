@@ -73,6 +73,18 @@ import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, fmtDateTime, fmtTime, localRangeISO, t
 import { CLUB_HEADER, getActiveClubId, notifyClubUnavailable, requireActiveClubId } from './clubContext'
 import { MEMBER_PHOTO_BUCKET, PHOTO_BUCKET, memberPhotoUrl, photoUrl, shrinkPhoto, shrinkPhotoToDataUrl } from './photos'
 import { emptyClubProfile, normalizeProfile } from './clubProfile'
+import type { BookingStatus, TxType } from '../types'
+import { analyticsWindow, buildClubAnalytics, buildPlatformAnalytics, rangeInstants } from './analytics'
+import type { AnalyticsPeriod, ClubAnalytics, ClubTotals, DayRange, PlatformAnalytics, PlatformTotals } from './analytics'
+
+export type { AnalyticsPeriod, ClubAnalytics, PlatformAnalytics } from './analytics'
+
+/** A commission line as a club admin may read it for the dashboard. */
+export interface ClubCommissionLine {
+  commission_amount: number
+  gross_amount: number
+  created_at: string
+}
 
 type OccupiedInterval = { court_id: string | null; start_at: string; end_at: string }
 
@@ -629,6 +641,92 @@ export const api = {
       court: b.court as Court,
       member: roster.find((member) => member.id === b.member_id),
     })) as Booking[]
+  },
+
+  /**
+   * The active club's bookings that start in [from, to), oldest first, with their court.
+   * Read-only, for the owner dashboard: admins and staff read bookings under RLS
+   * (bookings_access_select plus the restrictive private_read_scope). Capped at
+   * ANALYTICS_ROW_CAP rows; past the cap the oldest are left out.
+   */
+  async bookingsBetween(fromIso: string, toIso: string): Promise<Booking[]> {
+    if (isDemoMode) return demoStore.bookingsBetween(fromIso, toIso)
+    const clubId = requireActiveClubId()
+    const rows = await readPages<Booking>((first, last) => supabase!
+      .from('bookings')
+      .select('*, court:courts(*)')
+      .eq('club_id', clubId)
+      .gte('start_at', fromIso)
+      .lt('start_at', toIso)
+      .order('start_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(first, last))
+    return rows.reverse().map((b) => ({ ...b, hours: Number(b.hours), amount: Number(b.amount), court: b.court as Court }))
+  },
+
+  /** The active club's charges recorded in [from, to), oldest first. Capped like bookingsBetween. */
+  async transactionsBetween(fromIso: string, toIso: string): Promise<Transaction[]> {
+    if (isDemoMode) return demoStore.transactionsBetween(fromIso, toIso)
+    const clubId = requireActiveClubId()
+    const rows = await readPages<Transaction>((first, last) => supabase!
+      .from('transactions')
+      .select('id, club_id, venue_id, member_id, amount, type, description, verification_status, created_at')
+      .eq('club_id', clubId)
+      .gte('created_at', fromIso)
+      .lt('created_at', toIso)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(first, last))
+    return rows.reverse().map((tx) => ({ ...tx, amount: Number(tx.amount) }))
+  },
+
+  /**
+   * The active club's own commission lines recorded in [from, to). Club admins may read
+   * them (policy platform_commissions_admin_select); anyone else gets an error or nothing.
+   */
+  async myClubCommission(fromIso: string, toIso: string): Promise<ClubCommissionLine[]> {
+    if (isDemoMode) return demoStore.clubCommissionBetween(fromIso, toIso)
+    const clubId = requireActiveClubId()
+    const rows = await readPages<ClubCommissionLine>((first, last) => supabase!
+      .from('platform_commissions')
+      .select('commission_amount, gross_amount, created_at')
+      .eq('club_id', clubId)
+      .gte('created_at', fromIso)
+      .lt('created_at', toIso)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(first, last))
+    return rows.map((row) => ({
+      commission_amount: Number(row.commission_amount),
+      gross_amount: Number(row.gross_amount),
+      created_at: row.created_at,
+    }))
+  },
+
+  /**
+   * The owner dashboard figures for the active club: the last `days` days and the days
+   * before them. Uses the server summary when the database has it; otherwise (and in the
+   * demo) adds the figures up in the browser from rows a club admin can already read.
+   */
+  async clubAnalytics(days: AnalyticsPeriod): Promise<ClubAnalytics> {
+    if (!isDemoMode) {
+      const { data, error } = await supabase!.rpc('admin_club_analytics', { p_club_id: requireActiveClubId(), p_days: days })
+      if (!error && data) return normalizeClubAnalytics(Array.isArray(data) ? data[0] : data)
+      if (error && !isUnavailableFunction(error)) throw error
+    }
+    const now = new Date()
+    const window = analyticsWindow(days, now)
+    const from = rangeInstants(window.previous).from
+    const to = rangeInstants(window.current).to
+    const [transactions, bookings, members, courts, venues, commissions] = await Promise.all([
+      api.transactionsBetween(from, to),
+      api.bookingsBetween(from, to),
+      api.memberRoster(),
+      api.listCourts(),
+      api.listAllVenues(),
+      api.myClubCommission(from, to).catch(() => [] as ClubCommissionLine[]),
+    ])
+    return buildClubAnalytics({ window, transactions, bookings, members, courts, venues, commissions, now })
   },
 
   paymentMethods() {
@@ -1858,6 +1956,29 @@ export const api = {
       return ((data ?? []) as PlatformCommission[]).map(normalizeCommission)
     },
 
+    /**
+     * The superadmin dashboard figures across clubs. Only platform_* functions are
+     * called, so no member rows are ever read. Without the server summary it adds up
+     * the newest PLATFORM_LEDGER_LIMIT ledger lines (ledger_capped says when that cut
+     * anything off).
+     */
+    async platformAnalytics(days: AnalyticsPeriod): Promise<PlatformAnalytics> {
+      const window = analyticsWindow(days)
+      if (isDemoMode) {
+        const { ledger, requests } = demoStore.platformAnalyticsRows(rangeInstants(window.previous).from, rangeInstants(window.current).to)
+        return buildPlatformAnalytics({ window, clubs: demoStore.platformClubs(), ledger, requests })
+      }
+      const { data, error } = await supabase!.rpc('platform_analytics', { p_days: days })
+      if (!error && data) return normalizePlatformAnalytics(Array.isArray(data) ? data[0] : data)
+      if (error && !isUnavailableFunction(error)) throw error
+      const [clubs, ledger, requests] = await Promise.all([
+        api.platformClubs(),
+        api.platformLedger(null, PLATFORM_LEDGER_LIMIT),
+        api.platformOwnerCallRequests().catch(() => null),
+      ])
+      return buildPlatformAnalytics({ window, clubs, ledger, requests, ledgerLimit: PLATFORM_LEDGER_LIMIT })
+    },
+
     async platformClubAdmins(clubId: string): Promise<PlatformClubAdmin[]> {
       if (isDemoMode) return demoStore.platformClubAdmins(clubId)
       const { data, error } = await supabase!.rpc('platform_club_admins', { p_club_id: clubId })
@@ -2032,6 +2153,146 @@ export const api = {
 function isMissingFunction(error: unknown) {
   const code = (error as { code?: unknown } | null)?.code
   return code === 'PGRST202' || code === '42883'
+}
+
+/** Not on this database yet, or not granted to this role: the screen can add the figures up itself. */
+function isUnavailableFunction(error: unknown) {
+  const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown }
+  return isMissingFunction(error) || (code === '42501' && typeof message === 'string' && /permission denied for function/i.test(message))
+}
+
+/** Most rows an analytics read takes; older rows past it are left out. */
+const ANALYTICS_ROW_CAP = 5000
+/** Rows asked for per request (supabase/config.toml answers at most max_rows = 1000 at a time). */
+const ANALYTICS_PAGE_ROWS = 1000
+/** Ledger lines the browser fallback of the platform dashboard reads. */
+const PLATFORM_LEDGER_LIMIT = 1000
+
+/**
+ * Reads a query page by page, up to ANALYTICS_ROW_CAP rows. It stops at the first empty
+ * page, so a server that answers fewer rows per request than asked is still read in full.
+ */
+async function readPages<T>(
+  page: (first: number, last: number) => PromiseLike<{ data: unknown; error: unknown }>,
+): Promise<T[]> {
+  const rows: T[] = []
+  while (rows.length < ANALYTICS_ROW_CAP) {
+    const first = rows.length
+    const last = Math.min(first + ANALYTICS_PAGE_ROWS, ANALYTICS_ROW_CAP) - 1
+    const { data, error } = await page(first, last)
+    if (error) throw error
+    const batch = (data ?? []) as T[]
+    if (!batch.length) break
+    rows.push(...batch.slice(0, ANALYTICS_ROW_CAP - rows.length))
+  }
+  return rows
+}
+
+type Loose = Record<string, unknown> | null | undefined
+
+const num = (value: unknown) => Number(value) || 0
+const looseList = (value: unknown): Loose[] => (Array.isArray(value) ? (value as Loose[]) : [])
+
+function dayRange(raw: unknown): DayRange {
+  const row = raw as Loose
+  return { from: String(row?.from ?? ''), to: String(row?.to ?? ''), days: num(row?.days) }
+}
+
+function clubTotals(raw: unknown): ClubTotals {
+  const row = raw as Loose
+  return {
+    charges: num(row?.charges),
+    bookings: num(row?.bookings),
+    hours: num(row?.hours),
+    open_hours: num(row?.open_hours),
+    new_members: num(row?.new_members),
+    new_players: num(row?.new_players),
+    cancellations: num(row?.cancellations),
+    avg_booking: num(row?.avg_booking),
+    commission: num(row?.commission),
+  }
+}
+
+/** The server summary with every Postgres numeric turned into a number. */
+function normalizeClubAnalytics(raw: unknown): ClubAnalytics {
+  const row = (raw ?? {}) as Record<string, unknown>
+  const members = row.members as Loose
+  const coaching = row.coaching as Loose
+  const split = row.payment_split as Loose
+  const busy = Array.isArray(row.busy_hours) ? (row.busy_hours as unknown[]) : []
+  return {
+    period: dayRange(row.period),
+    previous_period: dayRange(row.previous_period),
+    current: clubTotals(row.current),
+    previous: clubTotals(row.previous),
+    by_day: looseList(row.by_day).map((d) => ({
+      day: String(d?.day ?? ''),
+      charges: num(d?.charges),
+      bookings: num(d?.bookings),
+      hours: num(d?.hours),
+      new_members: num(d?.new_members),
+      cancellations: num(d?.cancellations),
+      commission: num(d?.commission),
+    })),
+    charges_by_type: looseList(row.charges_by_type).map((d) => ({ type: d?.type as TxType, amount: num(d?.amount) })),
+    charges_by_venue: looseList(row.charges_by_venue).map((d) => ({
+      venue_id: typeof d?.venue_id === 'string' ? d.venue_id : null,
+      name: String(d?.name ?? ''),
+      amount: num(d?.amount),
+    })),
+    bookings_by_status: looseList(row.bookings_by_status).map((d) => ({ status: d?.status as BookingStatus, count: num(d?.count) })),
+    courts: looseList(row.courts).map((d) => ({
+      court_id: String(d?.court_id ?? ''),
+      name: String(d?.name ?? ''),
+      venue_name: String(d?.venue_name ?? ''),
+      hours: num(d?.hours),
+      open_hours: num(d?.open_hours),
+    })),
+    busy_hours: Array.from({ length: 7 }, (_, w) => {
+      const day = Array.isArray(busy[w]) ? (busy[w] as unknown[]) : []
+      return Array.from({ length: 24 }, (_, h) => num(day[h]))
+    }),
+    payment_split: { online: num(split?.online), desk: num(split?.desk) },
+    members: { active_members: num(members?.active_members), ending_soon: num(members?.ending_soon), players: num(members?.players) },
+    coaching: coaching ? { requests: num(coaching.requests), previous_requests: num(coaching.previous_requests), accepted: num(coaching.accepted) } : null,
+    source: 'server',
+  }
+}
+
+function platformTotals(raw: unknown): PlatformTotals {
+  const row = raw as Loose
+  return { gross: num(row?.gross), commission: num(row?.commission), lines: num(row?.lines), new_clubs: num(row?.new_clubs), requests: num(row?.requests) }
+}
+
+/** The platform server summary with every Postgres numeric turned into a number. */
+function normalizePlatformAnalytics(raw: unknown): PlatformAnalytics {
+  const row = (raw ?? {}) as Record<string, unknown>
+  return {
+    period: dayRange(row.period),
+    previous_period: dayRange(row.previous_period),
+    current: platformTotals(row.current),
+    previous: platformTotals(row.previous),
+    by_day: looseList(row.by_day).map((d) => ({
+      day: String(d?.day ?? ''),
+      gross: num(d?.gross),
+      commission: num(d?.commission),
+      lines: num(d?.lines),
+      new_clubs: num(d?.new_clubs),
+      requests: num(d?.requests),
+    })),
+    top_clubs: looseList(row.top_clubs).map((d) => ({
+      club_id: String(d?.club_id ?? ''),
+      name: String(d?.name ?? ''),
+      gross: num(d?.gross),
+      commission: num(d?.commission),
+      lines: num(d?.lines),
+    })),
+    clubs_by_status: looseList(row.clubs_by_status).map((d) => ({ status: d?.status as ClubStatus, count: num(d?.count) })),
+    requests_by_status: looseList(row.requests_by_status).map((d) => ({ status: d?.status as OwnerCallStatus, count: num(d?.count) })),
+    requests_by_city: looseList(row.requests_by_city).map((d) => ({ city: String(d?.city ?? ''), count: num(d?.count) })),
+    ledger_capped: row.ledger_capped === true,
+    source: 'server',
+  }
 }
 
 const CHECKOUT_UNAVAILABLE = 'Online checkout is not available yet. Ask the desk to reserve this court.'

@@ -21,6 +21,7 @@ import { hasOpenOwnerInvite, ownerOperations } from './demo/owners'
 import { demoCourtPhotos, demoVenueCover, photoOperations } from './demo/photos'
 import { clubProfileOperations, publicClubProfileFor } from './demo/clubProfile'
 import { coachingOperations } from './demo/coaching'
+import { analyticsOperations } from './demo/history'
 import { accountOperations } from './demo/account'
 
 export type { DemoDB } from './demo/model'
@@ -464,5 +465,6 @@ export const demoStore = {
   ...photoOperations,
   ...clubProfileOperations,
   ...coachingOperations,
+  ...analyticsOperations,
   ...accountOperations,
 }

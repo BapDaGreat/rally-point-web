@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
+  BarChart3,
   Building2,
   CalendarDays,
   Coins,
@@ -41,8 +42,12 @@ const staffTabs = [
   { to: '/staff/help', label: 'Help', icon: HelpCircle },
 ]
 
-const adminTabs = [
+type NavTab = { to: string; end?: boolean; label: string; icon: typeof Home; sideOnly?: boolean }
+
+// Phones keep six tabs; Analytics is in the desktop menu and opens from Home on a phone.
+const adminTabs: NavTab[] = [
   { to: '/admin', end: true, label: 'Home', icon: LayoutDashboard },
+  { to: '/admin/analytics', label: 'Analytics', icon: BarChart3, sideOnly: true },
   { to: '/admin/ops', label: 'Floor', icon: Home },
   { to: '/admin/board', label: 'Schedule', icon: Tv },
   { to: '/admin/open', label: 'Open play', icon: Users },
@@ -80,8 +85,9 @@ export function ClubBadge({ name, size = 'small' }: { name: string; size?: 'smal
 }
 
 // The platform portal only: superadmins have no club screens.
-const superadminTabs = [
+const superadminTabs: NavTab[] = [
   { to: '/superadmin', end: true, label: 'Overview', icon: LayoutDashboard },
+  { to: '/superadmin/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/superadmin/clubs', label: 'Clubs', icon: Building2 },
   { to: '/superadmin/ledger', label: 'Ledger', icon: Coins },
   { to: '/superadmin/requests', label: 'Requests', icon: PhoneCall },
@@ -130,7 +136,7 @@ export function ClubSwitcher({ tone = 'light', className = '' }: { tone?: 'light
   )
 }
 
-function tabsFor(role: Role) {
+function tabsFor(role: Role): NavTab[] {
   if (role === 'superadmin') return superadminTabs
   if (role === 'admin') return adminTabs
   if (role === 'staff') return staffTabs
@@ -201,7 +207,7 @@ export function SideNav({ role }: { role: Role }) {
 }
 
 export function BottomNav({ role }: { role: Role }) {
-  const tabs = tabsFor(role)
+  const tabs = tabsFor(role).filter((tab) => !tab.sideOnly)
   const cols =
     tabs.length >= 6
       ? 'grid-cols-6'

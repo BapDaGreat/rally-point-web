@@ -65,6 +65,7 @@ const roleLinks: Record<Role, Array<[label: string, href: string]>> = {
   // The platform portal only; superadmins have no club screens.
   superadmin: [
     ['Overview', '/superadmin'],
+    ['Analytics', '/superadmin/analytics'],
     ['Clubs', '/superadmin/clubs'],
     ['Ledger', '/superadmin/ledger'],
     ['Requests', '/superadmin/requests'],

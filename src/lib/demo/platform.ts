@@ -6,6 +6,7 @@ import { defaultClubAccount, round2 } from './commissions'
 import { normalizeDemoEmail } from './credentials'
 import type { DemoDB } from './model'
 import { load, save } from './persistence'
+import { demoHistory } from './history'
 
 const CLUB_STATUSES: ClubStatus[] = ['provisioning', 'active', 'suspended']
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/
@@ -57,10 +58,13 @@ export const platformOperations = {
   platformClubs(): PlatformClub[] {
     const db = load()
     requirePlatform(db)
+    // The demo's generated past (history.ts) counts as recorded charges, so all-time totals
+    // always cover the period figures on the analytics screens.
+    const allLines = [...db.commissions, ...demoHistory(db).commissions]
     return db.clubs
       .map((club) => {
         const account = db.clubAccounts.find((row) => row.club_id === club.id) ?? defaultClubAccount(club.id, club.is_active)
-        const lines = db.commissions.filter((line) => line.club_id === club.id)
+        const lines = allLines.filter((line) => line.club_id === club.id)
         return {
           club_id: club.id,
           slug: club.slug,
@@ -89,12 +93,14 @@ export const platformOperations = {
     const db = load()
     requirePlatform(db)
     const cap = Math.min(Math.max(Math.trunc(limit) || 200, 1), 1000)
-    return newestFirst(db.commissions.filter((line) => !clubId || line.club_id === clubId))
+    const history = demoHistory(db)
+    const descriptions = new Map([...db.transactions, ...history.transactions].map((tx) => [tx.id, tx.description]))
+    return newestFirst([...db.commissions, ...history.commissions].filter((line) => !clubId || line.club_id === clubId))
       .slice(0, cap)
       .map((line) => ({
         ...line,
         club_name: db.clubs.find((club) => club.id === line.club_id)?.name ?? 'Unknown club',
-        description: db.transactions.find((tx) => tx.id === line.transaction_id)?.description ?? 'Court charge',
+        description: descriptions.get(line.transaction_id) ?? 'Court charge',
       }))
   },
   /** Sets up a club in provisioning (hidden from players) with one main venue and its courts. */
