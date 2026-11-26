@@ -10,6 +10,11 @@ describe('BrinelyLogo', () => {
     expect(screen.getByRole('img', { name: 'bRineLy' })).toHaveAttribute('src', `${BASE}logo-mark.svg`)
   })
 
+  it('shows the animated mark under the same name', () => {
+    render(<BrinelyLogo variant="animated" />)
+    expect(screen.getByRole('img', { name: 'bRineLy' })).toHaveAttribute('src', `${BASE}logo-mark-animated.svg`)
+  })
+
   it('shows the wordmark with an accessible name', () => {
     render(<BrinelyLogo variant="wordmark" className="h-8" />)
     const logo = screen.getByRole('img', { name: 'bRineLy' })

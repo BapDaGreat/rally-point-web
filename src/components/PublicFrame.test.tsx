@@ -80,6 +80,16 @@ describe('PublicFrame for visitors', () => {
     expect(footer.getByText(/© 2026 bRineLy/)).toBeInTheDocument()
   })
 
+  it('draws the faint symbol field behind the page, hidden from screen readers', () => {
+    renderFrame()
+    const field = screen.getByTestId('court-symbols')
+    expect(field).toHaveAttribute('aria-hidden', 'true')
+    // First in the frame, so it paints under the header, content and footer.
+    expect(field.parentElement?.firstElementChild).toBe(field)
+    expect(field.querySelectorAll('.court-symbol').length).toBeGreaterThan(8)
+    expect(within(field).queryByRole('img')).not.toBeInTheDocument()
+  })
+
   it('names the browser tab after the page and restores it afterwards', () => {
     const { unmount } = renderFrame()
     expect(document.title).toBe('Find a court · bRineLy')
@@ -95,6 +105,7 @@ describe('PublicFrame for signed-in people', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Find a court' })).toBeInTheDocument()
     expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: 'Account' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('court-symbols')).not.toBeInTheDocument()
     expect(document.title).toBe('Find a court · bRineLy')
   })
 

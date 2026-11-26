@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useDocumentTitle } from '../lib/useDocumentTitle'
+import { CourtSymbolsBackdrop } from './CourtSymbolsBackdrop'
 import { AppHeader, AppShell, SignOutButton } from './Shell'
 import { SiteFooter } from './SiteFooter'
 import { SiteHeader } from './SiteHeader'
@@ -51,6 +52,7 @@ export function PublicFrame({
 
   return (
     <div className="app-shell app-shell-desktop app-shell-public flex flex-col">
+      <CourtSymbolsBackdrop />
       <SiteHeader accountLinks={accountLinks} />
       <main className="app-content-rail flex-1 pt-6 pb-16">
         <div className={`space-y-4 ${width === 'narrow' ? 'max-w-[44rem]' : ''}`}>
