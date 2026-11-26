@@ -11,6 +11,7 @@ const authState = vi.hoisted(() => ({
   loading: false,
   user: null as Profile | null,
   signIn: vi.fn(),
+  signInWithGoogle: undefined as (() => Promise<void>) | undefined,
   signUpMember: vi.fn(),
   verifySignupCode: vi.fn(),
   resendSignupCode: vi.fn(),
@@ -43,6 +44,7 @@ function renderLoginDialog(props: {
   onClose?: () => void;
   onAuthenticated?: (profile: Profile) => void;
   clubName?: string;
+  clubSlug?: string;
   bookingSummary?: string;
 } = {}) {
   return render(
@@ -50,6 +52,7 @@ function renderLoginDialog(props: {
       <LoginPage
         dialog
         clubName={props.clubName}
+        clubSlug={props.clubSlug}
         bookingSummary={props.bookingSummary}
         onClose={props.onClose ?? vi.fn()}
         onAuthenticated={props.onAuthenticated ?? vi.fn()}
@@ -86,6 +89,7 @@ describe("LoginPage authentication form safety", () => {
     authState.loading = false;
     authState.user = null;
     authState.signIn.mockReset();
+    authState.signInWithGoogle = undefined;
     authState.signUpMember.mockReset();
     authState.resetPassword.mockReset();
     authState.signOut.mockReset();
@@ -288,31 +292,72 @@ describe("LoginPage authentication form safety", () => {
     ]);
   });
 
-  it("shows the Privacy Notice acknowledgement only during signup", async () => {
+  it("shows the Privacy Notice checkbox and inline summary only during signup", async () => {
     const user = userEvent.setup();
     renderLogin();
 
     expect(
-      screen.queryByText(/By registering, you acknowledge that you have read our/),
+      screen.queryByRole("checkbox", { name: /I have read and understood the Privacy Notice/ }),
     ).not.toBeInTheDocument();
+    expect(screen.queryByText("Quick summary (5 key points)")).not.toBeInTheDocument();
+
     await user.click(switchToJoin());
 
-    expect(
-      screen.getByText(/By registering, you acknowledge that you have read our/),
-    ).toBeInTheDocument();
-    const signupForm = signUpSubmitButton()
-      .closest("form");
+    const checkbox = screen.getByRole("checkbox", {
+      name: /I have read and understood the Privacy Notice/,
+    });
+    expect(checkbox).not.toBeChecked();
+    const summary = screen.getByText("Quick summary (5 key points)");
+    const details = summary.closest("details");
+    expect(details).not.toBeNull();
+    expect(details!.open).toBe(false);
+    await user.click(summary);
+    expect(details!.open).toBe(true);
+    expect(screen.getByText(/Direct-to-club payments:/)).toBeVisible();
+    expect(screen.getByText(/Your RA 10173 rights:/)).toBeVisible();
+
+    const signupForm = signUpSubmitButton().closest("form");
     if (!signupForm) throw new Error("Signup form is missing");
-    expect(within(signupForm).getByRole("link", { name: "Privacy Notice" })).toHaveAttribute(
-      "href",
-      "/privacy",
-    );
+    const noticeLink = within(signupForm).getByRole("link", { name: "Privacy Notice" });
+    expect(noticeLink).toHaveAttribute("href", "/privacy");
+    expect(noticeLink).toHaveAttribute("target", "_blank");
+
+    await user.click(checkbox);
+    expect(checkbox).toBeChecked();
 
     await user.click(screen.getAllByRole("button", { name: "Log in" })[0]);
     await user.click(screen.getByRole("button", { name: "Forgot password?" }));
     expect(
-      screen.queryByText(/By registering, you acknowledge that you have read our/),
+      screen.queryByRole("checkbox", { name: /I have read and understood the Privacy Notice/ }),
     ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Back to log in" }));
+    await user.click(switchToJoin());
+    expect(
+      screen.getByRole("checkbox", { name: /I have read and understood the Privacy Notice/ }),
+    ).not.toBeChecked();
+  });
+
+  it("blocks sign-up submit until the Privacy Notice checkbox is ticked", async () => {
+    const user = userEvent.setup();
+    renderLogin();
+
+    await user.click(switchToJoin());
+    await user.type(screen.getByLabelText("Full name"), "Pat Player");
+    await user.type(screen.getByLabelText("Email"), "pat@example.com");
+    await user.type(screen.getByLabelText("Password"), "valid-passphrase");
+    await user.click(signUpSubmitButton());
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Tick the box to confirm you have read the Privacy Notice.");
+    const checkbox = screen.getByRole("checkbox", {
+      name: /I have read and understood the Privacy Notice/,
+    });
+    expect(checkbox).toHaveFocus();
+    expect(authState.signUpMember).not.toHaveBeenCalled();
+
+    await user.click(checkbox);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("sends a password reset request and shows a success message", async () => {
@@ -350,6 +395,7 @@ describe("LoginPage authentication form safety", () => {
     await user.type(screen.getByLabelText("Full name"), "Existing Player");
     await user.type(screen.getByLabelText("Email"), "existing@example.com");
     await user.type(screen.getByLabelText("Password"), "valid-passphrase");
+    await user.click(screen.getByRole("checkbox", { name: /I have read and understood the Privacy Notice/ }));
     await user.click(signUpSubmitButton());
 
     const alert = await screen.findByRole("alert");
@@ -498,6 +544,7 @@ describe("LoginPage booking dialog", () => {
     authState.user = null;
     authState.loading = false;
     authState.signIn.mockReset();
+    authState.signInWithGoogle = undefined;
   });
 
   afterEach(() => {
@@ -650,6 +697,34 @@ describe("LoginPage booking dialog", () => {
     expect(within(dialog).getByText("For players only. View availability, open play, and your QR pass.")).toBeInTheDocument();
   });
 
+  it("blocks Google sign-up in the booking dialog until the Privacy Notice box is ticked and links that club's notice", async () => {
+    const user = userEvent.setup();
+    const signInWithGoogle = vi.fn().mockResolvedValue(undefined);
+    authState.signInWithGoogle = signInWithGoogle;
+    renderLoginDialog({ clubName: "Rally Point Davao", clubSlug: "rally-point-davao" });
+
+    await user.click(switchToJoin());
+    const dialog = screen.getByRole("dialog", { name: "Sign up to book at Rally Point Davao" });
+    expect(within(dialog).getByRole("link", { name: "Privacy Notice" })).toHaveAttribute(
+      "href",
+      "/privacy?club=rally-point-davao",
+    );
+
+    await user.click(within(dialog).getByRole("button", { name: "Continue with Google" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Tick the box to confirm you have read the Privacy Notice.",
+    );
+    const checkbox = within(dialog).getByRole("checkbox", {
+      name: /I have read and understood the Privacy Notice/,
+    });
+    expect(checkbox).toHaveFocus();
+    expect(signInWithGoogle).not.toHaveBeenCalled();
+
+    await user.click(checkbox);
+    await user.click(within(dialog).getByRole("button", { name: "Continue with Google" }));
+    expect(signInWithGoogle).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps Tab inside the dialog", async () => {
     const user = userEvent.setup();
     renderLoginDialog();
@@ -713,6 +788,7 @@ describe("LoginPage sign-up code step", () => {
     await user.type(screen.getByLabelText("Mobile (optional)"), "09171234567");
     await user.type(screen.getByLabelText("Email"), "New@Example.com");
     await user.type(screen.getByLabelText("Password"), "secret-pass");
+    await user.click(screen.getByRole("checkbox", { name: /I have read and understood the Privacy Notice/ }));
     await user.click(signUpSubmitButton());
   }
 
@@ -845,6 +921,7 @@ describe("LoginPage sign-up code step", () => {
     fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Nina New" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret-pass" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /I have read and understood the Privacy Notice/ }));
     await act(async () => {
       fireEvent.click(signUpSubmitButton());
     });
@@ -877,6 +954,7 @@ describe("LoginPage sign-up code step", () => {
     fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Nina New" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret-pass" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /I have read and understood the Privacy Notice/ }));
     await act(async () => {
       fireEvent.click(signUpSubmitButton());
     });

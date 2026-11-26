@@ -73,7 +73,12 @@ describe('OwnersPage', () => {
 
     await fillIn(user)
     await user.click(screen.getByRole('button', { name: 'Ask for a call' }))
-    expect(screen.getByRole('alert')).toHaveTextContent('Tick the box so we may contact you')
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Tick the box so we may contact you and confirm you have read the Privacy Notice.',
+    )
+    expect(screen.getByRole('checkbox', { name: /bRineLy may contact me/ })).toHaveFocus()
+    expect(screen.getByText('Quick summary (5 key points)')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Privacy Notice' })).toHaveAttribute('target', '_blank')
     expect(requestOwnerCall).not.toHaveBeenCalled()
   })
 

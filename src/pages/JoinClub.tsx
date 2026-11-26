@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ClubImage } from '../components/ClubImage'
+import { PRIVACY_ACK_ERROR, PrivacyAcknowledgement } from '../components/PrivacyAcknowledgement'
 import { PublicFrame } from '../components/PublicFrame'
 import { LoadingShapes, SkeletonBlock, SkeletonLine } from '../components/Skeleton'
 import { api } from '../lib/api'
@@ -31,12 +32,16 @@ export function JoinClubPage() {
   const nav = useNavigate()
   const [lookup, setLookup] = useState<Lookup>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const privacyCheckboxRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     let cancelled = false
     setLookup({ status: 'loading' })
+    setPrivacyAcknowledged(false)
+    setError(null)
     // The lookup answers null for a link no club uses; it throws only when it could not ask.
     api
       .publicClub(slug)
@@ -111,6 +116,11 @@ export function JoinClubPage() {
   }
 
   async function confirmJoin() {
+    if (!privacyAcknowledged) {
+      setError(PRIVACY_ACK_ERROR)
+      privacyCheckboxRef.current?.focus()
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -125,6 +135,15 @@ export function JoinClubPage() {
   return (
     <JoinCard title={`Join ${club.name}?`} club={club}>
       <p>You will become a member of {club.name}. Your other clubs stay as they are.</p>
+      <PrivacyAcknowledgement
+        checked={privacyAcknowledged}
+        onChange={(checked) => {
+          setPrivacyAcknowledged(checked)
+          if (checked && error === PRIVACY_ACK_ERROR) setError(null)
+        }}
+        clubSlug={club.slug}
+        inputRef={privacyCheckboxRef}
+      />
       {error ? (
         <p role="alert" className="notice notice-error font-semibold">
           {error}
