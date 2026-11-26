@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Bell, ChevronRight, GraduationCap, MapPin, Pencil, QrCode, Receipt, Trash2, UserRoundCog } from 'lucide-react'
+import { Bell, ChevronRight, GraduationCap, MapPin, Pencil, QrCode, Receipt, Shuffle, Trash2, Trophy, UserRoundCog } from 'lucide-react'
 import { AppHeader, AppShell, SignOutAction } from '../components/Shell'
 import { LoadingShapes, SkeletonBlock, SkeletonCard, SkeletonLine, SkeletonRows } from '../components/Skeleton'
 import { MemberAvatar } from '../components/MemberIdentity'
@@ -155,6 +155,8 @@ export function MemberAccount() {
             </section>
 
             <nav className="card divide-y divide-slate-100" aria-label="More for you">
+              <AccountRow to="/member/leaderboard" icon={<Trophy size={22} />} title="Leaderboard" detail="Club rankings, points and match results" />
+              <AccountRow to="/member/tournaments" icon={<Shuffle size={22} />} title="Tournaments" detail="Live brackets, random queues and results" />
               <AccountRow to="/member/notifications" icon={<Bell size={22} />} title="Messages" detail="Bookings & reminders" badge={unread || undefined} />
               <AccountRow to="/member/transactions" icon={<Receipt size={22} />} title={isDemoMode ? 'Payments' : 'Charges'} detail={isDemoMode ? 'Everything you paid' : 'Recorded charges'} />
               <AccountRow to="/clubs" icon={<MapPin size={22} />} title="Find a court" detail="Browse clubs and book at any of them" />

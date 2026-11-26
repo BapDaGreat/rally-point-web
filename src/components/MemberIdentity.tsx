@@ -9,20 +9,20 @@ import { initialsOf } from '../lib/memberPass'
 export function MemberAvatar({ name, photoUrl, size = 'md' }: { name: string; photoUrl?: string | null; size?: 'sm' | 'md' | 'lg' }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
   // 'sm' is the header's account button.
-  const box = size === 'lg' ? 'h-20 w-20 text-2xl' : size === 'sm' ? 'h-9 w-9 text-sm' : 'h-14 w-14 text-lg'
+  const box = size === 'lg' ? 'h-20 w-20 text-2xl rounded-2xl' : size === 'sm' ? 'h-10 w-10 text-body rounded-xl' : 'h-14 w-14 text-lg rounded-2xl'
   if (photoUrl && failedUrl !== photoUrl) {
     return (
       <img
         src={photoUrl}
         alt={`Photo of ${name}`}
-        className={`${box} shrink-0 rounded-2xl border-2 border-slate-200 bg-slate-100 object-cover`}
+        className={`${box} shrink-0 border-2 border-slate-200 bg-slate-100 object-cover`}
         onError={() => setFailedUrl(photoUrl)}
       />
     )
   }
   return (
     <div
-      className={`${box} flex shrink-0 items-center justify-center rounded-2xl bg-slate-100 font-extrabold text-slate-700`}
+      className={`${box} flex shrink-0 items-center justify-center bg-slate-100 font-extrabold text-slate-700`}
       role="img"
       aria-label={`No photo. Initials ${initialsOf(name)}`}
     >

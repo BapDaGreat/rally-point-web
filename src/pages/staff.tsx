@@ -197,6 +197,12 @@ export function StaffHome() {
               <Link to="/staff/courts" className="btn-secondary">
                 Court ops
               </Link>
+              <Link to="/staff/leaderboard" className="btn-secondary">
+                Leaderboard & scoring
+              </Link>
+              <Link to="/staff/tournaments" className="btn-secondary">
+                Tournaments
+              </Link>
             </div>
 
             <section className="enter-rise card p-4" style={stagger(2)}>

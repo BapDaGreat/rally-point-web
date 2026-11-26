@@ -7,6 +7,8 @@ import { ClubImage } from '../components/ClubImage'
 import { OwnersStrip } from '../components/OwnersStrip'
 import { clubContactLinks, clubGrid, pesoKeep, plural, shortClubGrid } from '../lib/clubFormat'
 import { CourtArt } from '../components/CourtArt'
+import { ClubLeaderboardPreviewCard } from '../components/LeaderboardView'
+import { ClubTournamentsPreviewCard } from '../components/TournamentView'
 import { Photo } from '../components/Photo'
 import {
   ClubAboutCard,
@@ -22,7 +24,7 @@ import { stagger } from '../lib/motion'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
-import type { PublicClubDetail, PublicClubListing, PublicClubProfile } from '../types'
+import type { ClubLeaderboardSnapshot, PublicClubDetail, PublicClubListing, PublicClubProfile, TournamentSummary } from '../types'
 import { openingHoursLabel } from '../types'
 import { directionsUrl, mapEmbedUrl, placeLine } from '../lib/maps'
 
@@ -359,6 +361,8 @@ export function ClubDetailPage() {
   const [reloadKey, setReloadKey] = useState(0)
   // The club's business profile is extra: the page still shows courts if it cannot load.
   const [profile, setProfile] = useState<{ slug: string; data: PublicClubProfile } | null>(null)
+  const [leaderboard, setLeaderboard] = useState<{ slug: string; data: ClubLeaderboardSnapshot } | null>(null)
+  const [tournaments, setTournaments] = useState<{ slug: string; data: TournamentSummary[] } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -373,6 +377,16 @@ export function ClubDetailPage() {
       api.publicClubProfile(slug)
         .then((data) => { if (!cancelled) setProfile(data ? { slug, data } : null) })
         .catch(() => { if (!cancelled) setProfile(null) })
+    }
+    if (typeof api.publicClubLeaderboard === 'function') {
+      Promise.resolve(api.publicClubLeaderboard(slug, 'month', 'all', 5))
+        .then((data) => { if (!cancelled) setLeaderboard(data ? { slug, data } : null) })
+        .catch(() => { if (!cancelled) setLeaderboard(null) })
+    }
+    if (typeof api.listPublicClubTournaments === 'function') {
+      Promise.resolve(api.listPublicClubTournaments(slug, 4))
+        .then((data) => { if (!cancelled) setTournaments(data ? { slug, data } : null) })
+        .catch(() => { if (!cancelled) setTournaments(null) })
     }
     return () => { cancelled = true }
   }, [slug, reloadKey])
@@ -543,6 +557,22 @@ export function ClubDetailPage() {
               <ClubPaymentCard clubName={club.name} profile={info} index={club.venues.length + 5} />
               <ClubPoliciesCard profile={info} index={club.venues.length + 6} />
             </>
+          ) : null}
+          {typeof api.publicClubLeaderboard === 'function' ? (
+            <ClubLeaderboardPreviewCard
+              clubSlug={club.slug}
+              clubName={club.name}
+              snapshot={leaderboard?.slug === slug ? leaderboard.data : null}
+              index={club.venues.length + (info ? 7 : 1)}
+            />
+          ) : null}
+          {typeof api.listPublicClubTournaments === 'function' ? (
+            <ClubTournamentsPreviewCard
+              clubSlug={club.slug}
+              clubName={club.name}
+              tournaments={tournaments?.slug === slug ? tournaments.data : null}
+              index={club.venues.length + (info ? 8 : 2)}
+            />
           ) : null}
         </div>
       </div>

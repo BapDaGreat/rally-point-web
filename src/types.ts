@@ -896,6 +896,194 @@ export interface Reminder {
   open_play_id?: string | null
 }
 
+export type MatchFormat = 'doubles' | 'singles'
+export type LeaderboardFormatFilter = 'all' | MatchFormat
+export type LeaderboardPeriod = 'month' | 'all'
+export type MatchSide = 'a' | 'b'
+
+/** Safe display identity for a player on the club leaderboard or match card (no contact or billing fields). */
+export interface LeaderboardPlayerSummary {
+  member_id: string
+  full_name: string
+  nickname?: string | null
+  photo_path?: string | null
+  photo_url?: string | null
+}
+
+/** One ranked player row computed from completed matches in scope. */
+export interface LeaderboardEntry extends LeaderboardPlayerSummary {
+  rank: number
+  points: number
+  wins: number
+  losses: number
+  games_played: number
+  win_pct: number
+  score_diff: number
+  streak: number
+}
+
+/** One recorded club match (completed or voided). */
+export interface ClubMatch {
+  id: string
+  club_id: string
+  venue_id?: string | null
+  venue_name?: string | null
+  court_id?: string | null
+  court_name?: string | null
+  tournament_id?: string | null
+  tournament_title?: string | null
+  format: MatchFormat
+  winner_side: MatchSide
+  score_a?: number | null
+  score_b?: number | null
+  notes?: string | null
+  status: 'completed' | 'voided'
+  void_reason?: string | null
+  played_at: string
+  created_at: string
+  team_a: LeaderboardPlayerSummary[]
+  team_b: LeaderboardPlayerSummary[]
+}
+
+/** Public or signed-in club leaderboard response. */
+export interface ClubLeaderboardSnapshot {
+  club: PublicClub | null
+  period: LeaderboardPeriod
+  format: LeaderboardFormatFilter
+  entries: LeaderboardEntry[]
+  recent_matches: ClubMatch[]
+  total_players: number
+  total_matches: number
+  my_member_id?: string | null
+  my_entry?: LeaderboardEntry | null
+  can_score?: boolean
+}
+
+export interface RecordMatchInput {
+  format: MatchFormat
+  team_a: string[]
+  team_b: string[]
+  winner_side: MatchSide
+  score_a?: number | null
+  score_b?: number | null
+  venue_id?: string | null
+  court_id?: string | null
+  notes?: string | null
+}
+
+/** A club staff member who can be designated by an admin to record match results. */
+export interface LeaderboardScorerStaff {
+  user_id: string
+  full_name: string
+  email: string
+  can_score: boolean
+}
+
+// ---- Phase 2: Club tournaments (Single-Elimination Bracket & Random Queue Mixer) ----
+
+export type TournamentFormat = 'single_elimination' | 'random_queue'
+export type TournamentStatus = 'setup' | 'live' | 'completed' | 'cancelled'
+export type TournamentMatchStatus = 'pending' | 'ready' | 'playing' | 'completed' | 'bye' | 'voided'
+
+/** Staff assignment row returned for club admins managing per-tournament scorers. */
+export interface TournamentScorerStaff {
+  user_id: string
+  full_name: string
+  email: string
+  is_club_scorer: boolean
+  can_score: boolean
+}
+
+export interface TournamentTeam {
+  id: string
+  seed: number
+  name: string
+  players: LeaderboardPlayerSummary[]
+}
+
+export interface TournamentMatch {
+  id: string
+  tournament_id: string
+  round_number: number
+  match_order: number
+  round_label: string
+  court_id?: string | null
+  court_name?: string | null
+  team_a_id?: string | null
+  team_b_id?: string | null
+  team_a_name?: string | null
+  team_b_name?: string | null
+  team_a_seed?: number | null
+  team_b_seed?: number | null
+  team_a_players: LeaderboardPlayerSummary[]
+  team_b_players: LeaderboardPlayerSummary[]
+  status: TournamentMatchStatus
+  winner_side?: MatchSide | null
+  score_a?: number | null
+  score_b?: number | null
+  next_match_id?: string | null
+  next_match_side?: MatchSide | null
+  club_match_id?: string | null
+  completed_at?: string | null
+  created_at: string
+}
+
+export interface TournamentSummary {
+  id: string
+  club_id: string
+  venue_id?: string | null
+  venue_name?: string | null
+  title: string
+  format: TournamentFormat
+  team_size: 1 | 2
+  status: TournamentStatus
+  counts_for_leaderboard: boolean
+  scheduled_at?: string | null
+  notes?: string | null
+  started_at?: string | null
+  completed_at?: string | null
+  created_at: string
+  player_count: number
+  team_count: number
+  active_matches: number
+  completed_matches: number
+  total_matches: number
+  champion_label?: string | null
+}
+
+export interface TournamentDetail {
+  club: PublicClub | null
+  tournament: TournamentSummary
+  players: LeaderboardPlayerSummary[]
+  teams: TournamentTeam[]
+  matches: TournamentMatch[]
+  standings: LeaderboardEntry[]
+  scorers?: TournamentScorerStaff[]
+  my_member_id?: string | null
+  can_score?: boolean
+  can_manage?: boolean
+}
+
+export interface CreateTournamentInput {
+  title: string
+  format: TournamentFormat
+  team_size: 1 | 2
+  venue_id?: string | null
+  counts_for_leaderboard?: boolean
+  scheduled_at?: string | null
+  notes?: string | null
+  player_ids?: string[]
+}
+
+export interface ScoreTournamentMatchInput {
+  tournament_id: string
+  match_id: string
+  winner_side: MatchSide
+  score_a?: number | null
+  score_b?: number | null
+  court_id?: string | null
+}
+
 export function qrPayload(memberCode: string, token: string) {
   return `RP1|${memberCode}|${token}`
 }
