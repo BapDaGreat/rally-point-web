@@ -56,9 +56,8 @@ function Hero() {
 
   return (
     <section className="grid grid-cols-1 items-center gap-6 lg:grid-cols-2 lg:gap-10">
-      <div className="min-w-0 space-y-4">
-        {/* The moving mark lives here only; the header keeps the still one so other pages stay calm. */}
-        <BrinelyLogo variant="animated" title="" className="h-14 w-auto lg:h-16" />
+      {/* On phones the photo comes first and its badge hangs below it, so the text starts lower to clear it. */}
+      <div className="min-w-0 space-y-4 pt-6 lg:pt-0">
         <h1 className="text-display font-semibold text-ink lg:text-display-lg">{TITLE}</h1>
         <p className="max-w-xl text-subtitle text-muted">
           See free hours at clubs across the Philippines, book by the hour, and pay the club by GCash.
@@ -84,14 +83,23 @@ function Hero() {
           I own a court
         </Link>
       </div>
-      <Photo
-        src={stockSrc(HERO_PHOTO)}
-        srcSet={stockSrcSet(HERO_PHOTO)}
-        sizes="(min-width: 1024px) 50vw, 100vw"
-        alt={HERO_PHOTO.alt}
-        priority
-        className="order-first aspect-[16/10] w-full rounded-[12px] lg:order-last"
-      />
+      <div className="relative order-first lg:order-last">
+        <Photo
+          src={stockSrc(HERO_PHOTO)}
+          srcSet={stockSrcSet(HERO_PHOTO)}
+          sizes="(min-width: 1024px) 50vw, 100vw"
+          alt={HERO_PHOTO.alt}
+          priority
+          className="aspect-[16/10] w-full rounded-[12px]"
+        />
+        {/* The moving mark lives here only; the header keeps the still one so other pages stay calm.
+            A white badge straddling the photo's bottom edge, at the left, clear of the player and paddle.
+            Decorative (empty alt), and after the photo so it paints on top without a z-index.
+            Padding gives the hopping ball room inside the badge. */}
+        <div className="absolute bottom-0 left-4 translate-y-1/2 rounded-2xl border border-line bg-white p-2 shadow-md lg:left-6 lg:p-2.5">
+          <BrinelyLogo variant="animated" title="" className="block h-9 w-auto lg:h-12" />
+        </div>
+      </div>
     </section>
   )
 }
