@@ -73,6 +73,7 @@ export function AccountMenu() {
 
   if (!user) return null
   const shownName = user.nickname?.trim() || user.full_name.split(' ')[0] || 'Account'
+  const photoUrl = user.photo_path ? memberPhotoUrl(user.photo_path) : null
 
   return (
     <div className="relative">
@@ -82,34 +83,49 @@ export function AccountMenu() {
         aria-expanded={open}
         aria-controls={panelId}
         aria-label={`Account menu for ${user.full_name}`}
-        className="control-feedback inline-flex min-h-12 items-center gap-2 rounded-[10px] border-[1.5px] border-field bg-white pl-1.5 pr-2.5 font-semibold text-ink"
+        // A soft pill: a round photo or initials, the name, and a quiet chevron. The thin border
+        // and faint shadow set it apart from the plain nav links without shouting like a button.
+        className={`control-feedback inline-flex min-h-12 items-center gap-2 rounded-full border py-[3px] pl-[3px] pr-3 font-semibold text-ink shadow-[0_1px_2px_rgb(11_42_91/0.08)] hover:border-brand-200 hover:bg-brand-50 ${
+          open ? 'border-brand-300 bg-brand-50 ring-[3px] ring-brand-100' : 'border-line bg-white'
+        }`}
         onClick={() => setOpen((value) => !value)}
       >
-        <MemberAvatar name={user.full_name} photoUrl={user.photo_path ? memberPhotoUrl(user.photo_path) : null} size="sm" />
+        <MemberAvatar name={user.full_name} photoUrl={photoUrl} size="sm" shape="circle" />
         <span className="hidden max-w-[9rem] truncate min-[380px]:inline" aria-hidden>{shownName}</span>
-        <ChevronDown size={18} aria-hidden className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          size={18}
+          strokeWidth={2.25}
+          aria-hidden
+          className={`text-muted transition-transform duration-200 motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
+        />
       </button>
       {/* Hidden rather than removed when closed: Log out's confirmation dialog lives in here. */}
       <div
           ref={panel}
           id={panelId}
           hidden={!open}
-          className="absolute right-0 top-full z-40 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-line bg-white p-2 shadow-lg"
+          // Fades and drops in a few pixels where the browser supports it; appears at once otherwise.
+          className="absolute right-0 top-full z-40 mt-2 w-[min(20rem,calc(100vw-2rem))] origin-top-right rounded-2xl border border-line bg-white p-2 shadow-[0_2px_6px_rgb(11_42_91/0.06),0_16px_36px_-12px_rgb(11_42_91/0.22)] transition-[opacity,translate] duration-150 ease-out starting:-translate-y-1 starting:opacity-0 motion-reduce:transition-none"
         >
-          <div className="px-3 pb-2 pt-1">
-            <p className="truncate text-subtitle font-semibold text-ink">{user.full_name}</p>
-            <p className="truncate text-caption text-muted">{user.email}</p>
+          <div className="flex items-center gap-3 border-b border-line px-2 pb-3 pt-1.5">
+            <MemberAvatar name={user.full_name} photoUrl={photoUrl} size="sm" shape="circle" />
+            <div className="min-w-0">
+              <p className="truncate text-subtitle font-semibold text-ink">{user.full_name}</p>
+              <p className="truncate text-caption text-muted">{user.email}</p>
+            </div>
           </div>
-          <nav aria-label="Your account">
+          <nav aria-label="Your account" className="pt-2">
             <ul className="space-y-0.5">
               {menuLinks.map(({ to, label, icon: Icon }) => (
                 <li key={to}>
                   <Link
                     to={to}
-                    className="control-feedback flex min-h-12 items-center gap-3 rounded-xl px-3 text-body font-semibold text-ink hover:bg-brand-50"
+                    className="control-feedback group flex min-h-12 items-center gap-3 rounded-xl px-3 text-body font-semibold text-ink hover:bg-brand-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-800"
                     aria-current={location.pathname === to ? 'page' : undefined}
                   >
-                    <Icon size={20} aria-hidden />
+                    <span className="flex shrink-0 text-muted group-hover:text-brand-700 group-aria-[current=page]:text-brand-700">
+                      <Icon size={20} aria-hidden />
+                    </span>
                     {label}
                   </Link>
                 </li>
