@@ -48,6 +48,87 @@ export function callDayLabel(ymd: string) {
   })
 }
 
+/*
+ * Calendar helpers for the call-day picker. Every date is a YYYY-MM-DD string read in UTC,
+ * so the grid is the same whatever the device's own timezone (Philippine dates come from
+ * ownerCallDateRange). A month is "YYYY-MM".
+ */
+
+function utcDate(ymd: string) {
+  const [y, m, d] = ymd.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d))
+}
+
+/** "2026-12" for "2026-12-01". */
+export function monthOfYmd(ymd: string) {
+  return ymd.slice(0, 7)
+}
+
+/** Moves a "YYYY-MM" month by whole months. */
+export function addMonthsYm(ym: string, months: number) {
+  const [y, m] = ym.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1 + months, 1)).toISOString().slice(0, 7)
+}
+
+/** "December 2026". */
+export function monthLabel(ym: string) {
+  return utcDate(`${ym}-01`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+}
+
+/** "Dec" for "2026-12-01". */
+export function shortMonthOfYmd(ymd: string) {
+  return utcDate(ymd).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+}
+
+/** 0 for Sunday to 6 for Saturday. */
+export function weekdayOfYmd(ymd: string) {
+  return utcDate(ymd).getUTCDay()
+}
+
+/** Short and full weekday names, Sunday first, as Philippine calendars show them. */
+export const CALENDAR_WEEKDAYS = [
+  { short: 'Sun', long: 'Sunday' },
+  { short: 'Mon', long: 'Monday' },
+  { short: 'Tue', long: 'Tuesday' },
+  { short: 'Wed', long: 'Wednesday' },
+  { short: 'Thu', long: 'Thursday' },
+  { short: 'Fri', long: 'Friday' },
+  { short: 'Sat', long: 'Saturday' },
+] as const
+
+/**
+ * The weeks of a month, Sunday first. Each week has seven places: a YYYY-MM-DD date, or null
+ * for the places before the 1st and after the last day.
+ */
+export function monthWeeks(ym: string): (string | null)[][] {
+  const first = `${ym}-01`
+  const lastDay = Number(addDaysYmd(`${addMonthsYm(ym, 1)}-01`, -1).slice(8))
+  const places: (string | null)[] = Array.from({ length: weekdayOfYmd(first) }, () => null)
+  for (let day = 1; day <= lastDay; day += 1) places.push(`${ym}-${String(day).padStart(2, '0')}`)
+  while (places.length % 7) places.push(null)
+  const weeks: (string | null)[][] = []
+  for (let index = 0; index < places.length; index += 7) weeks.push(places.slice(index, index + 7))
+  return weeks
+}
+
+/** Whole days from `from` to `to` (negative when `to` is earlier). */
+export function daysBetweenYmd(from: string, to: string) {
+  return Math.round((utcDate(to).getTime() - utcDate(from).getTime()) / 86400000)
+}
+
+/**
+ * The plain sentence under the picker and on the thank-you card:
+ * "We'll call you on Tuesday, December 1, in the morning (8 AM to 12 noon), Philippine time."
+ * Today and tomorrow are named as such, so nobody misreads the date.
+ */
+export function ownerCallSummary(ymd: string, time: OwnerCallTime, now = new Date()) {
+  const option = OWNER_CALL_TIMES.find((entry) => entry.value === time)
+  const when = option ? `in the ${option.label.toLowerCase()} (${option.hours})` : ''
+  const offset = daysBetweenYmd(ymdLocal(now), ymd)
+  const day = offset === 0 ? `today, ${callDayLabel(ymd)}` : offset === 1 ? `tomorrow, ${callDayLabel(ymd)}` : `on ${callDayLabel(ymd)}`
+  return `We'll call you ${day}, ${when}, Philippine time.`
+}
+
 /** The digits of a phone number, so "0917 555 0101" and "(0917) 555-0101" match. */
 export function phoneDigits(phone: string | null | undefined) {
   return (phone ?? '').replace(/\D/g, '')

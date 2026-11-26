@@ -84,7 +84,7 @@ describe('public routes', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('heading', { level: 1, name: 'List your club' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Take court bookings online, paid straight to your GCash' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Ask for a call' })).toBeInTheDocument()
   })
 

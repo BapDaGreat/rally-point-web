@@ -820,3 +820,135 @@ input[type='checkbox'] {
 .picked-mark {
   box-shadow: inset 0 -3px 0 var(--color-brand-400);
 }
+
+/*
+ * Call-day picker (CallDayPicker): 48px days in a month grid. Today has a ring and a dot; the
+ * chosen day is solid navy with the sky "picked" bar, like a picked chip. Days that cannot be
+ * chosen are grey and plain.
+ */
+.call-month-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  border: 1.5px solid var(--color-field);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+.call-month-nav[aria-disabled='true'] {
+  border-color: var(--color-line);
+  color: var(--color-field);
+}
+.call-day-cell {
+  padding: 2px;
+  cursor: pointer;
+  outline: none;
+}
+.call-day-cell[aria-disabled='true'] {
+  cursor: default;
+}
+.call-day {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border-radius: 10px;
+  color: var(--color-ink);
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition:
+    background-color var(--interaction-duration) var(--interaction-easing),
+    color var(--interaction-duration) var(--interaction-easing);
+}
+.call-day-cell[aria-disabled='true'] .call-day {
+  color: var(--color-field);
+  font-weight: 400;
+}
+.call-day[data-today] {
+  box-shadow: inset 0 0 0 1.5px var(--color-brand-700);
+}
+.call-day[data-today]::after {
+  content: '';
+  position: absolute;
+  bottom: 7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-brand-700);
+}
+.call-day[data-chosen] {
+  background: var(--color-brand-900);
+  color: #ffffff;
+  box-shadow: inset 0 -3px 0 var(--color-brand-400);
+}
+.call-day[data-chosen][data-today]::after {
+  background: #ffffff;
+}
+.call-day-cell:focus-visible .call-day {
+  outline: 3px solid var(--color-brand-700);
+  outline-offset: 1px;
+}
+
+/* A large choice card around a hidden radio (the call's time of day). Picked: solid navy with the sky bar. */
+.choice-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 60px;
+  padding: 0.6rem 0.9rem;
+  border-radius: 10px;
+  border: 1.5px solid var(--color-field);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  cursor: pointer;
+  transition:
+    background-color var(--interaction-duration) var(--interaction-easing),
+    border-color var(--interaction-duration) var(--interaction-easing),
+    color var(--interaction-duration) var(--interaction-easing);
+}
+.choice-card-sub {
+  color: var(--color-muted);
+}
+.choice-card-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1.5px solid var(--color-field);
+  color: transparent;
+}
+.choice-card:has(input:checked) {
+  background: var(--color-brand-900);
+  border-color: var(--color-brand-900);
+  color: #ffffff;
+  box-shadow: inset 0 -3px 0 var(--color-brand-400);
+}
+.choice-card:has(input:checked) .choice-card-sub {
+  color: var(--color-brand-100);
+}
+.choice-card:has(input:checked) .choice-card-mark {
+  border-color: var(--color-brand-400);
+  background: var(--color-brand-400);
+  color: var(--color-brand-900);
+}
+.choice-card:has(input:focus-visible) {
+  outline: 3px solid var(--color-brand-700);
+  outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .call-day-cell:not([aria-disabled='true']):hover .call-day:not([data-chosen]) {
+    background: var(--color-brand-50);
+  }
+  .choice-card:not(:has(input:checked)):hover {
+    border-color: var(--color-brand-400);
+    background: var(--color-brand-50);
+  }
+}

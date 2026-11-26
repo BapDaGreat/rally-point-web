@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ownerCallDateRange } from '../lib/ownerRequests'
+import { addDaysYmd, callDayLabel, monthOfYmd, ownerCallDateRange } from '../lib/ownerRequests'
 import { OWNERS_PHOTO } from '../lib/stockPhotos'
 import { OwnersPage } from './Owners'
 
@@ -40,26 +40,50 @@ beforeEach(() => {
 describe('OwnersPage', () => {
   it('explains how listing works and offers a call and an owner account', () => {
     renderPage()
-    expect(screen.getByRole('heading', { level: 1, name: 'List your club' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Put your courts on bRineLy' })).toBeInTheDocument()
-    const steps = screen.getByRole('heading', { name: 'Put your courts on bRineLy' }).closest('section')!
-    expect(within(steps).getAllByRole('listitem')).toHaveLength(3)
-    expect(screen.getByRole('link', { name: 'Create my owner account' })).toHaveAttribute('href', '/login')
-    expect(screen.getByLabelText('Day for the call')).toHaveAttribute('min', ownerCallDateRange().min)
+    expect(screen.getByRole('heading', { level: 1, name: 'Take court bookings online, paid straight to your GCash' })).toBeInTheDocument()
+    expect(document.title).toContain('List your club')
+    const steps = screen.getByRole('heading', { name: 'How listing works' }).closest('section')!
+    expect(within(steps).getAllByRole('listitem').map((item) => within(item).getByRole('heading').textContent)).toEqual([
+      'Ask us for a call',
+      'We set up your club with you',
+      'Start taking bookings',
+    ])
+    // The hero's second button and the note beside the form both lead to the owner sign-up.
+    const accountLinks = screen.getAllByRole('link', { name: /Create my owner account/ })
+    expect(accountLinks.map((link) => link.textContent)).toEqual(['Already set up? Create my owner account', 'Create my owner account'])
+    for (const link of accountLinks) expect(link).toHaveAttribute('href', '/login')
+    // The call day starts on today (Philippine time), in a calendar instead of the browser's date box.
+    const { min } = ownerCallDateRange()
+    const calendar = screen.getByRole('grid', { name: /Day for the call/ })
+    expect(within(calendar).getByRole('gridcell', { selected: true })).toHaveAccessibleName(`${callDayLabel(min)}, today`)
+    expect(document.querySelector('input[type="date"]')).toBeNull()
+  })
+
+  it('takes visitors from the hero straight to the call form', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(screen.getByRole('button', { name: 'Pick a time for a call' }))
+    expect(screen.getByRole('heading', { name: 'Ask us for a call', level: 2 })).toHaveFocus()
   })
 
   it('shows what owners get beside a general owners photo', () => {
     renderPage()
     const main = screen.getByRole('main')
     const benefits = within(main).getByRole('heading', { name: 'What you get' }).closest('section')!
-    const items = within(benefits).getAllByRole('listitem')
-    expect(items.map((item) => item.textContent)).toEqual([
+    expect(within(benefits).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
+      'Your own club page',
+      'GCash straight to you',
+      'Confirm payments on your phone',
+      'A TV board for your courts',
+    ])
+    const hero = within(main).getByRole('heading', { level: 1 }).closest('section')!
+    expect(within(hero).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
       'Your own club page with photos, hours and a map',
-      'Players book by the hour and pay your GCash directly',
+      'Players pay your GCash directly',
       'Staff confirm payments from their phone',
       'A TV board for your courts',
     ])
-    expect(within(main).getByText('Put your club online. Players find you, book a time and pay your GCash directly.')).toBeInTheDocument()
+    expect(within(hero).getByText(/Players near you find your courts, book an open hour and pay your club directly\./)).toBeInTheDocument()
     const photo = within(main).getByRole('img', { name: OWNERS_PHOTO.alt })
     expect(photo.getAttribute('srcset')).toContain('800w')
     expect(within(main).queryByText('Sample photo')).not.toBeInTheDocument()
@@ -102,10 +126,35 @@ describe('OwnersPage', () => {
     })
     const thanks = await screen.findByRole('status')
     expect(thanks).toHaveTextContent('Thank you, Ana')
-    expect(thanks).toHaveTextContent('afternoon (12 noon to 5 pm)')
+    expect(thanks).toHaveTextContent(
+      `We'll call you today, ${callDayLabel(ownerCallDateRange().min)}, in the afternoon (12 noon to 5 PM), Philippine time.`,
+    )
     expect(thanks).toHaveTextContent('Lagao Smash Courts')
     expect(thanks).toHaveTextContent('We will use 0917 555 0101')
+    // The form is gone, so focus lands on the thank-you note.
+    expect(within(thanks).getByRole('heading', { name: 'Thank you, Ana' })).toHaveFocus()
     expect(screen.queryByRole('button', { name: 'Ask for a call' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'See your call time' })).toBeInTheDocument()
+  })
+
+  it('sends the day picked on the calendar and says it back in plain words', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const { min } = ownerCallDateRange()
+    const tomorrow = addDaysYmd(min, 1)
+    await fillIn(user)
+    if (monthOfYmd(tomorrow) !== monthOfYmd(min)) await user.click(screen.getByRole('button', { name: /^Next month/ }))
+    await user.click(screen.getByRole('gridcell', { name: callDayLabel(tomorrow) }))
+    expect(
+      screen.getByText(`We'll call you tomorrow, ${callDayLabel(tomorrow)}, in the afternoon (12 noon to 5 PM), Philippine time.`),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('radio', { name: /Evening/ }))
+    expect(screen.getByText(/in the evening \(5 PM to 8 PM\), Philippine time\.$/)).toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: /bRineLy may contact me/ }))
+    await user.click(screen.getByRole('button', { name: 'Ask for a call' }))
+    expect(requestOwnerCall).toHaveBeenCalledWith(expect.objectContaining({ preferred_date: tomorrow, preferred_time: 'evening' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(`We'll call you tomorrow, ${callDayLabel(tomorrow)}, in the evening`)
   })
 
   it('shows the database message when a request is refused', async () => {
