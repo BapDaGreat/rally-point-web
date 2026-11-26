@@ -47,6 +47,8 @@ export const releaseApprovals = Object.freeze({
   // local build matches): "go ahead".
   'leaderboard-tournaments-20261126': '47ffbe474641bc6c22b40a089a59a500f4857e47eafa281dc7bcbedf7f11296e',
   // Owner, 2026-11-26: "go ahead" to fixing the review points (capture, restore check, dry run);
-  // not yet approved for the apply.
-  'tournament-fixes-20261126': null,
+  // after the capture (staging-backup-20261126-fixes-r1), the restore check and the dry run on a
+  // restored copy of staging passed (all checks, isolation 55/55, local build matches), chose
+  // "Apply to staging".
+  'tournament-fixes-20261126': '36fe1cb23863ddd78d7827a3a345abdbc7622d16d7d8146152590646828cc0b5',
 })
