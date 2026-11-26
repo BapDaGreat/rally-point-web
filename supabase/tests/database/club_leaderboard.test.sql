@@ -275,7 +275,7 @@ select extensions.lives_ok(
     'singles',
     array[current_setting('test.mb1')::uuid],
     array[current_setting('test.mb4')::uuid],
-    'b', 11, 9, null, null, null
+    'a', 11, 9, null, null, null
   )$$,
   'Club B admin records a match inside Club B');
 

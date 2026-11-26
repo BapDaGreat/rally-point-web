@@ -82,6 +82,8 @@ import type {
   TournamentMatch,
   TournamentScorerStaff,
   TournamentSummary,
+  PublicTournamentFilter,
+  PublicTournamentSummary,
   TournamentTeam,
 } from '../types'
 import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, fmtDateTime, fmtTime, localRangeISO, timeSlot, venueHours } from '../types'
@@ -2271,6 +2273,23 @@ export const api = {
     },
 
     // ---- Phase 2: Club tournaments & matchmaking ----
+
+    /** Tournaments from every active club, each naming its club (the public Tournaments page). */
+    async listPublicTournaments(status: PublicTournamentFilter = null, limit = 30): Promise<PublicTournamentSummary[]> {
+      if (isDemoMode) return demoStore.listPublicTournaments(status, limit)
+      const { data, error } = await supabase!.rpc('list_public_tournaments', {
+        p_status: status,
+        p_limit: limit,
+      })
+      if (error) {
+        if (isMissingFunction(error)) return []
+        throw error
+      }
+      return ((data ?? []) as PublicTournamentSummary[]).map((row) => ({
+        ...normalizeTournamentSummary(row),
+        club: { slug: String(row.club?.slug ?? ''), name: String(row.club?.name ?? ''), city: row.club?.city ?? null },
+      })).filter((row) => row.club.slug !== '')
+    },
 
     async listPublicClubTournaments(slug: string, limit = 20): Promise<TournamentSummary[] | null> {
       if (isDemoMode) return demoStore.listPublicClubTournaments(slug, limit)

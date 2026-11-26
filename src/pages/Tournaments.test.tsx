@@ -23,6 +23,7 @@ import {
   MemberTournamentsPage,
   PublicClubTournamentsPage,
   PublicTournamentDetailPage,
+  PublicTournamentsPage,
   StaffTournamentDetailPage,
   StaffTournamentsPage,
 } from './Tournaments'
@@ -52,6 +53,7 @@ vi.mock('../lib/api', () => ({
     publicClubLeaderboard: vi.fn(),
     publicDaySchedule: vi.fn(),
     listPublicClubTournaments: vi.fn(),
+    listPublicTournaments: vi.fn(),
     publicTournament: vi.fn(),
     listClubTournaments: vi.fn(),
     clubTournament: vi.fn(),
@@ -258,6 +260,7 @@ beforeEach(() => {
   vi.mocked(api.publicClubLeaderboard).mockResolvedValue(emptyLeaderboard)
   vi.mocked(api.publicDaySchedule).mockResolvedValue([])
   vi.mocked(api.listPublicClubTournaments).mockResolvedValue([bracketSummary])
+  vi.mocked(api.listPublicTournaments).mockResolvedValue([])
   vi.mocked(api.publicTournament).mockResolvedValue({ ...bracketDetail, can_score: false, can_manage: false })
   vi.mocked(api.listClubTournaments).mockResolvedValue([bracketSummary])
   vi.mocked(api.clubTournament).mockResolvedValue(bracketDetail)
@@ -978,5 +981,60 @@ describe('Tournaments pages & TV views (Phase 2)', () => {
     expect(await screen.findByText('Club tournaments')).toBeInTheDocument()
     expect(screen.getByText(/Brackets and queue mixers created by your club appear here\./i)).toBeInTheDocument()
     memberEmptyView.unmount()
+  })
+})
+
+describe('PublicTournamentsPage (all clubs)', () => {
+  const gensanLive = { ...bracketSummary, id: 't-live', title: 'Sunday Bracket', status: 'live' as const,
+    club: { slug: 'rally-point-gensan', name: 'Rally Point Gensan', city: 'General Santos' } }
+  const otherFinished = { ...bracketSummary, id: 't-done', club_id: 'club-two', title: 'Second Club Cup', status: 'completed' as const,
+    champion_label: 'Kyla Tan / Marco Reyes', club: { slug: 'second-club', name: 'Second Club', city: null } }
+
+  it('lists tournaments from every club, each naming its club and linking to the bracket at that club', async () => {
+    vi.mocked(api.listPublicTournaments).mockResolvedValue([gensanLive, otherFinished])
+    render(
+      <MemoryRouter initialEntries={['/tournaments']}>
+        <Routes>
+          <Route path="/tournaments" element={<PublicTournamentsPage />} />
+          <Route path="/clubs/:slug/tournaments/:tournamentId" element={<Where />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Tournaments' })).toBeInTheDocument()
+    const live = screen.getByRole('region', { name: 'Live now' })
+    expect(within(live).getByText('Sunday Bracket')).toBeInTheDocument()
+    expect(within(live).getByText('Rally Point Gensan')).toBeInTheDocument()
+    expect(within(live).getByText(/General Santos/)).toBeInTheDocument()
+    const finished = screen.getByRole('region', { name: 'Finished' })
+    expect(within(finished).getByText('Second Club')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Coming up' })).not.toBeInTheDocument()
+    expect(api.listPublicTournaments).toHaveBeenCalledWith(null, 60)
+
+    await userEvent.setup().click(within(finished).getByRole('link', { name: /Second Club Cup/ }))
+    expect(await screen.findByTestId('where')).toHaveTextContent('/clubs/second-club/tournaments/t-done')
+  })
+
+  it('filters by status and explains an empty result', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.listPublicTournaments).mockResolvedValue([gensanLive, otherFinished])
+    render(<MemoryRouter><PublicTournamentsPage /></MemoryRouter>)
+
+    const all = await screen.findByRole('button', { name: 'All' })
+    expect(all).toHaveAttribute('aria-pressed', 'true')
+    vi.mocked(api.listPublicTournaments).mockResolvedValue([])
+    await user.click(screen.getByRole('button', { name: 'Coming up' }))
+    expect(api.listPublicTournaments).toHaveBeenLastCalledWith('setup', 60)
+    expect(screen.getByRole('button', { name: 'Coming up' })).toHaveAttribute('aria-pressed', 'true')
+    expect(await screen.findByText('No tournament is coming up yet.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'See all clubs' })).toHaveAttribute('href', '/clubs')
+  })
+
+  it('shows a retry when the list cannot load', async () => {
+    vi.mocked(api.listPublicTournaments).mockRejectedValueOnce(new Error('Network down')).mockResolvedValue([gensanLive])
+    render(<MemoryRouter><PublicTournamentsPage /></MemoryRouter>)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Network down')
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText('Sunday Bracket')).toBeInTheDocument()
   })
 })
