@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { ClubCoach } from '../../types'
 import { setActiveClubId } from '../clubContext'
 import { demoStore } from '../demoStore'
-import { DEMO_CLUB_ID } from '../tenant'
+import { DEMO_CLUB_ID, DEMO_DAVAO_CLUB_ID } from '../tenant'
 
 const memberLogin = ['member@brinely.info', 'member123'] as const
 const coachLogin = ['admin@brinely.info', 'admin123'] as const
@@ -124,5 +124,89 @@ describe('rent-a-coach demo', () => {
     signIn(secondPlayerLogin)
     expect(() => demoStore.coachListRequestMessages(request.request_id))
       .toThrow('Coaching request not found')
+  })
+
+  it('lists active coaches and open future slots across active clubs and hides held, full, closed, and inactive items', () => {
+    demoStore.reset()
+    demoStore.logout()
+
+    const seeded = demoStore.listPublicCoaches()
+    expect(seeded.map((c) => c.club.slug)).toEqual([
+      'rally-point-gensan',
+      'rally-point-gensan',
+      'rally-point-davao',
+    ])
+    expect(seeded[0].slots.length).toBeGreaterThan(0)
+    expect(seeded[1].accepts_requests).toBe(false)
+    expect(seeded[1].slots).toEqual([])
+
+    const davaoOnly = demoStore.listPublicCoaches({ clubSlug: 'RALLY-POINT-DAVAO' })
+    expect(davaoOnly).toHaveLength(1)
+    expect(davaoOnly[0].club.city).toBe('Davao City')
+
+    // Pending request hides slot; inactive coach or suspended club drops out.
+    const db = demoStore.get()
+    const gensanCoach = db.clubCoaches!.find((c) => c.id === 'coach_gensan_1')!
+    const firstSlot = db.coachBookingSlots!.find((s) => s.slot_id === 'slot_gensan_1')!
+    const groupSlot = db.coachBookingSlots!.find((s) => s.slot_id === 'slot_gensan_2')!
+    db.coachBookingSlots!.push({
+      ...firstSlot,
+      slot_id: 'slot_closed',
+      is_open: false,
+    }, {
+      ...firstSlot,
+      slot_id: 'slot_past',
+      starts_at: new Date(Date.now() - 7200000).toISOString(),
+      ends_at: new Date(Date.now() - 3600000).toISOString(),
+    })
+    db.coachBookingRequests = [
+      {
+        request_id: 'req-hold',
+        slot_id: firstSlot.slot_id,
+        club_id: DEMO_CLUB_ID,
+        coach_id: gensanCoach.id,
+        coach_name: gensanCoach.full_name,
+        player_user_id: 'user_member',
+        starts_at: firstSlot.starts_at,
+        ends_at: firstSlot.ends_at,
+        lesson_type: firstSlot.lesson_type,
+        pricing_model: firstSlot.pricing_model,
+        rate: firstSlot.rate,
+        student_count: 1,
+        quoted_amount: firstSlot.rate,
+        message: null,
+        status: 'requested',
+        created_at: new Date().toISOString(),
+      },
+      {
+        request_id: 'req-full',
+        slot_id: groupSlot.slot_id,
+        club_id: DEMO_CLUB_ID,
+        coach_id: gensanCoach.id,
+        coach_name: gensanCoach.full_name,
+        player_user_id: 'user_member',
+        starts_at: groupSlot.starts_at,
+        ends_at: groupSlot.ends_at,
+        lesson_type: groupSlot.lesson_type,
+        pricing_model: groupSlot.pricing_model,
+        rate: groupSlot.rate,
+        student_count: 4,
+        quoted_amount: groupSlot.rate * 4,
+        message: null,
+        status: 'accepted',
+        created_at: new Date().toISOString(),
+      },
+    ]
+    db.clubCoaches!.find((c) => c.id === 'coach_gensan_2')!.is_active = false
+    db.clubAccounts.find((a) => a.club_id === DEMO_DAVAO_CLUB_ID)!.status = 'suspended'
+    demoStore.set(db)
+
+    const filtered = demoStore.listPublicCoaches()
+    expect(filtered.map((c) => c.id)).toEqual(['coach_gensan_1'])
+    expect(filtered[0].slots).toEqual([])
+
+    expect(() =>
+      demoStore.listPublicCoaches({ from: '2099-06-02T00:00:00Z', until: '2099-06-01T00:00:00Z' }),
+    ).toThrow('Choose a valid date range')
   })
 })

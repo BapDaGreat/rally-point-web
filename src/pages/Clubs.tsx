@@ -553,7 +553,7 @@ export function ClubDetailPage() {
               <ClubAboutCard clubName={club.name} profile={info} index={club.venues.length + 1} />
               <ClubGallery clubName={club.name} profile={info} index={club.venues.length + 2} />
               <ClubAddonsCard profile={info} index={club.venues.length + 3} />
-              <ClubCoachesCard profile={info} index={club.venues.length + 4} />
+              <ClubCoachesCard clubSlug={club.slug} profile={info} index={club.venues.length + 4} />
               <ClubPaymentCard clubName={club.name} profile={info} index={club.venues.length + 5} />
               <ClubPoliciesCard profile={info} index={club.venues.length + 6} />
             </>

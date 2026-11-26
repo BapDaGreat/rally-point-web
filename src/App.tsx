@@ -54,6 +54,7 @@ import {
 import { homeFor } from './lib/roleHome'
 import { PrivacyNoticePage } from './pages/PrivacyNoticePage'
 import { ClubDetailPage, ClubDirectory } from './pages/Clubs'
+import { PublicCoachesPage } from './pages/Coaches'
 import { WelcomePage } from './pages/Welcome'
 import { OwnersPage } from './pages/Owners'
 import { NotFoundPage } from './pages/NotFound'
@@ -104,6 +105,8 @@ function AppRoutes() {
         <Route path="/clubs/:slug" element={<ClubDetailPage />} />
         <Route path="/clubs/:slug/leaderboard" element={<PublicClubLeaderboardPage />} />
         <Route path="/clubs/:slug/tournaments" element={<PublicClubTournamentsPage />} />
+        {/* Coaches from every active club, open to visitors; requesting a time asks them to sign in. */}
+        <Route path="/coaches" element={<PublicCoachesPage />} />
         {/* Tournaments from every club, each naming its club. Open to visitors. */}
         <Route path="/tournaments" element={<PublicTournamentsPage />} />
         <Route path="/clubs/:slug/tournaments/:tournamentId" element={<PublicTournamentDetailPage />} />

@@ -3,9 +3,12 @@ import type {
   CoachBookingSlot,
   CoachProfileAccess,
   CoachRequestMessage,
+  PublicCoachListing,
 } from '../../types'
+import { DEFAULT_CLUB_SLUG } from '../tenant'
 import { activeClubId, clubRoleFor } from './access'
 import { uid } from './common'
+import { activePublicClubBySlug } from './leaderboard'
 import type { DemoDB } from './model'
 import { load, save } from './persistence'
 
@@ -378,5 +381,88 @@ export const coachingOperations = {
     if (!canAccessRequest(db, request)) throw new Error('Coaching request not found')
     return (db.coachRequestMessages ?? []).filter((row) => row.request_id === requestId)
       .map((row) => ({ ...row })).sort((a, b) => a.created_at.localeCompare(b.created_at))
+  },
+
+  /** Mirrors public.list_public_coaches: active coaches and open future lesson slots across active clubs. */
+  listPublicCoaches(options?: { clubSlug?: string | null; from?: string; until?: string }): PublicCoachListing[] {
+    const db = load()
+    const now = new Date()
+    const start = options?.from ? new Date(options.from) : now
+    const end = options?.until ? new Date(options.until) : new Date(now.getTime() + 30 * 86400000)
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+      throw Object.assign(new Error('Choose a valid date range'), { code: '22023' })
+    }
+    const minStart = start > now ? start : now
+    const maxUntil = new Date(minStart.getTime() + 90 * 86400000)
+    const cappedEnd = end < maxUntil ? end : maxUntil
+    const slugFilter = options?.clubSlug?.trim().toLowerCase() || null
+
+    const clubs = db.clubs
+      .filter((club) => activePublicClubBySlug(db, club.slug))
+      .filter((club) => !slugFilter || club.slug.toLowerCase() === slugFilter)
+      .sort((a, b) =>
+        (a.slug === DEFAULT_CLUB_SLUG ? 0 : 1) - (b.slug === DEFAULT_CLUB_SLUG ? 0 : 1)
+        || a.name.localeCompare(b.name),
+      )
+
+    const listings: PublicCoachListing[] = []
+    for (const club of clubs) {
+      const account = db.clubAccounts.find((row) => row.club_id === club.id)
+      const coaches = (db.clubCoaches ?? [])
+        .filter((coach) => coach.club_id === club.id && coach.is_active)
+        .slice()
+        .sort((a, b) =>
+          (a.position - b.position)
+          || a.created_at.localeCompare(b.created_at)
+          || a.id.localeCompare(b.id),
+        )
+      for (const coach of coaches) {
+        const slots = (db.coachBookingSlots ?? [])
+          .filter((slot) => {
+            if (slot.club_id !== club.id || slot.coach_id !== coach.id || !slot.is_open) return false
+            const slotStart = new Date(slot.starts_at)
+            if (slotStart < minStart || slotStart >= cappedEnd) return false
+            const requests = activeRequests(db, slot.slot_id)
+            if (requests.some((row) => row.status === 'requested')) return false
+            const occupied = requests.reduce((sum, row) => sum + row.student_count, 0)
+            return occupied < slot.max_students
+          })
+          .map((slot) => {
+            const occupied = activeRequests(db, slot.slot_id).reduce((sum, row) => sum + row.student_count, 0)
+            return {
+              slot_id: slot.slot_id,
+              starts_at: slot.starts_at,
+              ends_at: slot.ends_at,
+              lesson_type: slot.lesson_type,
+              pricing_model: slot.pricing_model,
+              rate: slot.rate,
+              max_students: slot.max_students,
+              remaining_students: slot.max_students - occupied,
+            }
+          })
+          .sort((a, b) => a.starts_at.localeCompare(b.starts_at) || a.slot_id.localeCompare(b.slot_id))
+
+        listings.push({
+          id: coach.id,
+          full_name: coach.full_name,
+          headline: coach.headline,
+          bio: coach.bio,
+          hourly_rate: coach.hourly_rate,
+          contact_phone: coach.contact_phone,
+          contact_url: coach.contact_url,
+          photo_url: coach.photo_url ?? null,
+          booking_policy: coach.booking_policy ?? null,
+          accepts_requests: Boolean(coach.account_user_id),
+          club: {
+            id: club.id,
+            slug: club.slug,
+            name: club.name,
+            city: account?.city ?? null,
+          },
+          slots,
+        })
+      }
+    }
+    return listings
   },
 }

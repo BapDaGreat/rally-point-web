@@ -79,7 +79,10 @@ describe('demo club business profile (mirrors the club_business_profile function
     demoStore.setClubPaymentQr(gcash.id, pic(2))
 
     const shown = demoStore.publicClubProfile('rally-point-gensan')
-    expect(shown?.coaches).toEqual([expect.objectContaining({ full_name: 'Coach Ana', photo_url: pic(1) })])
+    expect(shown?.coaches.find((coach) => coach.id === ana.id)).toEqual(
+      expect.objectContaining({ full_name: 'Coach Ana', photo_url: pic(1) }),
+    )
+    expect(shown?.coaches.some((coach) => coach.full_name === 'Coach Ben')).toBe(false)
     // The demo club starts with its own GCash method (for checkout), so look for the new one.
     expect(shown?.payment_methods.find((method) => method.id === gcash.id)).toEqual(expect.objectContaining({ label: 'GCash', qr_url: pic(2) }))
 
