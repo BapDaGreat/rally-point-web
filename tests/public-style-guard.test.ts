@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
  */
 const publicFiles = [
   'src/components/PublicFrame.tsx',
+  'src/components/CourtSymbolsBackdrop.tsx',
   'src/components/PrivacyAcknowledgement.tsx',
   'src/components/SiteFooter.tsx',
   'src/components/ClubCard.tsx',

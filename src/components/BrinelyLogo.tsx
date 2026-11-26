@@ -1,5 +1,5 @@
 /** Official bRineLy brand logo & icon mark assets (vector art traced from logo.png, in public/) */
-type LogoVariant = 'color' | 'mark' | 'wordmark'
+type LogoVariant = 'color' | 'mark' | 'animated' | 'wordmark'
 
 type LogoProps = {
   variant?: LogoVariant
@@ -13,6 +13,8 @@ const BASE = import.meta.env.BASE_URL || '/'
 const SOURCES: Record<LogoVariant, string> = {
   color: 'logo.png',
   mark: 'logo-mark.svg',
+  /** The mark with a spinning, hopping ball; it holds still when the visitor asks for less motion. */
+  animated: 'logo-mark-animated.svg',
   wordmark: 'logo-wordmark.svg',
 }
 

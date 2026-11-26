@@ -65,6 +65,9 @@ describe('Landing page', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Book a pickleball court near you.' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: HERO_PHOTO.alt })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'I own a court' })).toHaveAttribute('href', '/owners')
+    // The moving B mark sits above the heading as decoration, so screen readers skip it.
+    const mark = document.querySelector('img[src$="logo-mark-animated.svg"]')
+    expect(mark).toHaveAttribute('alt', '')
     await screen.findByText('Rally Point Gensan')
   })
 

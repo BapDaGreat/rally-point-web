@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { BrinelyLogo } from '../components/BrinelyLogo'
 import { PublicFrame } from '../components/PublicFrame'
 import { ClubCard, ClubCardsLoading } from '../components/ClubCard'
 import { OwnersStrip } from '../components/OwnersStrip'
@@ -56,6 +57,8 @@ function Hero() {
   return (
     <section className="grid grid-cols-1 items-center gap-6 lg:grid-cols-2 lg:gap-10">
       <div className="min-w-0 space-y-4">
+        {/* The moving mark lives here only; the header keeps the still one so other pages stay calm. */}
+        <BrinelyLogo variant="animated" title="" className="h-14 w-auto lg:h-16" />
         <h1 className="text-display font-semibold text-ink lg:text-display-lg">{TITLE}</h1>
         <p className="max-w-xl text-subtitle text-muted">
           See free hours at clubs across the Philippines, book by the hour, and pay the club by GCash.
