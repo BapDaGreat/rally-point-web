@@ -1,4 +1,7 @@
-import type { CheckIn, ClubAccount, ClubStaffRole, Court, CourtSession, Member, MembershipType, Notification, OpenPlaySession, OpenPlaySignup, Profile, Reminder, Transaction } from '../../types'
+import type {
+  CheckIn, ClubAccount, ClubCoach, ClubStaffRole, CoachBookingSlot, Court, CourtSession, Member, MembershipType,
+  Notification, OpenPlaySession, OpenPlaySignup, Profile, Reminder, Transaction,
+} from '../../types'
 import { ymdLocal } from '../../types'
 import { daysFromNow, todayISO } from './common'
 import { recordCommission } from './commissions'
@@ -879,6 +882,120 @@ export function seed(): DemoDB {
 
   const clubTournamentScorers: DemoTournamentScorer[] = []
 
+  const coachDay = (daysAhead: number, hour: number, minute = 0) => {
+    const day = ymdLocal(new Date(now + daysAhead * 86400000))
+    return new Date(`${day}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+08:00`).toISOString()
+  }
+
+  const clubCoaches: ClubCoach[] = [
+    {
+      id: 'coach_gensan_1',
+      club_id: DEMO_CLUB_ID,
+      account_user_id: adminId,
+      full_name: 'Coach Marco Santos',
+      headline: 'DUPR 4.5+ · Drills, third-shot drops & doubles strategy',
+      bio: 'Helps intermediate players sharpen soft-game resets, kitchen positioning, and match tactics.',
+      hourly_rate: 700,
+      booking_policy: 'Please arrive 10 minutes before your slot. Court booking is arranged separately after confirmation.',
+      contact_phone: '+63 917 555 0141',
+      contact_url: 'https://m.me/rallypointgensan',
+      photo_path: null,
+      photo_url: null,
+      is_active: true,
+      position: 0,
+      created_at: todayISO(),
+    },
+    {
+      id: 'coach_gensan_2',
+      club_id: DEMO_CLUB_ID,
+      account_user_id: null,
+      full_name: 'Coach Rica Villanueva',
+      headline: 'Beginner & youth foundations',
+      bio: 'Friendly intro sessions covering grip, serve, scoring, and rally consistency.',
+      hourly_rate: 550,
+      booking_policy: null,
+      contact_phone: '+63 917 555 0142',
+      contact_url: 'https://m.me/rallypointgensan',
+      photo_path: null,
+      photo_url: null,
+      is_active: true,
+      position: 1,
+      created_at: todayISO(),
+    },
+    {
+      id: 'coach_davao_1',
+      club_id: DEMO_DAVAO_CLUB_ID,
+      account_user_id: davaoAdminId,
+      full_name: 'Coach Noel Ramos',
+      headline: 'Footwork, serves & tournament prep',
+      bio: 'Structured footwork and point-construction sessions for singles and doubles.',
+      hourly_rate: 650,
+      booking_policy: 'Cancellations at least 12 hours ahead, please.',
+      contact_phone: '+63 917 555 0241',
+      contact_url: null,
+      photo_path: null,
+      photo_url: null,
+      is_active: true,
+      position: 0,
+      created_at: todayISO(),
+    },
+  ]
+
+  const coachBookingSlots: CoachBookingSlot[] = [
+    {
+      slot_id: 'slot_gensan_1',
+      coach_id: 'coach_gensan_1',
+      club_id: DEMO_CLUB_ID,
+      coach_name: 'Coach Marco Santos',
+      starts_at: coachDay(1, 9),
+      ends_at: coachDay(1, 10),
+      lesson_type: 'private',
+      pricing_model: 'per_session',
+      rate: 700,
+      max_students: 1,
+      is_open: true,
+    },
+    {
+      slot_id: 'slot_gensan_2',
+      coach_id: 'coach_gensan_1',
+      club_id: DEMO_CLUB_ID,
+      coach_name: 'Coach Marco Santos',
+      starts_at: coachDay(2, 17),
+      ends_at: coachDay(2, 18, 30),
+      lesson_type: 'group',
+      pricing_model: 'per_student',
+      rate: 450,
+      max_students: 4,
+      is_open: true,
+    },
+    {
+      slot_id: 'slot_davao_1',
+      coach_id: 'coach_davao_1',
+      club_id: DEMO_DAVAO_CLUB_ID,
+      coach_name: 'Coach Noel Ramos',
+      starts_at: coachDay(1, 15),
+      ends_at: coachDay(1, 16),
+      lesson_type: 'private',
+      pricing_model: 'per_session',
+      rate: 650,
+      max_students: 1,
+      is_open: true,
+    },
+    {
+      slot_id: 'slot_davao_2',
+      coach_id: 'coach_davao_1',
+      club_id: DEMO_DAVAO_CLUB_ID,
+      coach_name: 'Coach Noel Ramos',
+      starts_at: coachDay(3, 8),
+      ends_at: coachDay(3, 9),
+      lesson_type: 'group',
+      pricing_model: 'per_student',
+      rate: 400,
+      max_students: 4,
+      is_open: true,
+    },
+  ]
+
   const db: DemoDB = {
     clubs: [demoClub, demoDavaoClub],
     clubAccounts,
@@ -927,6 +1044,8 @@ export function seed(): DemoDB {
     clubTournamentTeams,
     clubTournamentMatches,
     clubTournamentScorers,
+    clubCoaches,
+    coachBookingSlots,
     // Players pay the club's own GCash at checkout. The admin uploads the QR picture on the business profile.
     clubPaymentMethods: [{
       id: 'pay_gensan_gcash',

@@ -23,6 +23,7 @@ const publicFiles = [
   'src/components/ErrorBoundary.tsx',
   'src/pages/Welcome.tsx',
   'src/pages/Clubs.tsx',
+  'src/pages/Coaches.tsx',
   'src/pages/Leaderboard.tsx',
   'src/pages/Tournaments.tsx',
   'src/pages/MemberBook.tsx',

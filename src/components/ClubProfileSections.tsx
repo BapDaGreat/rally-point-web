@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { ChevronDown, ExternalLink } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Photo } from './Photo'
 import { stagger } from '../lib/motion'
 import { addonPriceLabel, amenityLabel, isSafeLink } from '../lib/clubProfile'
@@ -150,7 +151,7 @@ function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')
 }
 
-export function ClubCoachesCard({ profile, index }: { profile: PublicClubProfile; index: number }) {
+export function ClubCoachesCard({ clubSlug, profile, index }: { clubSlug?: string; profile: PublicClubProfile; index: number }) {
   if (profile.coaches.length === 0) return null
   return (
     <Card id="club-coaches" title="Coaches" index={index}>
@@ -187,7 +188,14 @@ export function ClubCoachesCard({ profile, index }: { profile: PublicClubProfile
           </li>
         ))}
       </ul>
-      <p className="text-subtitle font-normal text-muted">Arrange lessons with the coach or the club.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-subtitle font-normal text-muted">Arrange lessons with the coach or the club.</p>
+        {clubSlug ? (
+          <Link to={`/coaches?club=${encodeURIComponent(clubSlug)}`} className="btn-secondary sm:w-auto! sm:px-6">
+            See lesson times
+          </Link>
+        ) : null}
+      </div>
     </Card>
   )
 }

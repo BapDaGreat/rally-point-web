@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { emptyClubProfile } from '../lib/clubProfile'
 import type { PublicClubProfile } from '../types'
@@ -104,6 +105,18 @@ describe('club page profile sections', () => {
     expect(rules).toHaveAttribute('open')
     expect(screen.queryByText('Cancellation and refunds')).not.toBeInTheDocument()
     expect(screen.getByText('Terms and conditions')).toBeInTheDocument()
+  })
+
+  it('links from ClubCoachesCard to the public Rent a coach page filtered to that club', () => {
+    render(
+      <MemoryRouter>
+        <ClubCoachesCard clubSlug="rally-point-gensan" profile={full} index={0} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('link', { name: 'See lesson times' })).toHaveAttribute(
+      'href',
+      '/coaches?club=rally-point-gensan',
+    )
   })
 
   it('shows the gallery with captions', () => {

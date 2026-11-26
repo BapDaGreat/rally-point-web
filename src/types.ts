@@ -576,6 +576,39 @@ export interface CoachRequestMessage {
   created_at: string
 }
 
+/** One open future coach lesson slot shown on the public Rent a coach page. */
+export interface PublicCoachSlot {
+  slot_id: string
+  starts_at: string
+  ends_at: string
+  lesson_type: CoachLessonType
+  pricing_model: CoachPricingModel
+  rate: number
+  max_students: number
+  remaining_students: number
+}
+
+/** One active coach across any active club, with open lesson times (public Rent a coach page). */
+export interface PublicCoachListing {
+  id: string
+  full_name: string
+  headline: string | null
+  bio: string | null
+  hourly_rate: number | null
+  contact_phone: string | null
+  contact_url: string | null
+  photo_url: string | null
+  booking_policy: string | null
+  accepts_requests: boolean
+  club: {
+    id: string
+    slug: string
+    name: string
+    city: string | null
+  }
+  slots: PublicCoachSlot[]
+}
+
 /** A way to pay the club directly (GCash, Maya, a bank). Rally Point does not take or check these payments. */
 export interface ClubPaymentMethod {
   id: string

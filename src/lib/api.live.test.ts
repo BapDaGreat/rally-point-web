@@ -117,7 +117,7 @@ const live = vi.hoisted(() => {
     return query
   })
 
-  const rpc = vi.fn(async (name: string, args: Record<string, unknown>) => {
+  const defaultRpc = async (name: string, args: Record<string, unknown>): Promise<{ data: unknown; error: unknown }> => {
     calls.push({ table: 'rpc', op: name, args: [args] })
     if (failRpc?.name === name) {
       const error = failRpc.error
@@ -166,17 +166,29 @@ const live = vi.hoisted(() => {
     if (name === 'platform_support_snapshot') return { data: { session: { id: 'support-1' }, club: { name: 'Rally Point Gensan' }, venues: [], members: { total: 40, active: 38, expired: 2 }, staff_count: 2, today: [], open_inquiries: [] }, error: null }
     if (name === 'platform_recent_actions') return { data: [{ id: 'action-live', actor_email: 'owner@example.invalid', action: 'club.provision', club_id: 'club-new', club_name: 'New Club', details: {}, created_at: '2099-09-20T00:00:00.000Z' }], error: null }
     return { data: null, error: null }
-  })
+  }
+  const rpc = vi.fn(defaultRpc)
 
   return {
     from, rpc, calls, clubId, venueId, member, venue, court, session, booking, profile, transaction, notification, checkin, walkin, openPlay, signup,
-    reset: () => { calls.length = 0; failNext = null; failRpc = null },
+    reset: () => { calls.length = 0; failNext = null; failRpc = null; rpc.mockImplementation(defaultRpc) },
     setFailure: (table: string, error: Error, op?: string) => { failNext = { table, error, op } },
     setRpcFailure: (name: string, error: Error) => { failRpc = { name, error } },
   }
 })
 
-vi.mock('./supabase', () => ({ isDemoMode: false, supabase: { from: live.from, rpc: live.rpc } }))
+vi.mock('./supabase', () => ({
+  isDemoMode: false,
+  supabase: {
+    from: live.from,
+    rpc: live.rpc,
+    storage: {
+      from: () => ({
+        getPublicUrl: (path: string) => ({ data: { publicUrl: `https://cdn.example/court-photos/${path}` } }),
+      }),
+    },
+  },
+}))
 vi.mock('./payments', () => ({
   paymentConfig: { methods: [{ id: 'gcash', label: 'GCash' }] },
   startCheckout: vi.fn(async (input: { bookingId: string; amount: number }) => ({ ...input, status: 'created', ref: 'PAY-LIVE' })),
@@ -242,6 +254,140 @@ describe('api live tenant adapter', () => {
       coach_photo_url: null,
       rate: 600,
     })
+  })
+
+  it('lists public coaches across clubs from list_public_coaches and resolves photos and numbers', async () => {
+    live.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'coach-live-1',
+          full_name: 'Coach Ana',
+          headline: 'Doubles',
+          bio: 'Drills',
+          hourly_rate: '650.00',
+          contact_phone: '0917 000 0000',
+          contact_url: 'https://m.me/coachana',
+          photo_path: `${live.clubId}/coaches/ana.webp`,
+          booking_policy: 'Arrive early.',
+          accepts_requests: true,
+          club: { id: live.clubId, slug: 'rally-point-gensan', name: 'Rally Point Gensan', city: 'General Santos City' },
+          slots: [
+            {
+              slot_id: 'slot-1',
+              starts_at: '2099-09-20T12:00:00.000Z',
+              ends_at: '2099-09-20T13:00:00.000Z',
+              lesson_type: 'group',
+              pricing_model: 'per_student',
+              rate: '400.00',
+              max_students: '4',
+              remaining_students: '2',
+            },
+          ],
+        },
+      ],
+      error: null,
+    })
+
+    const rows = await api.listPublicCoaches({
+      clubSlug: 'rally-point-gensan',
+      from: '2099-09-20T00:00:00.000Z',
+      until: '2099-10-20T00:00:00.000Z',
+    })
+    expect(live.rpc).toHaveBeenCalledWith('list_public_coaches', {
+      p_club_slug: 'rally-point-gensan',
+      p_from: '2099-09-20T00:00:00.000Z',
+      p_until: '2099-10-20T00:00:00.000Z',
+    })
+    expect(rows).toEqual([
+      {
+        id: 'coach-live-1',
+        full_name: 'Coach Ana',
+        headline: 'Doubles',
+        bio: 'Drills',
+        hourly_rate: 650,
+        contact_phone: '0917 000 0000',
+        contact_url: 'https://m.me/coachana',
+        photo_url: `https://cdn.example/court-photos/${live.clubId}/coaches/ana.webp`,
+        booking_policy: 'Arrive early.',
+        accepts_requests: true,
+        club: { id: live.clubId, slug: 'rally-point-gensan', name: 'Rally Point Gensan', city: 'General Santos City' },
+        slots: [
+          {
+            slot_id: 'slot-1',
+            starts_at: '2099-09-20T12:00:00.000Z',
+            ends_at: '2099-09-20T13:00:00.000Z',
+            lesson_type: 'group',
+            pricing_model: 'per_student',
+            rate: 400,
+            max_students: 4,
+            remaining_students: 2,
+          },
+        ],
+      },
+    ])
+  })
+
+  it('falls back to list_public_clubs and get_public_club_profile when list_public_coaches is not on the server yet', async () => {
+    live.setRpcFailure('list_public_coaches', Object.assign(new Error('not found'), { code: 'PGRST202' }))
+    const baseRpc = live.rpc.getMockImplementation()
+    live.rpc.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+      if (name === 'list_public_clubs') {
+        return {
+          data: [{
+            slug: 'rally-point-gensan',
+            name: 'Rally Point Gensan',
+            city: 'General Santos City',
+            address: null,
+            cities: ['General Santos City'],
+            venue_count: 1,
+            court_count: 2,
+            min_rate: 500,
+            min_member_rate: null,
+          }],
+          error: null,
+        }
+      }
+      if (name === 'list_public_club_covers') return { data: [], error: null }
+      if (name === 'get_public_club_profile') {
+        return {
+          data: {
+            about: null, phone: null, email: null, facebook_url: null, messenger_url: null, instagram_url: null, website_url: null,
+            amenities: [], payment_note: null, house_rules: null, cancellation_policy: null, terms: null,
+            payment_methods: [], addons: [], gallery: [],
+            coaches: [{
+              id: 'coach-fallback',
+              full_name: 'CoachFallback',
+              headline: 'Volleys',
+              bio: null,
+              hourly_rate: '500.00',
+              contact_phone: null,
+              contact_url: null,
+              photo_path: null,
+            }],
+          },
+          error: null,
+        }
+      }
+      return baseRpc!(name, args)
+    })
+
+    const rows = await api.listPublicCoaches()
+    expect(rows).toEqual([
+      {
+        id: 'coach-fallback',
+        full_name: 'CoachFallback',
+        headline: 'Volleys',
+        bio: null,
+        hourly_rate: 500,
+        contact_phone: null,
+        contact_url: null,
+        photo_url: null,
+        booking_policy: null,
+        accepts_requests: false,
+        club: { id: live.clubId, slug: 'rally-point-gensan', name: 'Rally Point Gensan', city: 'General Santos City' },
+        slots: [],
+      },
+    ])
   })
 
   it('reads only the active club and resolves accessible venues', async () => {

@@ -38,6 +38,8 @@ describe('PublicFrame for visitors', () => {
     expect(screen.getByRole('link', { name: 'bRineLy home' })).toHaveAttribute('href', '/')
     const main = within(screen.getByRole('navigation', { name: 'Main' }))
     expect(main.getByRole('link', { name: 'Find a court' })).toHaveAttribute('aria-current', 'page')
+    expect(main.getByRole('link', { name: 'Rent a coach' })).toHaveAttribute('href', '/coaches')
+    expect(main.getByRole('link', { name: 'Tournaments' })).toHaveAttribute('href', '/tournaments')
     expect(main.getByRole('link', { name: 'For court owners' })).toHaveAttribute('href', '/owners')
   })
 
@@ -73,6 +75,8 @@ describe('PublicFrame for visitors', () => {
     renderFrame()
     const footer = within(screen.getByRole('contentinfo'))
     expect(footer.getByRole('link', { name: 'Find a court' })).toHaveAttribute('href', '/clubs')
+    expect(footer.getByRole('link', { name: 'Find a coach' })).toHaveAttribute('href', '/coaches')
+    expect(footer.getByRole('link', { name: 'All tournaments' })).toHaveAttribute('href', '/tournaments')
     expect(footer.getByRole('link', { name: 'List your club' })).toHaveAttribute('href', '/owners')
     expect(footer.getByRole('link', { name: 'Club staff sign-in' })).toHaveAttribute('href', '/login')
     expect(footer.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')

@@ -17,6 +17,8 @@ import type {
   CoachBookingSlot,
   CoachProfileAccess,
   CoachRequestMessage,
+  PublicCoachListing,
+  PublicCoachSlot,
   ClubGalleryPhoto,
   PictureCleanup,
   ClubPaymentMethod,
@@ -91,6 +93,7 @@ import { CLUB_HEADER, getActiveClubId, notifyClubUnavailable, requireActiveClubI
 import { emitClubLiveUpdate } from './livePulse'
 import { MEMBER_PHOTO_BUCKET, PHOTO_BUCKET, memberPhotoUrl, photoUrl, shrinkPhoto, shrinkPhotoToDataUrl } from './photos'
 import { emptyClubProfile, normalizeProfile } from './clubProfile'
+import { DEFAULT_CLUB_SLUG } from './tenant'
 import type { BookingStatus, TxType } from '../types'
 import { analyticsWindow, buildClubAnalytics, buildPlatformAnalytics, rangeInstants } from './analytics'
 import type { AnalyticsPeriod, ClubAnalytics, ClubTotals, DayRange, PlatformAnalytics, PlatformTotals } from './analytics'
@@ -1271,6 +1274,107 @@ export const api = {
       p_is_open: isOpen,
     })
     if (error) throw error
+  },
+
+  /** Active coaches and open future lesson times across every active club (the public Rent a coach page). */
+  async listPublicCoaches(options?: { clubSlug?: string | null; from?: string; until?: string }): Promise<PublicCoachListing[]> {
+    const from = options?.from ?? new Date().toISOString()
+    const until = options?.until ?? new Date(Date.now() + 30 * 86400000).toISOString()
+    const clubSlug = options?.clubSlug?.trim() || null
+    if (isDemoMode) return demoStore.listPublicCoaches({ clubSlug, from, until })
+    const { data, error } = await supabase!.rpc('list_public_coaches', {
+      p_club_slug: clubSlug,
+      p_from: from,
+      p_until: until,
+    })
+    if (error) {
+      if (isMissingFunction(error)) {
+        const wantedSlug = clubSlug?.toLowerCase() ?? null
+        const allClubs = await api.listPublicClubs()
+        const matchingClubs = (wantedSlug
+          ? allClubs.filter((club) => club.slug.toLowerCase() === wantedSlug)
+          : allClubs
+        ).slice().sort((a, b) =>
+          (a.slug === DEFAULT_CLUB_SLUG ? 0 : 1) - (b.slug === DEFAULT_CLUB_SLUG ? 0 : 1)
+          || a.name.localeCompare(b.name),
+        )
+        const targets = matchingClubs.length > 0 || !wantedSlug
+          ? matchingClubs.map((club) => ({
+              slug: club.slug,
+              name: club.name,
+              city: club.city ?? club.cities[0] ?? null,
+            }))
+          : [{ slug: clubSlug!, name: '', city: null as string | null }]
+
+        const listings = await Promise.all(
+          targets.map(async (target) => {
+            const [profile, clubInfo] = await Promise.all([
+              api.publicClubProfile(target.slug).catch(() => null),
+              api.publicClub(target.slug).catch(() => null),
+            ])
+            if (!profile || profile.coaches.length === 0) return []
+            const clubMeta = {
+              id: clubInfo?.id ?? target.slug,
+              slug: clubInfo?.slug ?? target.slug,
+              name: clubInfo?.name ?? (target.name || target.slug),
+              city: target.city,
+            }
+            return profile.coaches.map((coach): PublicCoachListing => ({
+              id: coach.id,
+              full_name: coach.full_name,
+              headline: coach.headline,
+              bio: coach.bio,
+              hourly_rate: coach.hourly_rate,
+              contact_phone: coach.contact_phone,
+              contact_url: coach.contact_url,
+              photo_url: coach.photo_url,
+              booking_policy: null,
+              accepts_requests: false,
+              club: clubMeta,
+              slots: [],
+            }))
+          }),
+        )
+        return listings.flat()
+      }
+      throw error
+    }
+
+    type RawPublicCoachRow = Omit<PublicCoachListing, 'photo_url' | 'slots'> & {
+      photo_path?: string | null
+      photo_url?: string | null
+      slots?: PublicCoachSlot[]
+    }
+    return ((data ?? []) as RawPublicCoachRow[])
+      .map((row) => ({
+        id: String(row.id ?? ''),
+        full_name: String(row.full_name ?? ''),
+        headline: row.headline ?? null,
+        bio: row.bio ?? null,
+        hourly_rate: row.hourly_rate == null ? null : Number(row.hourly_rate),
+        contact_phone: row.contact_phone ?? null,
+        contact_url: row.contact_url ?? null,
+        photo_url: row.photo_path ? photoUrl(row.photo_path) : row.photo_url ?? null,
+        booking_policy: row.booking_policy ?? null,
+        accepts_requests: Boolean(row.accepts_requests),
+        club: {
+          id: String(row.club?.id ?? ''),
+          slug: String(row.club?.slug ?? ''),
+          name: String(row.club?.name ?? ''),
+          city: row.club?.city ?? null,
+        },
+        slots: (row.slots ?? []).map((slot) => ({
+          slot_id: String(slot.slot_id),
+          starts_at: slot.starts_at,
+          ends_at: slot.ends_at,
+          lesson_type: slot.lesson_type,
+          pricing_model: slot.pricing_model,
+          rate: Number(slot.rate),
+          max_students: Number(slot.max_students),
+          remaining_students: Number(slot.remaining_students),
+        })),
+      }))
+      .filter((row) => row.id !== '' && row.club.slug !== '')
   },
 
   async memberListCoachSlots(from: string, until: string): Promise<CoachBookingSlot[]> {

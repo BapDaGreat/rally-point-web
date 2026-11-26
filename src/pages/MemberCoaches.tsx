@@ -100,9 +100,14 @@ export function MemberCoaches() {
         right={<SignOutButton />}
       />
       <main className="safe-bottom space-y-4 px-4 pt-4">
-        <Link to="/member" className="control-feedback inline-flex min-h-12 items-center gap-2 text-body font-semibold text-brand-800">
-          <ArrowLeft size={18} aria-hidden /> Back to home
-        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Link to="/member" className="control-feedback inline-flex min-h-12 items-center gap-2 text-body font-semibold text-brand-800">
+            <ArrowLeft size={18} aria-hidden /> Back to home
+          </Link>
+          <Link to="/coaches" className="text-link inline-flex min-h-12 items-center text-body">
+            Browse coaches at every club
+          </Link>
+        </div>
         <section className="card space-y-2 p-4">
           <h2 className="text-title font-semibold text-slate-900">Choose a lesson time</h2>
           <p className="text-body text-slate-700">
