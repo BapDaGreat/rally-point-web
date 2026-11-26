@@ -17,6 +17,7 @@ import { todayISO, uid } from './common'
 import {
   activePublicClubBySlug,
   canScoreTournament,
+  leaderboardOperations,
   tidyText,
   toPlayerSummary,
 } from './leaderboard'
@@ -544,6 +545,9 @@ function drawNextQueueMatchInDb(db: DemoDB, tournament: DemoTournament, requeste
   const allMatches = (db.clubTournamentMatches ?? []).filter(
     (m) => m.club_id === clubId && m.tournament_id === tournament.id,
   )
+  if (allMatches.length >= 300) {
+    throw new Error('This tournament has reached its limit of 300 matches')
+  }
 
   let courtId = requestedCourtId
   if (courtId) {
@@ -552,10 +556,11 @@ function drawNextQueueMatchInDb(db: DemoDB, tournament: DemoTournament, requeste
     if (tournament.venue_id && court.venue_id !== tournament.venue_id) {
       throw new Error('Court belongs to another venue')
     }
+    assertCourtCanTake(db, clubId, courtId, null, 'ready')
   } else {
     const busyCourts = new Set(
-      allMatches
-        .filter((m) => (m.status === 'ready' || m.status === 'playing') && m.court_id)
+      (db.clubTournamentMatches ?? [])
+        .filter((m) => m.club_id === clubId && (m.status === 'ready' || m.status === 'playing') && m.court_id)
         .map((m) => m.court_id!),
     )
     const freeCourt = db.courts
@@ -660,11 +665,35 @@ function validateClubPlayers(db: DemoDB, clubId: string, playerIds: string[]): s
   if (new Set(clean).size !== clean.length) {
     throw new Error('Each player can only be added once')
   }
+  if (clean.length > 64) {
+    throw new Error('A tournament can have at most 64 players')
+  }
   const clubMemberIds = new Set(db.members.filter((m) => m.club_id === clubId).map((m) => m.id))
   if (clean.some((id) => !clubMemberIds.has(id))) {
     throw new Error('Every player must belong to this club')
   }
   return clean
+}
+
+/** Same rule as the court trigger: no court out of service, and no two ready or playing matches on one court. */
+function assertCourtCanTake(
+  db: DemoDB,
+  clubId: string,
+  courtId: string,
+  matchId: string | null,
+  matchStatus: DemoTournamentMatch['status'],
+) {
+  const court = db.courts.find((c) => c.id === courtId && c.club_id === clubId)
+  if (court?.status === 'maintenance') throw new Error('That court is out of service')
+  const active = (status: DemoTournamentMatch['status']) => status === 'ready' || status === 'playing'
+  if (
+    active(matchStatus)
+    && (db.clubTournamentMatches ?? []).some(
+      (m) => m.club_id === clubId && m.court_id === courtId && m.id !== matchId && active(m.status),
+    )
+  ) {
+    throw new Error('That court already has a match on it')
+  }
 }
 
 function buildAuthenticatedDetail(db: DemoDB, club: Club, tournament: DemoTournament): TournamentDetail {
@@ -999,6 +1028,65 @@ export const tournamentOperations = {
     return buildAuthenticatedDetail(db, club, tournament)
   },
 
+  /** Undo a finished result, in any tournament (staff_void_tournament_match). */
+  voidTournamentMatch(tournamentId: string, matchId: string, reason?: string): TournamentDetail {
+    const db = load()
+    const { club, tournament } = requireTournamentScorer(db, tournamentId)
+    const cleanReason = tidyText(reason) || null
+    if (cleanReason && cleanReason.length > 200) throw new Error('Reason is limited to 200 characters')
+    if (tournament.status !== 'live' && tournament.status !== 'completed') {
+      throw new Error('Results can only be undone in a running or finished tournament')
+    }
+    const match = (db.clubTournamentMatches ?? []).find(
+      (m) => m.id === matchId && m.tournament_id === tournamentId && m.club_id === club.id,
+    )
+    if (!match) throw new Error('Tournament match not found')
+    if (match.status !== 'completed') throw new Error('Only a finished match can be undone')
+
+    // Counts for the leaderboard: the leaderboard void also resets the bracket or queue.
+    if (match.club_match_id) {
+      leaderboardOperations.voidClubMatch(match.club_match_id, cleanReason ?? undefined)
+      const fresh = load()
+      const updated = (fresh.clubTournaments ?? []).find((t) => t.id === tournamentId && t.club_id === club.id)!
+      return buildAuthenticatedDetail(fresh, club, updated)
+    }
+
+    if (tournament.format === 'single_elimination') {
+      if (match.next_match_id) {
+        const nextMatch = (db.clubTournamentMatches ?? []).find(
+          (m) => m.id === match.next_match_id && m.club_id === club.id,
+        )
+        if (nextMatch) {
+          if (nextMatch.status === 'completed') {
+            throw new Error('Cannot void a bracket match after the next round has been played')
+          }
+          if (match.next_match_side === 'a') {
+            nextMatch.team_a_id = null
+            nextMatch.team_a_player_ids = []
+          } else {
+            nextMatch.team_b_id = null
+            nextMatch.team_b_player_ids = []
+          }
+          nextMatch.status = 'pending'
+        }
+      } else if (tournament.status === 'completed') {
+        tournament.status = 'live'
+        tournament.completed_at = null
+      }
+      match.status = 'ready'
+      match.winner_side = null
+      match.score_a = null
+      match.score_b = null
+      match.club_match_id = null
+      match.completed_at = null
+    } else {
+      match.status = 'voided'
+      match.club_match_id = null
+    }
+    save(db)
+    return buildAuthenticatedDetail(db, club, tournament)
+  },
+
   assignTournamentMatchCourt(tournamentId: string, matchId: string, courtId?: string | null): TournamentDetail {
     const db = load()
     const { club, tournament } = requireTournamentScorer(db, tournamentId)
@@ -1018,6 +1106,9 @@ export const tournamentOperations = {
         && (m.status === 'pending' || m.status === 'ready' || m.status === 'playing'),
     )
     if (!match) throw new Error('Tournament match not found')
+    if (nextCourtId && nextCourtId !== match.court_id) {
+      assertCourtCanTake(db, club.id, nextCourtId, match.id, match.status)
+    }
     match.court_id = nextCourtId
     save(db)
     return buildAuthenticatedDetail(db, club, tournament)

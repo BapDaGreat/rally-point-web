@@ -578,6 +578,35 @@ describe('staging releases', () => {
     expect(postflight).toContain('= 40')
   })
 
+  it('builds the tournament fixes release on the 40-migration state and re-runs every earlier check', async () => {
+    const { leaderboardTournamentsRelease, tournamentFixesRelease, releaseManifest, releases } = await load()
+    const { tournamentFixesChecks } = await import('../scripts/club-platform-checks.mjs')
+    expect(tournamentFixesRelease.baseVersions).toHaveLength(40)
+    expect(tournamentFixesRelease.baseVersions.slice(-3)).toEqual(['20261126080000', '20261126090000', '20261126100000'])
+    expect(tournamentFixesRelease.migrations).toEqual(['20261126110000_tournament_review_fixes.sql'])
+    expect(tournamentFixesRelease.stateCheck).toEqual({ file: 'leaderboard_tournaments_postflight.sql', kind: 'leaderboardTournaments' })
+    expect(tournamentFixesRelease.postChecks.map((check: { kind: string, ignore: string[] }) => [check.kind, [...check.ignore]]).slice(0, 3)).toEqual([
+      ['tournamentFixes', []],
+      ['leaderboardTournaments', ['ledger_has_leaderboard_tournaments']],
+      ['dashboardAnalytics', ['ledger_has_dashboard_analytics']],
+    ])
+    expect(tournamentFixesRelease.postChecks).toHaveLength(leaderboardTournamentsRelease.postChecks.length + 1)
+    const earlier = Object.values(releases).filter(release => release !== tournamentFixesRelease)
+      .flatMap((release: { dirs: object, databases: object }) => [...Object.values(release.dirs), ...Object.values(release.databases)])
+    expect([...Object.values(tournamentFixesRelease.dirs), ...Object.values(tournamentFixesRelease.databases)]
+      .filter(name => earlier.includes(name))).toEqual([])
+    const { contents } = releaseManifest(tournamentFixesRelease)
+    const migration = contents.get('supabase/migrations/20261126110000_tournament_review_fixes.sql')?.toString('utf8') ?? ''
+    // Courts and bookings are only read.
+    expect(migration).not.toMatch(/\b(insert into|update|delete from)\s+public\.(bookings|court_sessions|open_plays|open_play_signups|court_allocations|courts|transactions)\b/i)
+    expect(migration).toContain('grant execute on function public.staff_void_tournament_match(uuid, uuid, text) to authenticated')
+    expect(migration).not.toContain('to anon')
+    const postflight = contents.get('supabase/verification/tournament_fixes_postflight.sql')?.toString('utf8') ?? ''
+    expect([...postflight.matchAll(/select \d+, '([a-z_]+)'/g)].map(match => match[1])).toEqual([...tournamentFixesChecks])
+    expect(postflight).toContain("version = '20261126110000'")
+    expect(postflight).toContain('= 41')
+  })
+
   it('hashes the release definition and every file, and returns the bytes it hashed', async () => {
     const { releaseManifest } = await load()
     const { dir, release } = releaseFixture()

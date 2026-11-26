@@ -628,6 +628,13 @@ function ClubTournamentDetailScreen({ role }: { role: 'member' | 'staff' | 'admi
     setToast('Queue match cancelled.')
   }
 
+  async function handleUndoResult(matchId: string) {
+    if (!detail) return
+    const updated = await api.undoTournamentMatch(detail.tournament.id, matchId, undefined, clubSlug)
+    setDetail(updated)
+    setToast('Result undone. The match can be scored again.')
+  }
+
   async function handleScoreMatch(input: ScoreTournamentMatchInput) {
     const updated = await api.scoreTournamentMatch(input, clubSlug)
     setDetail(updated)
@@ -894,6 +901,7 @@ function ClubTournamentDetailScreen({ role }: { role: 'member' | 'staff' | 'admi
           onDrawQueueMatch={(role === 'staff' || role === 'admin') && detail?.can_score ? handleDrawQueue : undefined}
           onAssignCourt={(role === 'staff' || role === 'admin') && detail?.can_score ? handleAssignCourt : undefined}
           onCancelQueueMatch={(role === 'staff' || role === 'admin') && detail?.can_score ? handleCancelQueueMatch : undefined}
+          onUndoResult={(role === 'staff' || role === 'admin') && detail?.can_score ? handleUndoResult : undefined}
         />
 
         {canManage && detail && (detail.tournament.status === 'setup' || detail.tournament.status === 'live') ? (

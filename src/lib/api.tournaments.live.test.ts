@@ -245,3 +245,26 @@ describe('tournaments across clubs (live adapter)', () => {
     await expect(api.listPublicTournaments('live')).rejects.toMatchObject({ code: '22023' })
   })
 })
+
+describe('tournament result corrections (live adapter)', () => {
+  beforeEach(() => {
+    live.rpc.mockReset()
+  })
+
+  it('calls staff_void_tournament_match and returns the updated tournament', async () => {
+    live.rpc.mockResolvedValueOnce({ data: { ...sampleDetail }, error: null })
+    const detail = await api.undoTournamentMatch('tour-1', 'm-1', 'Wrong winner')
+    expect(live.rpc).toHaveBeenCalledWith('staff_void_tournament_match', {
+      p_tournament_id: 'tour-1',
+      p_match_id: 'm-1',
+      p_reason: 'Wrong winner',
+    })
+    expect(detail.tournament.id).toBe('tour-1')
+  })
+
+  it('passes refusals through', async () => {
+    live.rpc.mockResolvedValueOnce({ data: null, error: { code: '22023', message: 'Only a finished match can be undone' } })
+    await expect(api.undoTournamentMatch('tour-1', 'm-1')).rejects.toMatchObject({ code: '22023' })
+    expect(live.rpc).toHaveBeenLastCalledWith('staff_void_tournament_match', { p_tournament_id: 'tour-1', p_match_id: 'm-1', p_reason: null })
+  })
+})
