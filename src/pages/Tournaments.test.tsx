@@ -66,6 +66,7 @@ vi.mock('../lib/api', () => ({
     cancelTournament: vi.fn(),
     drawTournamentQueueMatch: vi.fn(),
     assignTournamentMatchCourt: vi.fn(),
+    undoTournamentMatch: vi.fn(),
     cancelTournamentQueueMatch: vi.fn(),
     scoreTournamentMatch: vi.fn(),
     memberRoster: vi.fn(),
@@ -1036,5 +1037,94 @@ describe('PublicTournamentsPage (all clubs)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Network down')
     await userEvent.setup().click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByText('Sunday Bracket')).toBeInTheDocument()
+  })
+})
+
+describe('tournament result corrections and court choices', () => {
+  const finishedBracket: TournamentDetail = {
+    ...bracketDetail,
+    tournament: { ...bracketSummary, status: 'completed', counts_for_leaderboard: false, champion_label: 'Mia Member / Jonah Cruz' },
+    matches: [{
+      ...bracketDetail.matches[0],
+      status: 'completed',
+      winner_side: 'a',
+      score_a: 11,
+      score_b: 7,
+      completed_at: '2026-11-26T02:00:00Z',
+    }],
+  }
+
+  function renderStaffDetail() {
+    auth.user = { id: 'u-staff', email: 'staff@brinely.info', full_name: 'Sam Staff', role: 'staff', created_at: '2026-01-01' }
+    auth.activeClub = { club_id: 'club-gensan', slug: 'rally-point-gensan', name: 'Rally Point Gensan', role: 'staff' }
+    render(
+      <MemoryRouter initialEntries={['/staff/tournaments/t-bracket']}>
+        <Routes>
+          <Route path="/staff/tournaments/:tournamentId" element={<StaffTournamentDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it('lets a scorer undo a finished result after confirming', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.clubTournament).mockResolvedValue(finishedBracket)
+    vi.mocked(api.undoTournamentMatch).mockResolvedValue(bracketDetail)
+    renderStaffDetail()
+
+    await user.click(await screen.findByRole('button', { name: 'Undo result' }))
+    expect(screen.getByText(/Undo this result\?/)).toBeInTheDocument()
+    expect(api.undoTournamentMatch).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Yes, undo it' }))
+
+    await waitFor(() => expect(api.undoTournamentMatch).toHaveBeenCalledWith('t-bracket', 'tm-finals', undefined, 'rally-point-gensan'))
+    expect(await screen.findByText('Result undone. The match can be scored again.')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Score match/i })).toBeInTheDocument()
+  })
+
+  it('shows why an undo was refused, and Keep result leaves it alone', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.clubTournament).mockResolvedValue(finishedBracket)
+    vi.mocked(api.undoTournamentMatch).mockRejectedValue({ message: 'Cannot void a bracket match after the next round has been played' })
+    renderStaffDetail()
+
+    await user.click(await screen.findByRole('button', { name: 'Undo result' }))
+    await user.click(screen.getByRole('button', { name: 'Yes, undo it' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Cannot void a bracket match after the next round has been played')
+
+    await user.click(screen.getByRole('button', { name: 'Keep result' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Undo result' })).toBeInTheDocument()
+  })
+
+  it('marks out-of-service courts and shows a refused court change', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.clubTournament).mockResolvedValue(bracketDetail)
+    vi.mocked(api.listCourts).mockResolvedValue([
+      ...courts,
+      { id: 'c-2', venue_id: 'v-1', name: 'Court B', status: 'available', hourly_rate: 500 },
+      { id: 'c-3', venue_id: 'v-1', name: 'Court C', status: 'maintenance', hourly_rate: 500 },
+    ])
+    vi.mocked(api.assignTournamentMatchCourt).mockRejectedValue({ message: 'That court already has a match on it' })
+    renderStaffDetail()
+
+    const select = await screen.findByLabelText('Court for Finals')
+    expect(within(select).getByRole('option', { name: 'Court C (out of service)' })).toBeDisabled()
+    await user.selectOptions(select, 'c-2')
+    await waitFor(() => expect(api.assignTournamentMatchCourt).toHaveBeenCalledWith('t-bracket', 'tm-finals', 'c-2', 'rally-point-gensan'))
+    expect(await screen.findByRole('alert')).toHaveTextContent('That court already has a match on it')
+  })
+
+  it('never offers Undo result to visitors', async () => {
+    vi.mocked(api.publicTournament).mockResolvedValue({ ...finishedBracket, can_score: false, can_manage: false })
+    render(
+      <MemoryRouter initialEntries={['/clubs/rally-point-gensan/tournaments/t-bracket']}>
+        <Routes>
+          <Route path="/clubs/:slug/tournaments/:tournamentId" element={<PublicTournamentDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('heading', { name: 'Finals' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Undo result' })).not.toBeInTheDocument()
   })
 })

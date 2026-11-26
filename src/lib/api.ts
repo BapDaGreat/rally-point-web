@@ -2475,6 +2475,29 @@ export const api = {
       return detail
     },
 
+    /** Undo a finished tournament result (any tournament, counted for the leaderboard or not). */
+    async undoTournamentMatch(
+      tournamentId: string,
+      matchId: string,
+      reason?: string,
+      clubSlug?: string,
+    ): Promise<TournamentDetail> {
+      if (isDemoMode) {
+        const detail = demoStore.voidTournamentMatch(tournamentId, matchId, reason)
+        emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+        return detail
+      }
+      const { data, error } = await supabase!.rpc('staff_void_tournament_match', {
+        p_tournament_id: tournamentId,
+        p_match_id: matchId,
+        p_reason: reason ?? null,
+      })
+      if (error) throw error
+      const detail = normalizeTournamentDetail(data as TournamentDetail)
+      emitClubLiveUpdate([detail.club?.id, getActiveClubId(), clubSlug])
+      return detail
+    },
+
     async assignTournamentMatchCourt(
       tournamentId: string,
       matchId: string,

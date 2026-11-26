@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Award, Check, ChevronRight, Shuffle, Trophy, Users, X } from 'lucide-react'
+import { Award, Check, ChevronRight, RotateCcw, Shuffle, Trophy, Users, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { MemberAvatar } from './MemberIdentity'
 import { LoadingShapes, SkeletonCard, SkeletonLine, SkeletonRows } from './Skeleton'
@@ -225,6 +225,7 @@ function TournamentMatchCard({
   onScore,
   onAssignCourt,
   onCancelQueueMatch,
+  onUndoResult,
 }: {
   match: TournamentMatch
   dark: boolean
@@ -235,8 +236,12 @@ function TournamentMatchCard({
   onScore?: (match: TournamentMatch) => void
   onAssignCourt?: (matchId: string, courtId: string | null) => Promise<void>
   onCancelQueueMatch?: (matchId: string) => Promise<void>
+  /** Scorers only: undo a finished result (the match can be scored again). */
+  onUndoResult?: (matchId: string) => Promise<void>
 }) {
   const [busyAction, setBusyAction] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [confirmUndo, setConfirmUndo] = useState(false)
   const isCompleted = match.status === 'completed'
   const isBye = match.status === 'bye'
   const isReady = match.status === 'ready' || match.status === 'playing'
@@ -247,25 +252,37 @@ function TournamentMatchCard({
     : teamDisplay(match.team_b_players, match.team_b_name)
   const canScoreThis = Boolean(isLive && canScore && !dark && isReady && onScore && match.team_a_players.length > 0 && match.team_b_players.length > 0)
 
-  async function handleCourtChange(nextCourtId: string) {
-    if (!onAssignCourt || busyAction) return
+  async function runCardAction(action: () => Promise<void>, fallback: string) {
+    if (busyAction) return
     setBusyAction(true)
+    setActionError(null)
     try {
-      await onAssignCourt(match.id, nextCourtId || null)
+      await action()
+      setConfirmUndo(false)
+    } catch (cause) {
+      const message = (cause as { message?: unknown } | null)?.message
+      setActionError(typeof message === 'string' && message ? message : fallback)
     } finally {
       setBusyAction(false)
     }
   }
 
-  async function handleCancel() {
-    if (!onCancelQueueMatch || busyAction) return
-    setBusyAction(true)
-    try {
-      await onCancelQueueMatch(match.id)
-    } finally {
-      setBusyAction(false)
-    }
+  async function handleCourtChange(nextCourtId: string) {
+    if (!onAssignCourt) return
+    await runCardAction(() => onAssignCourt(match.id, nextCourtId || null), 'The court could not be changed.')
   }
+
+  async function handleCancel() {
+    if (!onCancelQueueMatch) return
+    await runCardAction(() => onCancelQueueMatch(match.id), 'The game could not be cancelled.')
+  }
+
+  async function handleUndo() {
+    if (!onUndoResult) return
+    await runCardAction(() => onUndoResult(match.id), 'The result could not be undone.')
+  }
+
+  const canUndoThis = Boolean(canScore && !dark && isCompleted && onUndoResult)
 
   return (
     <article
@@ -364,7 +381,9 @@ function TournamentMatchCard({
               >
                 <option value="">No court assigned</option>
                 {courts.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                  <option key={c.id} value={c.id} disabled={c.status === 'maintenance' && c.id !== match.court_id}>
+                    {c.status === 'maintenance' ? `${c.name} (out of service)` : c.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -394,6 +413,47 @@ function TournamentMatchCard({
           </div>
         </div>
       ) : null}
+
+      {canUndoThis ? (
+        confirmUndo ? (
+          <div className="pt-1 space-y-2" role="group" aria-label={`Undo the result of ${match.round_label}`}>
+            <p className="text-body text-ink">Undo this result? The match goes back to “Up next” and can be scored again.</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn-primary min-h-[52px] flex-1"
+                disabled={busyAction}
+                onClick={() => void handleUndo()}
+              >
+                Yes, undo it
+              </button>
+              <button
+                type="button"
+                className="btn-secondary min-h-[52px] px-4"
+                disabled={busyAction}
+                onClick={() => { setConfirmUndo(false); setActionError(null) }}
+              >
+                Keep result
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="pt-1">
+            <button
+              type="button"
+              className="btn-secondary min-h-[52px] w-full"
+              onClick={() => { setConfirmUndo(true); setActionError(null) }}
+            >
+              <RotateCcw size={18} aria-hidden />
+              Undo result
+            </button>
+          </div>
+        )
+      ) : null}
+
+      {actionError ? (
+        <p role="alert" className="notice notice-error text-body">{actionError}</p>
+      ) : null}
     </article>
   )
 }
@@ -409,6 +469,7 @@ export function TournamentLiveView({
   onDrawQueueMatch,
   onAssignCourt,
   onCancelQueueMatch,
+  onUndoResult,
 }: {
   detail: TournamentDetail | null
   loading?: boolean
@@ -420,6 +481,7 @@ export function TournamentLiveView({
   onDrawQueueMatch?: (courtId: string | null) => Promise<void>
   onAssignCourt?: (matchId: string, courtId: string | null) => Promise<void>
   onCancelQueueMatch?: (matchId: string) => Promise<void>
+  onUndoResult?: (matchId: string) => Promise<void>
 }) {
   const dark = tone === 'dark'
   const [tab, setTab] = useState<'main' | 'standings' | 'players'>('main')
@@ -645,6 +707,7 @@ export function TournamentLiveView({
                         showCancel={false}
                         onScore={onScoreMatch}
                         onAssignCourt={onAssignCourt}
+                        onUndoResult={onUndoResult}
                       />
                     ))}
                   </div>
@@ -723,6 +786,7 @@ export function TournamentLiveView({
                       onScore={onScoreMatch}
                       onAssignCourt={onAssignCourt}
                       onCancelQueueMatch={onCancelQueueMatch}
+                      onUndoResult={onUndoResult}
                     />
                   ))}
                 </div>
@@ -741,9 +805,10 @@ export function TournamentLiveView({
                       match={m}
                       dark={dark}
                       isLive={false}
-                      canScore={false}
+                      canScore={canScore}
                       courts={courts}
                       showCancel={false}
+                      onUndoResult={onUndoResult}
                     />
                   ))}
                 </div>

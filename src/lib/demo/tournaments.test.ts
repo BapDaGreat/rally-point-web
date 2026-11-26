@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { setActiveClubId } from '../clubContext'
 import { demoStore } from '../demoStore'
+import { load, save } from './persistence'
 import { DEMO_CLUB_ID, DEMO_DAVAO_CLUB_ID, DEMO_VENUE_ID } from '../tenant'
 
 describe('tournaments demo operations (Phase 2)', () => {
@@ -185,7 +186,8 @@ describe('tournaments demo operations (Phase 2)', () => {
     expect(demoStore.publicClubLeaderboard('rally-point-gensan', 'month', 'all', 50)!.total_matches).toBe(matchesBefore)
 
     // Draw Game 2 -> the 2 sitting players MUST be drafted into Game 2 (lowest games played = 0)
-    const afterDraw2 = demoStore.drawTournamentQueueMatch(mixer.tournament.id, 'court_2')
+    // court_2 and court_4 hold the seeded live matches; a busy court is now refused.
+    const afterDraw2 = demoStore.drawTournamentQueueMatch(mixer.tournament.id, 'court_3')
     const game2 = afterDraw2.matches.find((m) => m.match_order === 2)!
     const satOut = new Set(afterGame1.standings.filter((s) => s.games_played === 0).map((s) => s.member_id))
     expect(satOut.size).toBe(2)
@@ -404,5 +406,73 @@ describe('tournaments across clubs (demo)', () => {
       demoStore.listPublicTournaments().filter((row) => row.status === 'completed'))
     expect(demoStore.listPublicTournaments(null, 1)).toHaveLength(1)
     expect(() => demoStore.listPublicTournaments('cancelled' as never)).toThrow('Unknown tournament status')
+  })
+})
+
+describe('tournament review fixes (demo)', () => {
+  beforeEach(() => {
+    demoStore.reset()
+    setActiveClubId(null)
+    demoStore.login('admin@brinely.info', 'admin123')
+  })
+
+  function startedBracket(countsForLeaderboard: boolean) {
+    const created = demoStore.createTournament({
+      title: countsForLeaderboard ? 'Counted Final' : 'Practice Final',
+      format: 'single_elimination',
+      team_size: 1,
+      counts_for_leaderboard: countsForLeaderboard,
+      player_ids: ['mem_005', 'mem_006'],
+    })
+    demoStore.generateTournamentDraw(created.tournament.id)
+    const live = demoStore.startTournament(created.tournament.id)
+    return { id: created.tournament.id, final: live.matches.find((m) => m.status === 'ready')! }
+  }
+
+  it('undoes a result in a tournament that does not count for the leaderboard', () => {
+    const { id, final } = startedBracket(false)
+    expect(() => demoStore.voidTournamentMatch(id, final.id)).toThrow('Only a finished match can be undone')
+    const done = demoStore.scoreTournamentMatch({ tournament_id: id, match_id: final.id, winner_side: 'a', score_a: 11, score_b: 4 })
+    expect(done.tournament.status).toBe('completed')
+
+    const undone = demoStore.voidTournamentMatch(id, final.id, 'Wrong winner')
+    expect(undone.tournament.status).toBe('live')
+    expect(undone.matches.find((m) => m.id === final.id)).toMatchObject({ status: 'ready', winner_side: null, score_a: null })
+  })
+
+  it('voids a counted result on the leaderboard as well', () => {
+    const before = demoStore.publicClubLeaderboard('rally-point-gensan', 'month', 'all', 50)!.total_matches
+    const { id, final } = startedBracket(true)
+    demoStore.scoreTournamentMatch({ tournament_id: id, match_id: final.id, winner_side: 'b', score_a: 6, score_b: 11 })
+    expect(demoStore.publicClubLeaderboard('rally-point-gensan', 'month', 'all', 50)!.total_matches).toBe(before + 1)
+
+    const undone = demoStore.voidTournamentMatch(id, final.id)
+    expect(undone.matches.find((m) => m.id === final.id)?.status).toBe('ready')
+    expect(demoStore.publicClubLeaderboard('rally-point-gensan', 'month', 'all', 50)!.total_matches).toBe(before)
+  })
+
+  it('only lets scorers undo results', () => {
+    const { id, final } = startedBracket(false)
+    demoStore.scoreTournamentMatch({ tournament_id: id, match_id: final.id, winner_side: 'a' })
+    demoStore.login('member@brinely.info', 'member123')
+    expect(() => demoStore.voidTournamentMatch(id, final.id)).toThrow(/designated scorers/i)
+  })
+
+  it('refuses a busy court and an out-of-service court', () => {
+    const { id, final } = startedBracket(false)
+    // court_2 holds the seeded live bracket match.
+    expect(() => demoStore.assignTournamentMatchCourt(id, final.id, 'court_2')).toThrow('That court already has a match on it')
+    expect(demoStore.assignTournamentMatchCourt(id, final.id, 'court_3').matches.find((m) => m.id === final.id)?.court_id).toBe('court_3')
+
+    const db = load()
+    db.courts.find((c) => c.id === 'court_1')!.status = 'maintenance'
+    save(db)
+    expect(() => demoStore.assignTournamentMatchCourt(id, final.id, 'court_1')).toThrow('That court is out of service')
+  })
+
+  it('allows at most 64 players', () => {
+    const tooMany = Array.from({ length: 65 }, (_, i) => `mem_x${i}`)
+    expect(() => demoStore.createTournament({ title: 'Too Big', format: 'random_queue', team_size: 2, player_ids: tooMany }))
+      .toThrow('A tournament can have at most 64 players')
   })
 })

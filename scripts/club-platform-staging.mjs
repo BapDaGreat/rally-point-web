@@ -603,6 +603,40 @@ export const leaderboardTournamentsRelease = Object.freeze({
   databases: Object.freeze({ restore: 'rally_staging_backup_20261126_r1_restore', dryRun: 'rally_staging_backup_20261126_r2_dryrun' }),
 })
 
+// Staging at 40 migrations (leaderboard and tournaments applied) plus the fixes from that release's
+// review: undo a result in any tournament (staff_void_tournament_match), at most 64 players and 300
+// matches per tournament, and court checks (no court out of service, no two active matches on one
+// court), with the queue draw's court picker looking across the club. Triggers and definer functions
+// only; courts are read, never written, so the reservation-write pause is unchanged.
+export const tournamentFixesRelease = Object.freeze({
+  id: 'tournament-fixes-20261126',
+  title: 'Tournament review fixes',
+  baseVersions: Object.freeze([...leaderboardTournamentsRelease.baseVersions, '20261126080000', '20261126090000',
+    '20261126100000'].sort()),
+  migrations: Object.freeze(['20261126110000_tournament_review_fixes.sql']),
+  // The SQL that runs and the code that runs it. Approval pins all of these bytes.
+  files: Object.freeze(['supabase/migrations/20261126110000_tournament_review_fixes.sql',
+    'supabase/verification/tournament_fixes_postflight.sql',
+    ...leaderboardTournamentsRelease.files.filter(path => path.startsWith('supabase/verification/') || path.startsWith('scripts/'))]),
+  stateCheck: Object.freeze({ file: 'leaderboard_tournaments_postflight.sql', kind: 'leaderboardTournaments' }),
+  postChecks: Object.freeze([
+    Object.freeze({ file: 'tournament_fixes_postflight.sql', kind: 'tournamentFixes', ignore: Object.freeze([]) }),
+    // Earlier postflights count 22 to 40 migrations; this release brings staging to 41.
+    Object.freeze({ file: 'leaderboard_tournaments_postflight.sql', kind: 'leaderboardTournaments',
+      ignore: Object.freeze(['ledger_has_leaderboard_tournaments']) }),
+    ...leaderboardTournamentsRelease.postChecks.slice(1),
+  ]),
+  isolation: Object.freeze({ file: 'two_club_isolation.sql', plan: 55 }),
+  dirs: Object.freeze({
+    capture: 'docs/release-private/staging-backup-20261126-fixes-r1',
+    restore: 'docs/release-private/staging-backup-restore-20261126-fixes-r1',
+    dryRun: 'docs/release-private/tournament-fixes-staging-dryrun-20261126-r1',
+    apply: 'docs/release-private/tournament-fixes-staging-apply-20261126-r1',
+  }),
+  databases: Object.freeze({ restore: 'rally_staging_backup_20261126_fixes_r1_restore',
+    dryRun: 'rally_staging_backup_20261126_fixes_r1_dryrun' }),
+})
+
 export const releases = Object.freeze({ [advisorFixesRelease.id]: advisorFixesRelease,
   [advisorFollowupRelease.id]: advisorFollowupRelease, [courtMarketplaceRelease.id]: courtMarketplaceRelease,
   [courtPhotosRelease.id]: courtPhotosRelease, [clubProfileRelease.id]: clubProfileRelease,
@@ -610,7 +644,8 @@ export const releases = Object.freeze({ [advisorFixesRelease.id]: advisorFixesRe
   [memberCodesBookingLengthRelease.id]: memberCodesBookingLengthRelease,
   [rentACoachRelease.id]: rentACoachRelease,
   [memberAccountRelease.id]: memberAccountRelease, [dashboardAnalyticsRelease.id]: dashboardAnalyticsRelease,
-  [leaderboardTournamentsRelease.id]: leaderboardTournamentsRelease })
+  [leaderboardTournamentsRelease.id]: leaderboardTournamentsRelease,
+  [tournamentFixesRelease.id]: tournamentFixesRelease })
 
 export function getRelease(id) {
   assert.ok(Object.hasOwn(releases, id ?? ''), `Unknown release: ${id}. Known: ${Object.keys(releases).join(', ')}`)
