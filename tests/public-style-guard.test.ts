@@ -16,6 +16,7 @@ const publicFiles = [
   'src/components/ClubImage.tsx',
   'src/components/ClubProfileSections.tsx',
   'src/components/BookingSteps.tsx',
+  'src/components/CallDayPicker.tsx',
   'src/components/LeaderboardView.tsx',
   'src/components/TournamentView.tsx',
   'src/components/PhotoCredits.tsx',
