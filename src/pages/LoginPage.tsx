@@ -672,7 +672,7 @@ export default function LoginPage({
               {mode === 'login' ? (
                 <button
                   type="button"
-                  className="text-link inline-flex min-h-12 cursor-pointer items-center text-body"
+                  className="text-link inline-flex min-h-12 cursor-pointer items-center text-subtitle"
                   onClick={() => switchMode('reset')}
                 >
                   Forgot password?
@@ -798,7 +798,7 @@ export default function LoginPage({
         <div className="mt-1 flex justify-center">
           <button
             type="button"
-            className="text-link inline-flex min-h-12 cursor-pointer items-center text-body"
+            className="text-link inline-flex min-h-12 cursor-pointer items-center text-subtitle"
             onClick={() => {
               switchMode('login')
               setEmail('member@brinely.info')

@@ -123,7 +123,7 @@ export function MemberPass() {
                       id={`pass-tab-${pass.club_id}`}
                       aria-selected={isSelected}
                       aria-controls="pass-panel"
-                      className={`control-feedback min-h-[52px] shrink-0 rounded-2xl border-2 px-4 text-body font-semibold ${isSelected ? 'border-brand-700 bg-brand-50 text-brand-900' : 'border-slate-200 bg-white text-slate-700'}`}
+                      className={`control-feedback min-h-[52px] shrink-0 rounded-2xl border-2 px-4 text-subtitle font-semibold ${isSelected ? 'border-brand-700 bg-brand-50 text-brand-900' : 'border-slate-200 bg-white text-slate-700'}`}
                       onClick={() => choose(pass.club_id)}
                     >
                       {pass.club_name}

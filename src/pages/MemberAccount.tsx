@@ -192,7 +192,7 @@ export function MemberAccount() {
 
         <section className="border-t border-slate-200 pt-4">
           <p className="text-body text-slate-600 mb-2">Finished for now?</p>
-          <SignOutAction className="control-feedback min-h-14 w-full rounded-2xl border-2 border-red-200 bg-white px-4 text-body font-semibold text-red-800 inline-flex items-center justify-center gap-2">
+          <SignOutAction className="control-feedback min-h-14 w-full rounded-2xl border-2 border-red-200 bg-white px-4 text-subtitle font-semibold text-red-800 inline-flex items-center justify-center gap-2">
             Log out
           </SignOutAction>
         </section>
