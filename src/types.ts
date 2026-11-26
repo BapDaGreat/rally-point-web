@@ -1051,6 +1051,21 @@ export interface TournamentSummary {
   champion_label?: string | null
 }
 
+/** The club a tournament is played at, as the cross-club Tournaments page shows it. */
+export interface PublicTournamentClub {
+  slug: string
+  name: string
+  city?: string | null
+}
+
+/** A tournament on the public Tournaments page: the club summary plus where it is played. */
+export interface PublicTournamentSummary extends TournamentSummary {
+  club: PublicTournamentClub
+}
+
+/** Which tournaments the public Tournaments page asks for; null means all of them. */
+export type PublicTournamentFilter = 'live' | 'setup' | 'completed' | null
+
 export interface TournamentDetail {
   club: PublicClub | null
   tournament: TournamentSummary

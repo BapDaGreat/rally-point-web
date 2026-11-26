@@ -213,3 +213,35 @@ describe('club tournaments (live adapter)', () => {
     expect(live.channel).toHaveBeenCalledWith('club-live:rally-point-gensan')
   })
 })
+
+describe('tournaments across clubs (live adapter)', () => {
+  beforeEach(() => {
+    live.rpc.mockReset()
+  })
+
+  it('asks list_public_tournaments for every club and keeps each club', async () => {
+    live.rpc.mockResolvedValueOnce({
+      data: [
+        { ...sampleSummary, club: { slug: 'rally-point-gensan', name: 'Rally Point Gensan', city: 'General Santos' } },
+        { ...sampleSummary, id: 'tour-2', club: { slug: 'second-club', name: 'Second Club' } },
+        { ...sampleSummary, id: 'tour-broken', club: null },
+      ],
+      error: null,
+    })
+    const rows = await api.listPublicTournaments('live', 12)
+    expect(live.rpc).toHaveBeenCalledWith('list_public_tournaments', { p_status: 'live', p_limit: 12 })
+    expect(rows.map((row) => row.id)).toEqual(['tour-1', 'tour-2'])
+    expect(rows[0].club).toEqual({ slug: 'rally-point-gensan', name: 'Rally Point Gensan', city: 'General Santos' })
+    expect(rows[1].club).toEqual({ slug: 'second-club', name: 'Second Club', city: null })
+    expect(rows[0].team_size).toBe(2)
+    expect(rows[0].player_count).toBe(4)
+  })
+
+  it('returns an empty list until the function is on the server, and raises other errors', async () => {
+    live.rpc.mockResolvedValueOnce({ data: null, error: { code: 'PGRST202', message: 'not found' } })
+    await expect(api.listPublicTournaments()).resolves.toEqual([])
+    expect(live.rpc).toHaveBeenLastCalledWith('list_public_tournaments', { p_status: null, p_limit: 30 })
+    live.rpc.mockResolvedValueOnce({ data: null, error: { code: '22023', message: 'Unknown tournament status' } })
+    await expect(api.listPublicTournaments('live')).rejects.toMatchObject({ code: '22023' })
+  })
+})

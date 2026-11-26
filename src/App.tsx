@@ -46,6 +46,7 @@ import {
   MemberTournamentDetailPage,
   MemberTournamentsPage,
   PublicClubTournamentsPage,
+  PublicTournamentsPage,
   PublicTournamentDetailPage,
   StaffTournamentDetailPage,
   StaffTournamentsPage,
@@ -103,6 +104,8 @@ function AppRoutes() {
         <Route path="/clubs/:slug" element={<ClubDetailPage />} />
         <Route path="/clubs/:slug/leaderboard" element={<PublicClubLeaderboardPage />} />
         <Route path="/clubs/:slug/tournaments" element={<PublicClubTournamentsPage />} />
+        {/* Tournaments from every club, each naming its club. Open to visitors. */}
+        <Route path="/tournaments" element={<PublicTournamentsPage />} />
         <Route path="/clubs/:slug/tournaments/:tournamentId" element={<PublicTournamentDetailPage />} />
         <Route path="/clubs/:slug/book" element={<MemberBook />} />
         {/* Court owners: how listing works, and a request for a call. Open to visitors. */}

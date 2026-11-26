@@ -181,10 +181,13 @@ select extensions.lives_ok(
   $$select public.admin_generate_tournament_draw(current_setting('test.bracket_id')::uuid)$$,
   'admin randomizes singles bracket draw');
 
+-- The tournament tables are closed to API roles, so direct reads run as the test owner.
+set local role postgres;
 select extensions.is(
   (select count(*)::int from public.club_tournament_matches
    where tournament_id = current_setting('test.bracket_id')::uuid and status = 'bye'),
   3, '5-player 8-slot bracket creates exactly 3 Round-1 BYEs');
+set local role authenticated;
 
 select extensions.lives_ok(
   $$select public.admin_start_tournament(current_setting('test.bracket_id')::uuid)$$,
@@ -208,11 +211,13 @@ declare
   v_steps integer := 0;
 begin
   loop
+    set local role postgres;
     select id into v_mid
     from public.club_tournament_matches
     where tournament_id = v_tid and status = 'ready'
     order by round_number asc, match_order asc
     limit 1;
+    set local role authenticated;
     exit when v_mid is null;
     v_steps := v_steps + 1;
     perform public.staff_score_tournament_match(v_tid, v_mid, 'a', 11, 7, null);
@@ -231,27 +236,25 @@ select extensions.ok(
   (public.get_public_tournament('rally-point-gensan', current_setting('test.bracket_id')::uuid) -> 'tournament' ->> 'champion_label') is not null,
   'completed bracket exposes champion_label publicly');
 
+set local role postgres;
 select extensions.is(
   (select count(*)::int from public.club_matches where tournament_id = current_setting('test.bracket_id')::uuid and status = 'completed'),
   4, '5-player single-elimination writes 4 completed club_matches rows to club leaderboard');
+select set_config('test.semi_match', (select club_match_id from public.club_tournament_matches
+  where tournament_id = current_setting('test.bracket_id')::uuid and round_number = 2 and status = 'completed'
+  limit 1)::text, true);
+select set_config('test.final_match', (select club_match_id from public.club_tournament_matches
+  where tournament_id = current_setting('test.bracket_id')::uuid and next_match_id is null
+  limit 1)::text, true);
+set local role authenticated;
 
 -- Cannot void Semifinal match after Finals was played, CAN void Finals match and reopen tournament
 select extensions.throws_ok(
-  $$select public.staff_void_club_match(
-      (select club_match_id from public.club_tournament_matches
-       where tournament_id = current_setting('test.bracket_id')::uuid and round_number = 2 and status = 'completed'
-       limit 1),
-      'Too late'
-    )$$,
+  $$select public.staff_void_club_match(current_setting('test.semi_match')::uuid, 'Too late')$$,
   '22023', null, 'cannot void a semifinal match after finals was played');
 
 select extensions.lives_ok(
-  $$select public.staff_void_club_match(
-      (select club_match_id from public.club_tournament_matches
-       where tournament_id = current_setting('test.bracket_id')::uuid and next_match_id is null
-       limit 1),
-      'Retap finals winner'
-    )$$,
+  $$select public.staff_void_club_match(current_setting('test.final_match')::uuid, 'Retap finals winner')$$,
   'voiding finals match succeeds and reopens tournament');
 
 select extensions.is(
@@ -282,10 +285,14 @@ select extensions.lives_ok(
   $$select public.admin_start_tournament(current_setting('test.queue_id')::uuid)$$,
   'starting random queue mixer auto-draws Game 1');
 
+set local role postgres;
 select extensions.is(
   (select count(*)::int from public.club_tournament_matches
    where tournament_id = current_setting('test.queue_id')::uuid and status = 'ready'),
   1, 'starting queue creates 1 ready match');
+select set_config('test.queue_game1', (select id from public.club_tournament_matches
+  where tournament_id = current_setting('test.queue_id')::uuid and status = 'ready' limit 1)::text, true);
+set local role authenticated;
 
 -- Staff (only scorer on bracket_id, NOT club-wide) CANNOT draw/score on queue_id
 select set_config('request.jwt.claim.sub', '2c000000-0000-4000-8000-000000000002', true);
@@ -301,20 +308,23 @@ select set_config('request.jwt.claim.sub', '2c000000-0000-4000-8000-000000000003
 select extensions.lives_ok(
   $$select public.staff_score_tournament_match(
       current_setting('test.queue_id')::uuid,
-      (select id from public.club_tournament_matches where tournament_id = current_setting('test.queue_id')::uuid and status = 'ready' limit 1),
+      current_setting('test.queue_game1')::uuid,
       'b', 9, 11, null
     )$$,
   'admin scores Game 1 in random queue');
 
+set local role postgres;
 select extensions.is(
   (select count(*)::int from public.club_matches where tournament_id = current_setting('test.queue_id')::uuid),
   0, 'counts_for_leaderboard = false skips writing to club_matches');
+set local role authenticated;
 
 select extensions.lives_ok(
   $$select public.staff_draw_tournament_queue_match(current_setting('test.queue_id')::uuid, null)$$,
   'admin draws Game 2 in random queue');
 
 -- Verify the 2 players who had 0 completed games are in Game 2
+set local role postgres;
 select extensions.is(
   (select count(*)::int from public.club_tournament_players tp
    where tp.tournament_id = current_setting('test.queue_id')::uuid
@@ -329,6 +339,9 @@ select extensions.is(
          and tp.member_id = any(m2.team_a_player_ids || m2.team_b_player_ids)
      )),
   2, 'queue mixer prioritizes players with lowest games played');
+select set_config('test.queue_game2', (select id from public.club_tournament_matches
+  where tournament_id = current_setting('test.queue_id')::uuid and status = 'ready' limit 1)::text, true);
+set local role authenticated;
 
 -- Public payload leaks zero private member columns
 select extensions.ok(
@@ -347,7 +360,7 @@ select extensions.throws_ok(
 select extensions.lives_ok(
   $$select public.staff_cancel_tournament_queue_match(
       current_setting('test.queue_id')::uuid,
-      (select id from public.club_tournament_matches where tournament_id = current_setting('test.queue_id')::uuid and status = 'ready' limit 1)
+      current_setting('test.queue_game2')::uuid
     )$$,
   'cancelling active queue match succeeds');
 

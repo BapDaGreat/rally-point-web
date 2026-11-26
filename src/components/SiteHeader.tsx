@@ -5,11 +5,12 @@ import { BrinelyLogo } from './BrinelyLogo'
 
 const mainLinks = [
   { to: '/clubs', label: 'Find a court' },
+  { to: '/tournaments', label: 'Tournaments' },
   { to: '/owners', label: 'For court owners' },
 ]
 
 /**
- * The public site header: logo home, Find a court, For court owners, and on the right either
+ * The public site header: logo home, Find a court, Tournaments, For court owners, and on the right either
  * Log in / Sign up (visitors) or the account menu (signed-in players and members).
  * Log in and Sign up remember this page, so signing in comes straight back to it.
  */

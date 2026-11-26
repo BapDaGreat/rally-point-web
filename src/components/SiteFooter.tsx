@@ -8,7 +8,7 @@ type FooterLink = { label: string; to: string }
  * landing page's "I own a court", so each of those stays a single, unambiguous link.
  */
 const groups: { title: string; links: FooterLink[] }[] = [
-  { title: 'Players', links: [{ label: 'Find a court', to: '/clubs' }] },
+  { title: 'Players', links: [{ label: 'Find a court', to: '/clubs' }, { label: 'All tournaments', to: '/tournaments' }] },
   {
     title: 'Clubs',
     links: [

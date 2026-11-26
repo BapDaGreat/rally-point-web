@@ -31,6 +31,8 @@ import type {
   CreateTournamentInput,
   Member,
   PublicClub,
+  PublicTournamentFilter,
+  PublicTournamentSummary,
   ScoreTournamentMatchInput,
   TournamentDetail,
   TournamentMatch,
@@ -54,6 +56,118 @@ function TournamentsListLoading() {
         </SkeletonCard>
       ))}
     </div>
+  )
+}
+
+const PUBLIC_FILTERS: { value: PublicTournamentFilter, label: string }[] = [
+  { value: null, label: 'All' },
+  { value: 'live', label: 'Live now' },
+  { value: 'setup', label: 'Coming up' },
+  { value: 'completed', label: 'Finished' },
+]
+
+const PUBLIC_SECTIONS: { status: TournamentSummary['status'], heading: string }[] = [
+  { status: 'live', heading: 'Live now' },
+  { status: 'setup', heading: 'Coming up' },
+  { status: 'completed', heading: 'Finished' },
+]
+
+/** Tournaments from every club, each card naming the club it is played at. Open to visitors. */
+export function PublicTournamentsPage() {
+  const [filter, setFilter] = useState<PublicTournamentFilter>(null)
+  const [tournaments, setTournaments] = useState<PublicTournamentSummary[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const latestRequest = useRef(0)
+
+  const load = useCallback(async (quiet = false) => {
+    const req = ++latestRequest.current
+    if (!quiet) setLoading(true)
+    setError(null)
+    try {
+      const rows = typeof api.listPublicTournaments === 'function'
+        ? await api.listPublicTournaments(filter, 60)
+        : []
+      if (req !== latestRequest.current) return
+      setTournaments(rows ?? [])
+    } catch (cause) {
+      if (req === latestRequest.current) setError(errorMessage(cause, 'Could not load tournaments.'))
+    } finally {
+      if (req === latestRequest.current) setLoading(false)
+    }
+  }, [filter])
+
+  useEffect(() => {
+    void load(false)
+  }, [load])
+
+  const clubSlugs = useMemo(() => [...new Set(tournaments.map((t) => t.club.slug))].sort(), [tournaments])
+  useClubLiveRefresh(['public-tournaments', ...clubSlugs], () => {
+    void load(true)
+  }, 30000)
+
+  const sections = PUBLIC_SECTIONS
+    .map((section) => ({ ...section, rows: tournaments.filter((t) => t.status === section.status) }))
+    .filter((section) => section.rows.length > 0)
+  const emptyText = filter === 'live'
+    ? 'No tournament is being played right now.'
+    : filter === 'setup'
+      ? 'No tournament is coming up yet.'
+      : filter === 'completed'
+        ? 'No tournament has finished yet.'
+        : 'No club has listed a tournament yet.'
+
+  return (
+    <PublicFrame title="Tournaments" subtitle="Brackets and queue mixers at every club">
+      <div className="space-y-4">
+        <div role="group" aria-label="Show tournaments" className="flex flex-wrap gap-2">
+          {PUBLIC_FILTERS.map((option) => (
+            <button
+              key={option.label}
+              type="button"
+              aria-pressed={filter === option.value}
+              onClick={() => setFilter(option.value)}
+              className="chip-option control-feedback shrink-0 cursor-pointer"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        {loading && tournaments.length === 0 ? (
+          <TournamentsListLoading />
+        ) : error ? (
+          <section role="alert" className="notice notice-error space-y-3">
+            <p className="text-subtitle font-semibold">{error}</p>
+            <button type="button" onClick={() => void load(false)} className="btn-secondary sm:w-auto! sm:px-5">
+              Try again
+            </button>
+          </section>
+        ) : sections.length === 0 ? (
+          <section className="card p-6 text-center space-y-3">
+            <p className="text-subtitle font-semibold text-ink">{emptyText}</p>
+            <p className="text-body text-muted">Clubs add their tournaments here. You can also look up a club and its courts.</p>
+            <Link to="/clubs" className="btn-secondary sm:w-auto! sm:px-6">See all clubs</Link>
+          </section>
+        ) : (
+          sections.map((section) => (
+            <section key={section.status} aria-labelledby={`tournaments-${section.status}`} className="space-y-3">
+              <h2 id={`tournaments-${section.status}`} className="text-heading-3 font-semibold text-ink">
+                {section.heading}
+              </h2>
+              {section.rows.map((t) => (
+                <TournamentListCard
+                  key={t.id}
+                  tournament={t}
+                  club={t.club}
+                  to={`/clubs/${t.club.slug}/tournaments/${t.id}`}
+                />
+              ))}
+            </section>
+          ))
+        )}
+      </div>
+    </PublicFrame>
   )
 }
 

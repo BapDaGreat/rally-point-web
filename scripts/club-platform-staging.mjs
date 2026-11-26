@@ -540,13 +540,77 @@ export const dashboardAnalyticsRelease = Object.freeze({
   databases: Object.freeze({ restore: 'rally_staging_backup_20261125_r2_restore', dryRun: 'rally_staging_backup_20261125_r2_dryrun' }),
 })
 
+// Staging at 37 migrations (dashboard analytics applied) plus PR #25's club leaderboard and
+// tournaments. The leaderboard migration was written as 20261125120000, the same version as the
+// dashboard migration already on staging, so it is renumbered 20261126080000 (before tournaments,
+// which redefines two of its functions). Eight closed tables and definer functions only: no booking,
+// court or charge is written, so the reservation-write pause is unchanged. No Storage bucket.
+// The third migration adds list_public_tournaments for the all-clubs Tournaments page (read-only,
+// open to visitors). r1 of the dry run ran before it was added; the capture and restore check of
+// 2026-11-26 still stand for the same 37-migration staging.
+export const leaderboardTournamentsRelease = Object.freeze({
+  id: 'leaderboard-tournaments-20261126',
+  title: 'Club leaderboard and tournaments',
+  baseVersions: Object.freeze([...dashboardAnalyticsRelease.baseVersions, '20261125120000'].sort()),
+  migrations: Object.freeze(['20261126080000_club_leaderboard.sql', '20261126090000_club_tournaments.sql',
+    '20261126100000_public_tournaments.sql']),
+  // The SQL that runs and the code that runs it. Approval pins all of these bytes.
+  files: Object.freeze(['supabase/migrations/20261126080000_club_leaderboard.sql',
+    'supabase/migrations/20261126090000_club_tournaments.sql', 'supabase/migrations/20261126100000_public_tournaments.sql',
+    'supabase/verification/leaderboard_tournaments_postflight.sql',
+    'supabase/verification/dashboard_analytics_postflight.sql', 'supabase/verification/member_account_postflight.sql',
+    'supabase/verification/rent_a_coach_postflight.sql', 'supabase/verification/member_codes_booking_length_postflight.sql',
+    'supabase/verification/member_gcash_checkout_postflight.sql', 'supabase/verification/owner_onboarding_postflight.sql',
+    'supabase/verification/club_profile_postflight.sql', 'supabase/verification/court_photos_postflight.sql',
+    'supabase/verification/court_marketplace_postflight.sql', 'supabase/verification/supabase_advisor_followup_postflight.sql',
+    'supabase/verification/supabase_advisor_postflight.sql', 'supabase/verification/club_platform_postflight.sql',
+    'supabase/verification/two_club_isolation.sql', 'supabase/verification/schema_fingerprint.sql',
+    'supabase/verification/backup_content_inventory.sql', 'supabase/verification/reservation_write_pause_readonly.sql',
+    'supabase/verification/staging_privacy_readonly_preflight.sql', 'scripts/run-staging-release-apply.mjs',
+    'scripts/club-platform-staging.mjs', 'scripts/club-platform-checks.mjs', 'scripts/restore-catalog-checks.mjs',
+    'scripts/restore-data-checks.mjs']),
+  stateCheck: Object.freeze({ file: 'dashboard_analytics_postflight.sql', kind: 'dashboardAnalytics' }),
+  postChecks: Object.freeze([
+    Object.freeze({ file: 'leaderboard_tournaments_postflight.sql', kind: 'leaderboardTournaments', ignore: Object.freeze([]) }),
+    // Earlier postflights count 22 to 37 migrations; this release brings staging to 40.
+    Object.freeze({ file: 'dashboard_analytics_postflight.sql', kind: 'dashboardAnalytics',
+      ignore: Object.freeze(['ledger_has_dashboard_analytics']) }),
+    Object.freeze({ file: 'member_account_postflight.sql', kind: 'memberAccount', ignore: Object.freeze(['ledger_has_member_account']) }),
+    Object.freeze({ file: 'rent_a_coach_postflight.sql', kind: 'rentACoach', ignore: Object.freeze(['ledger_has_rent_a_coach']) }),
+    Object.freeze({ file: 'member_codes_booking_length_postflight.sql', kind: 'memberCodesBookingLength',
+      ignore: Object.freeze(['ledger_has_codes_and_length']) }),
+    Object.freeze({ file: 'member_gcash_checkout_postflight.sql', kind: 'memberGcashCheckout',
+      ignore: Object.freeze(['ledger_has_member_gcash_checkout']) }),
+    Object.freeze({ file: 'owner_onboarding_postflight.sql', kind: 'ownerOnboarding',
+      ignore: Object.freeze(['ledger_has_owner_onboarding']) }),
+    Object.freeze({ file: 'club_profile_postflight.sql', kind: 'clubProfile', ignore: Object.freeze(['ledger_has_club_profile']) }),
+    Object.freeze({ file: 'court_photos_postflight.sql', kind: 'courtPhotos', ignore: Object.freeze(['ledger_has_court_photos']) }),
+    Object.freeze({ file: 'court_marketplace_postflight.sql', kind: 'courtMarketplace',
+      ignore: Object.freeze(['ledger_has_court_marketplace', 'venues_open_all_day']) }),
+    Object.freeze({ file: 'supabase_advisor_followup_postflight.sql', kind: 'advisorFollowup',
+      ignore: Object.freeze(['ledger_has_followup']) }),
+    Object.freeze({ file: 'supabase_advisor_postflight.sql', kind: 'advisor',
+      ignore: Object.freeze(['ledger_has_advisor_fix', 'only_schedule_board_is_definer_view']) }),
+    Object.freeze({ file: 'club_platform_postflight.sql', kind: 'postflight', ignore: Object.freeze(['ledger_has_every_migration']) }),
+  ]),
+  isolation: Object.freeze({ file: 'two_club_isolation.sql', plan: 55 }),
+  dirs: Object.freeze({
+    capture: 'docs/release-private/staging-backup-20261126-r1',
+    restore: 'docs/release-private/staging-backup-restore-20261126-r1',
+    dryRun: 'docs/release-private/leaderboard-tournaments-staging-dryrun-20261126-r2',
+    apply: 'docs/release-private/leaderboard-tournaments-staging-apply-20261126-r1',
+  }),
+  databases: Object.freeze({ restore: 'rally_staging_backup_20261126_r1_restore', dryRun: 'rally_staging_backup_20261126_r2_dryrun' }),
+})
+
 export const releases = Object.freeze({ [advisorFixesRelease.id]: advisorFixesRelease,
   [advisorFollowupRelease.id]: advisorFollowupRelease, [courtMarketplaceRelease.id]: courtMarketplaceRelease,
   [courtPhotosRelease.id]: courtPhotosRelease, [clubProfileRelease.id]: clubProfileRelease,
   [ownerOnboardingRelease.id]: ownerOnboardingRelease, [memberGcashCheckoutRelease.id]: memberGcashCheckoutRelease,
   [memberCodesBookingLengthRelease.id]: memberCodesBookingLengthRelease,
   [rentACoachRelease.id]: rentACoachRelease,
-  [memberAccountRelease.id]: memberAccountRelease, [dashboardAnalyticsRelease.id]: dashboardAnalyticsRelease })
+  [memberAccountRelease.id]: memberAccountRelease, [dashboardAnalyticsRelease.id]: dashboardAnalyticsRelease,
+  [leaderboardTournamentsRelease.id]: leaderboardTournamentsRelease })
 
 export function getRelease(id) {
   assert.ok(Object.hasOwn(releases, id ?? ''), `Unknown release: ${id}. Known: ${Object.keys(releases).join(', ')}`)

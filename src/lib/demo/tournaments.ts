@@ -2,6 +2,8 @@ import type {
   Club,
   CreateTournamentInput,
   LeaderboardEntry,
+  PublicTournamentFilter,
+  PublicTournamentSummary,
   ScoreTournamentMatchInput,
   TournamentDetail,
   TournamentFormat,
@@ -678,6 +680,38 @@ function buildAuthenticatedDetail(db: DemoDB, club: Club, tournament: DemoTourna
 }
 
 export const tournamentOperations = {
+  /** Every active club's tournaments (not cancelled), each with its club, like list_public_tournaments. */
+  listPublicTournaments(status: PublicTournamentFilter = null, limit = 30): PublicTournamentSummary[] {
+    const db = load()
+    const wanted = status ? String(status).trim().toLowerCase() : null
+    if (wanted && !['live', 'setup', 'completed'].includes(wanted)) {
+      throw Object.assign(new Error('Unknown tournament status'), { code: '22023' })
+    }
+    const max = clampLimit(limit, 30, 60)
+    return (db.clubTournaments ?? [])
+      .filter((t) => t.status !== 'cancelled' && (!wanted || t.status === wanted))
+      .map((t) => {
+        const club = db.clubs.find((c) => c.id === t.club_id)
+        const open = club ? activePublicClubBySlug(db, club.slug) : undefined
+        return open ? { tournament: t, club: open } : null
+      })
+      .filter((row): row is { tournament: DemoTournament, club: Club } => row !== null)
+      .sort((a, b) =>
+        STATUS_ORDER[a.tournament.status] - STATUS_ORDER[b.tournament.status]
+        || b.tournament.created_at.localeCompare(a.tournament.created_at)
+        || b.tournament.id.localeCompare(a.tournament.id),
+      )
+      .slice(0, max)
+      .map(({ tournament, club }) => ({
+        ...buildSummary(db, tournament),
+        club: {
+          slug: club.slug,
+          name: club.name,
+          city: db.clubAccounts.find((row) => row.club_id === club.id)?.city ?? null,
+        },
+      }))
+  },
+
   listPublicClubTournaments(slug: string, limit = 20): TournamentSummary[] | null {
     const db = load()
     const club = activePublicClubBySlug(db, slug)

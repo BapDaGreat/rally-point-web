@@ -101,9 +101,12 @@ function TournamentLoading({ dark }: { dark: boolean }) {
 export function TournamentListCard({
   tournament,
   to,
+  club,
 }: {
   tournament: TournamentSummary
   to: string
+  /** On the all-clubs Tournaments page: the club it is played at. */
+  club?: { name: string, city?: string | null }
 }) {
   const status = tournamentStatusBadge(tournament.status, false)
   return (
@@ -119,6 +122,12 @@ export function TournamentListCard({
           <p className="text-subtitle font-semibold text-ink truncate">{tournament.title}</p>
           <span className={`pill ${status.className}`}>{status.label}</span>
         </div>
+        {club ? (
+          <p className="text-body font-semibold text-ink">
+            {club.name}
+            {club.city ? <span className="font-normal text-slate-600"> · {club.city}</span> : null}
+          </p>
+        ) : null}
         <p className="text-body text-slate-600">
           {formatTournamentType(tournament.format, tournament.team_size)}
           {tournament.venue_name ? ` · ${tournament.venue_name}` : ''}

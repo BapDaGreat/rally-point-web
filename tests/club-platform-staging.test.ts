@@ -539,6 +539,45 @@ describe('staging releases', () => {
     expect(postflight).toContain('= 37')
   })
 
+  it('builds the leaderboard and tournaments release on the 37-migration state and re-runs every earlier check', async () => {
+    const { dashboardAnalyticsRelease, leaderboardTournamentsRelease, releaseManifest, releases } = await load()
+    const { leaderboardTournamentsChecks } = await import('../scripts/club-platform-checks.mjs')
+    expect(leaderboardTournamentsRelease.baseVersions).toEqual([...dashboardAnalyticsRelease.baseVersions, '20261125120000'])
+    expect(leaderboardTournamentsRelease.baseVersions).toHaveLength(37)
+    // Renumbered: 20261125120000 is the dashboard migration already on staging.
+    expect(leaderboardTournamentsRelease.migrations).toEqual(['20261126080000_club_leaderboard.sql', '20261126090000_club_tournaments.sql',
+      '20261126100000_public_tournaments.sql'])
+    expect(leaderboardTournamentsRelease.stateCheck).toEqual({ file: 'dashboard_analytics_postflight.sql', kind: 'dashboardAnalytics' })
+    expect(leaderboardTournamentsRelease.postChecks.map((check: { kind: string, ignore: string[] }) => [check.kind, [...check.ignore]]).slice(0, 2)).toEqual([
+      ['leaderboardTournaments', []],
+      ['dashboardAnalytics', ['ledger_has_dashboard_analytics']],
+    ])
+    expect(leaderboardTournamentsRelease.postChecks).toHaveLength(dashboardAnalyticsRelease.postChecks.length + 1)
+    const earlier = Object.values(releases).filter(release => release !== leaderboardTournamentsRelease)
+      .flatMap((release: { dirs: object, databases: object }) => [...Object.values(release.dirs), ...Object.values(release.databases)])
+    expect([...Object.values(leaderboardTournamentsRelease.dirs), ...Object.values(leaderboardTournamentsRelease.databases)]
+      .filter(name => earlier.includes(name))).toEqual([])
+    const { contents } = releaseManifest(leaderboardTournamentsRelease)
+    const leaderboard = contents.get('supabase/migrations/20261126080000_club_leaderboard.sql')?.toString('utf8') ?? ''
+    const tournaments = contents.get('supabase/migrations/20261126090000_club_tournaments.sql')?.toString('utf8') ?? ''
+    const allClubs = contents.get('supabase/migrations/20261126100000_public_tournaments.sql')?.toString('utf8') ?? ''
+    // New tables only: nothing inside the reservation-write pause is written.
+    for (const sql of [leaderboard, tournaments, allClubs]) {
+      expect(sql).not.toMatch(/\b(insert into|update|delete from)\s+public\.(bookings|court_sessions|open_plays|open_play_signups|court_allocations|courts|transactions)\b/i)
+    }
+    expect(leaderboard).toContain('create policy no_direct_api_access on public.club_matches')
+    expect(tournaments).toContain('create policy no_direct_api_access on public.club_tournaments')
+    // The all-clubs list only reads.
+    expect(allClubs).not.toMatch(/\b(insert into|update public\.|delete from|create table)\b/i)
+    expect(allClubs).toContain('grant execute on function public.list_public_tournaments(text, integer) to anon, authenticated')
+    const postflight = contents.get('supabase/verification/leaderboard_tournaments_postflight.sql')?.toString('utf8') ?? ''
+    expect([...postflight.matchAll(/select \d+, '([a-z_]+)'/g)].map(match => match[1])).toEqual([...leaderboardTournamentsChecks])
+    expect(postflight).toContain("version = '20261126080000'")
+    expect(postflight).toContain("version = '20261126090000'")
+    expect(postflight).toContain("version = '20261126100000'")
+    expect(postflight).toContain('= 40')
+  })
+
   it('hashes the release definition and every file, and returns the bytes it hashed', async () => {
     const { releaseManifest } = await load()
     const { dir, release } = releaseFixture()

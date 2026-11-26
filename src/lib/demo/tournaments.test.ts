@@ -377,3 +377,32 @@ describe('tournaments demo operations (Phase 2)', () => {
     expect(demoStore.publicTournament('rally-point-gensan', draftCancelled.tournament.id)).toBeNull()
   })
 })
+
+describe('tournaments across clubs (demo)', () => {
+  beforeEach(() => {
+    demoStore.reset()
+    setActiveClubId(null)
+  })
+
+  it('lists every active club\'s tournaments with the club, live first', () => {
+    const rows = demoStore.listPublicTournaments()
+    const club = demoStore.listPublicClubTournaments('rally-point-gensan', 50)!
+    expect(rows.map((row) => row.id).sort()).toEqual(club.map((row) => row.id).sort())
+    expect(rows.every((row) => row.club.slug === 'rally-point-gensan' && row.club.name.length > 0)).toBe(true)
+    expect(rows[0].status).toBe('live')
+    for (const row of rows) {
+      for (const forbidden of ['email', 'phone', 'member_code', 'qr_token', 'user_id', 'created_by']) {
+        expect(Object.keys(row)).not.toContain(forbidden)
+      }
+      expect(Object.keys(row.club).sort()).toEqual(['city', 'name', 'slug'])
+    }
+  })
+
+  it('filters by status, applies the limit and refuses unknown statuses', () => {
+    expect(demoStore.listPublicTournaments('live').every((row) => row.status === 'live')).toBe(true)
+    expect(demoStore.listPublicTournaments('completed')).toEqual(
+      demoStore.listPublicTournaments().filter((row) => row.status === 'completed'))
+    expect(demoStore.listPublicTournaments(null, 1)).toHaveLength(1)
+    expect(() => demoStore.listPublicTournaments('cancelled' as never)).toThrow('Unknown tournament status')
+  })
+})

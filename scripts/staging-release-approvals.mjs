@@ -41,4 +41,9 @@ export const releaseApprovals = Object.freeze({
   // the restore check and the dry run on a restored copy of staging passed (all checks, isolation
   // 55/55): "Apply to staging".
   'dashboard-analytics-20261125': '7fd2ff1af880d7e33d0d34aac4757d6e899fc4ebfe440c95e31924b4c84788c8',
+  // Owner, 2026-11-26: "yes" to preparing it (renumber, capture, restore check, dry run), then, after
+  // the all-clubs tournaments migration was added and the capture (staging-backup-20261126-r1), the
+  // restore check and dry run r2 on a restored copy of staging passed (all checks, isolation 55/55,
+  // local build matches): "go ahead".
+  'leaderboard-tournaments-20261126': '47ffbe474641bc6c22b40a089a59a500f4857e47eafa281dc7bcbedf7f11296e',
 })
