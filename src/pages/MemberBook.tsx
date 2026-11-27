@@ -463,19 +463,22 @@ function AvailabilityLoading() {
 
 function nextDays(n: number) {
   // Days are counted in Philippine time, so "Today" matches the club's calendar on any phone.
-  const out: { ymd: string; label: string }[] = []
+  const out: { ymd: string; label: string; name: string; date: string; month: string }[] = []
   const now = Date.now()
   for (let i = 0; i < n; i++) {
     const ymd = ymdLocal(new Date(now + i * 86400000))
+    const noon = new Date(`${ymd}T12:00:00+08:00`)
+    const part = (options: Intl.DateTimeFormatOptions) =>
+      noon.toLocaleDateString('en-US', { ...options, timeZone: APP_TIME_ZONE })
     const label =
       i === 0
         ? 'Today'
         : i === 1
           ? 'Tomorrow'
-          : new Date(`${ymd}T12:00:00+08:00`).toLocaleDateString('en-US', {
-            weekday: 'short', month: 'short', day: 'numeric', timeZone: APP_TIME_ZONE,
-          })
-    out.push({ ymd, label })
+          : part({ weekday: 'short', month: 'short', day: 'numeric' })
+    // The day card shows the name ("Today", "Sat"), the date number and the month, one per line.
+    const name = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : part({ weekday: 'short' })
+    out.push({ ymd, label, name, date: part({ day: 'numeric' }), month: part({ month: 'short' }) })
   }
   return out
 }
@@ -1606,17 +1609,20 @@ export function MemberBook() {
 
                 <section className="card p-3">
                   <p className="label px-1 mb-2">Date</p>
-                  {/* Phones scroll the days sideways; wider screens wrap them so none is cut off. */}
-                  <div className="flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible">
+                  {/* A row of calendar days: phones scroll it sideways, wider screens share the row out. */}
+                  <div className="day-strip" role="group" aria-label="Date">
                     {days.map((d) => (
                       <button
                         key={d.ymd}
                         type="button"
+                        aria-label={d.label}
                         aria-pressed={dateYmd === d.ymd}
                         onClick={() => chooseDay(d.ymd)}
-                        className="chip-option shrink-0"
+                        className="day-card"
                       >
-                        {d.label}
+                        <span className="day-card-name" aria-hidden="true">{d.name}</span>
+                        <span className="day-card-date" aria-hidden="true">{d.date}</span>
+                        <span className="day-card-month" aria-hidden="true">{d.month}</span>
                       </button>
                     ))}
                   </div>
@@ -1648,12 +1654,11 @@ export function MemberBook() {
                     <section className="enter-fade card p-3 space-y-3">
                       <p className="label px-1">Court</p>
                       {hasCourtTypes ? (
-                        <div role="group" aria-label="Indoor or outdoor courts" className="flex flex-wrap gap-2">
+                        <div role="group" aria-label="Indoor or outdoor courts" className="segmented">
                           {COURT_TYPE_CHOICES.map((choice) => (
                             <button
                               key={choice.value || 'all'}
                               type="button"
-                              className="chip-option"
                               aria-pressed={typeFilter === choice.value}
                               onClick={() => chooseCourtType(choice.value)}
                             >

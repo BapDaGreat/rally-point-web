@@ -120,14 +120,13 @@ export function PublicTournamentsPage() {
   return (
     <PublicFrame title="Tournaments" subtitle="Brackets and queue mixers at every club">
       <div className="space-y-4">
-        <div role="group" aria-label="Show tournaments" className="flex flex-wrap gap-2">
+        <div role="group" aria-label="Show tournaments" className="segmented">
           {PUBLIC_FILTERS.map((option) => (
             <button
               key={option.label}
               type="button"
               aria-pressed={filter === option.value}
               onClick={() => setFilter(option.value)}
-              className="chip-option control-feedback shrink-0 cursor-pointer"
             >
               {option.label}
             </button>

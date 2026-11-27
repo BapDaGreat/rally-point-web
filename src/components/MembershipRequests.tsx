@@ -349,14 +349,9 @@ export function MembershipRequests({ staffId }: { staffId?: string }) {
                   >
                     <fieldset className="space-y-2">
                       <legend className="text-subtitle font-extrabold text-slate-900">Plan</legend>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="segmented">
                         {PLANS.map((option, index) => (
-                          <label
-                            key={option.value}
-                            className={`flex min-h-12 cursor-pointer items-center justify-center rounded-xl border-2 px-2 text-sm font-bold has-[:focus-visible]:outline has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-brand-300 ${
-                              plan === option.value ? 'border-brand-700 bg-brand-50 text-brand-900' : 'border-slate-300 bg-white text-slate-800'
-                            }`}
-                          >
+                          <label key={option.value}>
                             <input
                               ref={index === 0 ? firstPlan : undefined}
                               type="radio"

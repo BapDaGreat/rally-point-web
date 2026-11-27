@@ -374,16 +374,11 @@ export function ScheduleBoard({
                 </select>
               </div>
             ) : null}
-            <div className="flex flex-wrap gap-2" role="group" aria-label="TV board mode">
+            <div className="segmented segmented-dark segmented-fit" role="group" aria-label="TV board mode">
               <button
                 type="button"
                 aria-pressed={tvView === 'schedule'}
                 onClick={() => updateTvParams(tvVenueId, 'schedule')}
-                className={`control-feedback min-h-12 rounded-xl border px-4 text-body font-semibold ${
-                  tvView === 'schedule'
-                    ? 'border-brand-400 bg-brand-600 text-white'
-                    : 'border-slate-700 bg-slate-900 text-slate-200'
-                }`}
               >
                 Court schedule
               </button>
@@ -391,11 +386,6 @@ export function ScheduleBoard({
                 type="button"
                 aria-pressed={tvView === 'leaderboard'}
                 onClick={() => updateTvParams(tvVenueId, 'leaderboard')}
-                className={`control-feedback min-h-12 rounded-xl border px-4 text-body font-semibold ${
-                  tvView === 'leaderboard'
-                    ? 'border-brand-400 bg-brand-600 text-white'
-                    : 'border-slate-700 bg-slate-900 text-slate-200'
-                }`}
               >
                 Leaderboard
               </button>
@@ -403,11 +393,6 @@ export function ScheduleBoard({
                 type="button"
                 aria-pressed={tvView === 'tournament'}
                 onClick={() => updateTvParams(tvVenueId, 'tournament')}
-                className={`control-feedback min-h-12 rounded-xl border px-4 text-body font-semibold ${
-                  tvView === 'tournament'
-                    ? 'border-brand-400 bg-brand-600 text-white'
-                    : 'border-slate-700 bg-slate-900 text-slate-200'
-                }`}
               >
                 Tournament
               </button>

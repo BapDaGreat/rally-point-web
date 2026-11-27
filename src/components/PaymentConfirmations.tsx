@@ -319,7 +319,7 @@ export function PaymentConfirmations({ venueId, onDecided }: { venueId?: string;
                   >
                     <fieldset className="space-y-2">
                       <legend className="text-subtitle font-extrabold text-slate-900">Why was it not received?</legend>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="segmented segmented-stack">
                         {QUICK_REASONS.map((quick, index) => {
                           const picked = reason.trim() === quick
                           return (
@@ -333,9 +333,6 @@ export function PaymentConfirmations({ venueId, onDecided }: { venueId?: string;
                                 setReason(quick)
                                 setReasonError(null)
                               }}
-                              className={`min-h-12 rounded-xl border-2 px-3 py-2 text-left text-sm font-bold ${
-                                picked ? 'border-brand-700 bg-brand-50 text-brand-900' : 'border-slate-300 bg-white text-slate-800'
-                              }`}
                             >
                               {quick}
                             </button>

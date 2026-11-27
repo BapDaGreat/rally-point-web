@@ -430,18 +430,20 @@ export function PublicCoachesPage() {
           </div>
         </div>
 
-        <div role="group" aria-label="Lesson filter" className="flex flex-wrap gap-2">
-          {LESSON_FILTERS.map((option) => (
-            <button
-              key={option.label}
-              type="button"
-              aria-pressed={lessonFilter === option.value}
-              onClick={() => setFilter('type', option.value)}
-              className="chip-option control-feedback shrink-0 cursor-pointer"
-            >
-              {option.label}
-            </button>
-          ))}
+        <div>
+          <p id="coach-lesson-label" className="label">Lessons</p>
+          <div role="group" aria-labelledby="coach-lesson-label" className="segmented segmented-wrap">
+            {LESSON_FILTERS.map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                aria-pressed={lessonFilter === option.value}
+                onClick={() => setFilter('type', option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

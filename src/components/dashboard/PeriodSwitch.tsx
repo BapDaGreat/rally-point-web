@@ -36,7 +36,7 @@ export function PeriodSwitch({ value, onChange, rangeText, label = 'Period' }: P
 
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <div role="radiogroup" aria-label={label} className="inline-flex gap-1 rounded-xl bg-slate-100 p-1">
+      <div role="radiogroup" aria-label={label} className="segmented segmented-fit">
         {ANALYTICS_PERIODS.map((period, index) => {
           const checked = period === value
           return (
@@ -51,9 +51,7 @@ export function PeriodSwitch({ value, onChange, rangeText, label = 'Period' }: P
               tabIndex={checked ? 0 : -1}
               onClick={() => onChange(period)}
               onKeyDown={(event) => onKeyDown(event, index)}
-              className={`min-h-12 rounded-lg border px-4 text-body font-semibold whitespace-nowrap tabular-nums ${
-                checked ? 'border-line bg-white text-ink' : 'border-transparent bg-transparent text-slate-600'
-              }`}
+              className="whitespace-nowrap tabular-nums"
             >
               {period} days
             </button>

@@ -279,12 +279,11 @@ export function ClubDirectory() {
         {showTypeFilter ? (
           <div className="sm:col-span-2 lg:col-span-3" role="group" aria-labelledby="club-type-label">
             <p id="club-type-label" className="label">Indoor or outdoor</p>
-            <div className="flex flex-wrap gap-2">
+            <div className="segmented">
               {COURT_TYPE_FILTERS.map((option) => (
                 <button
                   key={option.value || 'all'}
                   type="button"
-                  className="chip-option"
                   aria-pressed={courtType === option.value}
                   onClick={() => setFilter('type', option.value)}
                 >

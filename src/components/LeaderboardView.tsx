@@ -477,16 +477,8 @@ export function LeaderboardView({
     setPlayerMatchesLoading(false)
   }
 
-  const filterBtn = (active: boolean) =>
-    `control-feedback min-h-12 rounded-xl px-4 text-body font-semibold border transition-colors ${
-      active
-        ? dark
-          ? 'border-brand-400 bg-brand-600 text-white'
-          : 'border-brand-700 bg-brand-700 text-white'
-        : dark
-          ? 'border-slate-700 bg-slate-900 text-slate-200'
-          : 'border-line bg-white text-ink'
-    }`
+  // Each filter is one joined bar; the picked part is solid (aria-pressed).
+  const filterBar = dark ? 'segmented segmented-dark' : 'segmented'
 
   const entries = snapshot?.entries ?? []
   const recentMatches = snapshot?.recent_matches ?? []
@@ -628,11 +620,10 @@ export function LeaderboardView({
 
   return (
     <div className="space-y-4">
-      <section className="space-y-2" aria-label="Leaderboard filters">
-        <div className="flex flex-wrap gap-2">
+      <section className="flex flex-col gap-2 sm:flex-row sm:gap-3" aria-label="Leaderboard filters">
+        <div role="group" aria-label="Period" className={filterBar}>
           <button
             type="button"
-            className={filterBtn(period === 'month')}
             aria-pressed={period === 'month'}
             onClick={() => onPeriodChange('month')}
           >
@@ -640,14 +631,13 @@ export function LeaderboardView({
           </button>
           <button
             type="button"
-            className={filterBtn(period === 'all')}
             aria-pressed={period === 'all'}
             onClick={() => onPeriodChange('all')}
           >
             All time
           </button>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div role="group" aria-label="Game type" className={filterBar}>
           {([
             ['all', 'All games'],
             ['doubles', 'Doubles'],
@@ -656,7 +646,6 @@ export function LeaderboardView({
             <button
               key={value}
               type="button"
-              className={filterBtn(format === value)}
               aria-pressed={format === value}
               onClick={() => onFormatChange(value)}
             >
@@ -722,13 +711,12 @@ export function LeaderboardView({
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2" role="tablist" aria-label="Leaderboard views">
+              <div className="text-tabs text-tabs-fill" role="tablist" aria-label="Leaderboard views">
                 <button
                   type="button"
                   role="tab"
                   aria-selected={tab === 'standings'}
                   onClick={() => setTab('standings')}
-                  className={filterBtn(tab === 'standings')}
                 >
                   Standings
                 </button>
@@ -737,7 +725,6 @@ export function LeaderboardView({
                   role="tab"
                   aria-selected={tab === 'matches'}
                   onClick={() => setTab('matches')}
-                  className={filterBtn(tab === 'matches')}
                 >
                   Recent games ({recentMatches.length})
                 </button>

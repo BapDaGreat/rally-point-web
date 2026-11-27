@@ -548,17 +548,6 @@ export function TournamentLiveView({
     }
   }
 
-  const filterBtn = (active: boolean) =>
-    `control-feedback min-h-12 rounded-xl border px-3 text-body font-semibold whitespace-nowrap ${
-      active
-        ? dark
-          ? 'border-brand-400 bg-brand-600 text-white'
-          : 'border-brand-700 bg-brand-700 text-white'
-        : dark
-          ? 'border-slate-700 bg-slate-900 text-slate-200'
-          : 'border-line bg-white text-ink'
-    }`
-
   if (loading && !detail) return <TournamentLoading dark={dark} />
   if (error && !detail) {
     return (
@@ -647,13 +636,12 @@ export function TournamentLiveView({
         </section>
       ) : null}
 
-      <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="Tournament views">
+      <div className={`text-tabs text-tabs-fill ${dark ? 'text-tabs-dark' : ''}`} role="tablist" aria-label="Tournament views">
         <button
           type="button"
           role="tab"
           aria-selected={tab === 'main'}
           onClick={() => setTab('main')}
-          className={filterBtn(tab === 'main')}
         >
           {mainTabLabel}
         </button>
@@ -662,7 +650,6 @@ export function TournamentLiveView({
           role="tab"
           aria-selected={tab === 'standings'}
           onClick={() => setTab('standings')}
-          className={filterBtn(tab === 'standings')}
         >
           Standings
         </button>
@@ -671,7 +658,6 @@ export function TournamentLiveView({
           role="tab"
           aria-selected={tab === 'players'}
           onClick={() => setTab('players')}
-          className={filterBtn(tab === 'players')}
         >
           Players ({detail.players.length})
         </button>
