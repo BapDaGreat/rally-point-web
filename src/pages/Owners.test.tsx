@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -30,6 +30,20 @@ async function fillIn(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Number of courts'), '4')
   await user.type(screen.getByLabelText('Mobile number (optional)'), '0917 555 0101')
   await user.click(screen.getByRole('radio', { name: /Afternoon/ }))
+}
+
+function scrollPrivacyReaderToEnd() {
+  const reader = screen.getByRole('region', { name: 'Privacy Notice text' })
+  Object.defineProperty(reader, 'scrollHeight', { configurable: true, value: 1000 })
+  Object.defineProperty(reader, 'clientHeight', { configurable: true, value: 200 })
+  Object.defineProperty(reader, 'scrollTop', { configurable: true, writable: true, value: 790 })
+  fireEvent.scroll(reader)
+}
+
+async function unlockAndTickConsent(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: /Read the Privacy Notice/ }))
+  scrollPrivacyReaderToEnd()
+  await user.click(screen.getByRole('checkbox', { name: /bRineLy may contact me/ }))
 }
 
 beforeEach(() => {
@@ -96,13 +110,26 @@ describe('OwnersPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Enter your name (2 to 80 characters)')
 
     await fillIn(user)
+    const checkbox = screen.getByRole('checkbox', { name: /bRineLy may contact me/ })
+    expect(checkbox).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Ask for a call' }))
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Read to the end of the Privacy Notice first, then tick the box.',
+    )
+    expect(screen.getByRole('region', { name: 'Privacy Notice text' })).toHaveFocus()
+    expect(screen.getByRole('link', { name: 'Privacy Notice' })).toHaveAttribute('target', '_blank')
+    expect(requestOwnerCall).not.toHaveBeenCalled()
+
+    scrollPrivacyReaderToEnd()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(checkbox).toBeEnabled()
+    expect(checkbox).not.toBeChecked()
+
     await user.click(screen.getByRole('button', { name: 'Ask for a call' }))
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Tick the box so we may contact you and confirm you have read the Privacy Notice.',
     )
-    expect(screen.getByRole('checkbox', { name: /bRineLy may contact me/ })).toHaveFocus()
-    expect(screen.getByText('Quick summary (5 key points)')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Privacy Notice' })).toHaveAttribute('target', '_blank')
+    expect(checkbox).toHaveFocus()
     expect(requestOwnerCall).not.toHaveBeenCalled()
   })
 
@@ -110,7 +137,7 @@ describe('OwnersPage', () => {
     const user = userEvent.setup()
     renderPage()
     await fillIn(user)
-    await user.click(screen.getByRole('checkbox', { name: /bRineLy may contact me/ }))
+    await unlockAndTickConsent(user)
     await user.click(screen.getByRole('button', { name: 'Ask for a call' }))
 
     expect(requestOwnerCall).toHaveBeenCalledWith({
@@ -151,7 +178,7 @@ describe('OwnersPage', () => {
 
     await user.click(screen.getByRole('radio', { name: /Evening/ }))
     expect(screen.getByText(/in the evening \(5 PM to 8 PM\), Philippine time\.$/)).toBeInTheDocument()
-    await user.click(screen.getByRole('checkbox', { name: /bRineLy may contact me/ }))
+    await unlockAndTickConsent(user)
     await user.click(screen.getByRole('button', { name: 'Ask for a call' }))
     expect(requestOwnerCall).toHaveBeenCalledWith(expect.objectContaining({ preferred_date: tomorrow, preferred_time: 'evening' }))
     expect(await screen.findByRole('status')).toHaveTextContent(`We'll call you tomorrow, ${callDayLabel(tomorrow)}, in the evening`)
@@ -162,7 +189,7 @@ describe('OwnersPage', () => {
     const user = userEvent.setup()
     renderPage()
     await fillIn(user)
-    await user.click(screen.getByRole('checkbox', { name: /bRineLy may contact me/ }))
+    await unlockAndTickConsent(user)
     await user.click(screen.getByRole('button', { name: 'Ask for a call' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('You already asked us to call. We will contact you soon.')
     expect(screen.getByRole('button', { name: 'Ask for a call' })).toBeEnabled()
@@ -172,7 +199,7 @@ describe('OwnersPage', () => {
     const user = userEvent.setup()
     const { container } = renderPage()
     await fillIn(user)
-    await user.click(screen.getByRole('checkbox', { name: /bRineLy may contact me/ }))
+    await unlockAndTickConsent(user)
     await user.type(container.querySelector('input[name="website"]')!, 'http://spam.example')
     await user.click(screen.getByRole('button', { name: 'Ask for a call' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Thank you, Ana')

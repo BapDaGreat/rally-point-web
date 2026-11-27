@@ -6,11 +6,12 @@ import { useAuth } from '../context/AuthContext'
 import type { Profile, PublicClub, Role } from '../types'
 import { BrinelyLogo } from '../components/BrinelyLogo'
 import { Photo } from '../components/Photo'
-import { PRIVACY_ACK_ERROR, PrivacyAcknowledgement } from '../components/PrivacyAcknowledgement'
+import { PrivacyAcknowledgement } from '../components/PrivacyAcknowledgement'
 import { ClubBadge } from '../components/Shell'
 import { PublicFrame } from '../components/PublicFrame'
 import { helpFaqs } from '../lib/helpContent'
 import { privacyNoticePath, type PrivacyNoticeState } from '../lib/privacyNotice'
+import { PRIVACY_ACK_ERROR, PRIVACY_READ_FIRST_ERROR, usePrivacyGate } from '../lib/usePrivacyGate'
 import { afterSignIn } from '../lib/roleHome'
 import { LOGIN_PHOTO, stockSrc, stockSrcSet } from '../lib/stockPhotos'
 import { useModalDialog } from '../lib/useModalDialog'
@@ -174,7 +175,6 @@ export default function LoginPage({
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
-  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [resetSuccess, setResetSuccess] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -188,8 +188,19 @@ export default function LoginPage({
   const [codeNotice, setCodeNotice] = useState<string | null>(null)
   const codeInputRef = useRef<HTMLInputElement>(null)
   const emailInputRef = useRef<HTMLInputElement>(null)
-  const privacyCheckboxRef = useRef<HTMLInputElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
+  const privacyGate = usePrivacyGate({
+    onUnlock: () => {
+      setError((current) => (current === PRIVACY_READ_FIRST_ERROR ? null : current))
+    },
+    onCheck: (checked) => {
+      if (checked) {
+        setError((current) =>
+          current === PRIVACY_ACK_ERROR || current === PRIVACY_READ_FIRST_ERROR ? null : current,
+        )
+      }
+    },
+  })
   // Set once onAuthenticated has run. The submit handler and the signed-in check below can
   // both see the same sign-in, and the caller should hear about it only once.
   const authenticationReported = useRef(false)
@@ -337,10 +348,12 @@ export default function LoginPage({
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
-    if (mode === 'join' && !privacyAcknowledged) {
-      setError(PRIVACY_ACK_ERROR)
-      privacyCheckboxRef.current?.focus()
-      return
+    if (mode === 'join') {
+      const privacyProblem = privacyGate.validate()
+      if (privacyProblem) {
+        setError(privacyProblem)
+        return
+      }
     }
     setBusy(true)
     setError(null)
@@ -388,10 +401,12 @@ export default function LoginPage({
 
   async function onGoogleClick() {
     if (!signInWithGoogle) return
-    if (mode === 'join' && !privacyAcknowledged) {
-      setError(PRIVACY_ACK_ERROR)
-      privacyCheckboxRef.current?.focus()
-      return
+    if (mode === 'join') {
+      const privacyProblem = privacyGate.validate()
+      if (privacyProblem) {
+        setError(privacyProblem)
+        return
+      }
     }
     setBusy(true)
     setError(null)
@@ -410,7 +425,7 @@ export default function LoginPage({
     setMode(next)
     setPassword('')
     setPasswordVisible(false)
-    setPrivacyAcknowledged(false)
+    privacyGate.reset()
     setError(null)
     setResetSuccess(false)
   }
@@ -738,13 +753,9 @@ export default function LoginPage({
 
         {mode === 'join' ? (
           <PrivacyAcknowledgement
-            checked={privacyAcknowledged}
-            onChange={(checked) => {
-              setPrivacyAcknowledged(checked)
-              if (checked && error === PRIVACY_ACK_ERROR) setError(null)
-            }}
+            gate={privacyGate}
             clubSlug={effectiveClubSlug}
-            inputRef={privacyCheckboxRef}
+            clubName={joinClub?.name ?? dialogClub}
             describedBy={error ? 'authentication-error' : undefined}
           />
         ) : null}

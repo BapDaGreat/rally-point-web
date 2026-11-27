@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ClubImage } from '../components/ClubImage'
-import { PRIVACY_ACK_ERROR, PrivacyAcknowledgement } from '../components/PrivacyAcknowledgement'
+import { PrivacyAcknowledgement } from '../components/PrivacyAcknowledgement'
 import { PublicFrame } from '../components/PublicFrame'
 import { LoadingShapes, SkeletonBlock, SkeletonLine } from '../components/Skeleton'
 import { api } from '../lib/api'
 import { homeFor } from '../lib/roleHome'
+import { PRIVACY_ACK_ERROR, PRIVACY_READ_FIRST_ERROR, usePrivacyGate } from '../lib/usePrivacyGate'
 
 /** Players and members land on the club's own page; staff and admins on their desk there. */
 function clubHome(role: Parameters<typeof homeFor>[0], slug: string) {
@@ -32,15 +33,26 @@ export function JoinClubPage() {
   const nav = useNavigate()
   const [lookup, setLookup] = useState<Lookup>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
-  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const privacyCheckboxRef = useRef<HTMLInputElement>(null)
+  const privacyGate = usePrivacyGate({
+    onUnlock: () => {
+      setError((current) => (current === PRIVACY_READ_FIRST_ERROR ? null : current))
+    },
+    onCheck: (checked) => {
+      if (checked) {
+        setError((current) =>
+          current === PRIVACY_ACK_ERROR || current === PRIVACY_READ_FIRST_ERROR ? null : current,
+        )
+      }
+    },
+  })
+  const resetPrivacy = privacyGate.reset
 
   useEffect(() => {
     let cancelled = false
     setLookup({ status: 'loading' })
-    setPrivacyAcknowledged(false)
+    resetPrivacy()
     setError(null)
     // The lookup answers null for a link no club uses; it throws only when it could not ask.
     api
@@ -54,7 +66,7 @@ export function JoinClubPage() {
     return () => {
       cancelled = true
     }
-  }, [slug, attempt])
+  }, [slug, attempt, resetPrivacy])
 
   if (loading || lookup.status === 'loading') return <JoinCardLoading />
 
@@ -116,9 +128,9 @@ export function JoinClubPage() {
   }
 
   async function confirmJoin() {
-    if (!privacyAcknowledged) {
-      setError(PRIVACY_ACK_ERROR)
-      privacyCheckboxRef.current?.focus()
+    const privacyProblem = privacyGate.validate()
+    if (privacyProblem) {
+      setError(privacyProblem)
       return
     }
     setBusy(true)
@@ -136,13 +148,9 @@ export function JoinClubPage() {
     <JoinCard title={`Join ${club.name}?`} club={club}>
       <p>You will become a member of {club.name}. Your other clubs stay as they are.</p>
       <PrivacyAcknowledgement
-        checked={privacyAcknowledged}
-        onChange={(checked) => {
-          setPrivacyAcknowledged(checked)
-          if (checked && error === PRIVACY_ACK_ERROR) setError(null)
-        }}
+        gate={privacyGate}
         clubSlug={club.slug}
-        inputRef={privacyCheckboxRef}
+        clubName={club.name}
       />
       {error ? (
         <p role="alert" className="notice notice-error font-semibold">
