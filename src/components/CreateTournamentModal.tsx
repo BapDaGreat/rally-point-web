@@ -206,23 +206,24 @@ export function CreateTournamentModal({ open, onClose, onCreate }: CreateTournam
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2" role="group" aria-label="Team size">
-          <button
-            type="button"
-            aria-pressed={teamSize === 2}
-            onClick={() => setTeamSize(2)}
-            className="chip-option control-feedback"
-          >
-            Doubles (2v2)
-          </button>
-          <button
-            type="button"
-            aria-pressed={teamSize === 1}
-            onClick={() => setTeamSize(1)}
-            className="chip-option control-feedback"
-          >
-            Singles (1v1)
-          </button>
+        <div>
+          <p id="tournament-team-size-label" className="label">Team size</p>
+          <div className="segmented" role="group" aria-labelledby="tournament-team-size-label">
+            <button
+              type="button"
+              aria-pressed={teamSize === 2}
+              onClick={() => setTeamSize(2)}
+            >
+              Doubles (2v2)
+            </button>
+            <button
+              type="button"
+              aria-pressed={teamSize === 1}
+              onClick={() => setTeamSize(1)}
+            >
+              Singles (1v1)
+            </button>
+          </div>
         </div>
 
         {venues.length > 0 ? (

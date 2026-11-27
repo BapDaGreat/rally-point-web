@@ -1303,14 +1303,13 @@ function OwnerRequests({
       <p className="text-body text-slate-600">
         Court owners who asked us to call about listing their club. Call them, then set up their club from here.
       </p>
-      <div role="group" aria-label="Show requests" className="flex flex-wrap gap-2">
+      <div role="group" aria-label="Show requests" className="segmented">
         {requestFilters.map((option) => (
           <button
             key={option.value}
             type="button"
             aria-pressed={filter === option.value}
             onClick={() => setFilter(option.value)}
-            className="chip-option control-feedback"
           >
             {option.label} ({count(option.value)})
           </button>

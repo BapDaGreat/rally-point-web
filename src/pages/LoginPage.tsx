@@ -467,10 +467,10 @@ export default function LoginPage({
       : `${mode === 'join' ? 'Sign up' : 'Log in'} to book${dialogClub ? ` at ${dialogClub}` : ''}`
 
   const modeButtons = (
-    <div className="mb-5 grid grid-cols-2 gap-2">
+    <div className="mb-5 text-tabs text-tabs-fill" role="group" aria-label="Log in or sign up">
       <button
         type="button"
-        className="chip-option control-feedback min-h-12 w-full cursor-pointer"
+        className="min-h-12"
         onClick={() => switchMode('login')}
         aria-pressed={mode === 'login'}
       >
@@ -478,7 +478,7 @@ export default function LoginPage({
       </button>
       <button
         type="button"
-        className="chip-option control-feedback min-h-12 w-full cursor-pointer"
+        className="min-h-12"
         onClick={() => switchMode('join')}
         aria-pressed={mode === 'join'}
       >

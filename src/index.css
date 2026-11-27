@@ -902,25 +902,294 @@ button[aria-busy='true'],
   line-height: var(--text-caption--line-height);
   font-weight: 600;
 }
-.chip-option {
+/*
+ * Choice controls. Three shapes, each for one job:
+ * - .segmented: one joined bar for 2-4 short, either-or choices that change what the screen shows.
+ *   One outer border, hairline dividers (the 1px gaps show the bar's own background), the picked
+ *   part solid navy. Its parts are buttons (aria-pressed, role="tab" or role="radio") or labels
+ *   around a hidden radio.
+ * - .text-tabs: plain words with a navy underline under the picked one, for moving between the
+ *   sections of one page.
+ * - .day-strip / .day-card: a row of calendar days, the picked one solid navy.
+ * The focus ring sits inside each part, so a container that clips or scrolls never cuts it off.
+ */
+.segmented {
+  display: flex;
+  gap: 1px;
+  width: 100%;
+  max-width: 34rem;
+  border: 1.5px solid var(--color-field);
+  border-radius: 10px;
+  background: var(--color-line);
+  overflow: hidden;
+}
+/* Parts grow from their words, so a longer label gets a little more room instead of wrapping. */
+.segmented > :is(button, label) {
+  flex: 1 1 auto;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  min-height: 48px;
-  padding-inline: 1rem;
-  border-radius: 10px;
-  border: 1.5px solid var(--color-field);
+  min-height: 52px;
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: 0;
   background: var(--color-surface);
   color: var(--color-ink);
+  font-size: 1rem;
   font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: break-word;
+  text-wrap: balance;
+  cursor: pointer;
 }
-/* A picked choice is solid navy, not a pale tint, so it reads at a glance; the sky bar is the brand's "picked" mark. */
-.chip-option[aria-pressed='true'] {
+/* Fits its words instead of filling the row (a period switch beside other content). */
+.segmented-fit {
+  display: inline-flex;
+  width: auto;
+}
+.segmented-fit > :is(button, label) {
+  flex: 0 0 auto;
+  padding-inline: 1.1rem;
+}
+/* Four longer choices: two by two on phones (the gaps still draw the hairlines), one row when wider. */
+.segmented-wrap {
+  flex-wrap: wrap;
+}
+.segmented-wrap > :is(button, label) {
+  flex-basis: calc(50% - 1px);
+}
+@media (min-width: 640px) {
+  .segmented-wrap > :is(button, label) {
+    flex-basis: auto;
+  }
+}
+/* Long choices read better one per line: the same joined box, stacked. */
+.segmented-stack {
+  flex-direction: column;
+}
+.segmented-stack > :is(button, label) {
+  justify-content: flex-start;
+  padding-inline: 0.9rem;
+  text-align: left;
+  text-wrap: pretty;
+}
+.segmented > :is([aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], label:has(input:checked)) {
   background: var(--color-brand-900);
-  border-color: var(--color-brand-900);
   color: #ffffff;
-  box-shadow: inset 0 -3px 0 var(--color-brand-400);
+}
+.segmented > :is(button, label):active:not(:disabled) {
+  transform: none;
+  opacity: 1;
+  filter: none;
+  background: var(--color-brand-100);
+}
+.segmented > :is([aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], label:has(input:checked)):active:not(:disabled) {
+  background: var(--color-brand-800);
+}
+.segmented > :is(button, label):focus-visible,
+.segmented > label:has(input:focus-visible) {
+  outline: 3px solid var(--color-brand-700);
+  outline-offset: -3px;
+}
+.segmented > :is([aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], label:has(input:checked)):is(:focus-visible, :has(input:focus-visible)) {
+  outline-color: var(--color-brand-300);
+}
+.segmented > :is(button:disabled, label:has(input:disabled)) {
+  cursor: not-allowed;
+}
+/* The dark TV board. */
+.segmented-dark {
+  border-color: #475569;
+  background: #334155;
+}
+.segmented-dark > :is(button, label) {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+.segmented-dark > :is([aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], label:has(input:checked)) {
+  background: var(--color-brand-600);
+  color: #ffffff;
+}
+.segmented-dark > :is(button, label):active:not(:disabled) {
+  background: #1e293b;
+}
+.segmented-dark > :is(button, label):focus-visible {
+  outline-color: var(--color-brand-300);
+}
+
+.text-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--color-line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.text-tabs > :is(button, a) {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin: 0;
+  padding: 0.35rem 0.75rem 0.15rem;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+/* Shares the row out when every tab fits; a row that is too long still scrolls instead of breaking words. */
+.text-tabs-fill > :is(button, a) {
+  flex: 1 1 auto;
+  padding-inline: 0.35rem;
+}
+/* On wider screens the tabs sit at their own width, lined up on the left. */
+@media (min-width: 640px) {
+  .text-tabs-fill > :is(button, a) {
+    flex: 0 0 auto;
+    padding-inline: 1rem;
+  }
+}
+.text-tabs > :is([aria-pressed='true'], [aria-selected='true'], [aria-current='page']) {
+  border-bottom-color: var(--color-brand-900);
+  color: var(--color-ink);
+  font-weight: 700;
+}
+.text-tabs > :is(button, a):active:not(:disabled) {
+  transform: none;
+  opacity: 1;
+  filter: none;
+  color: var(--color-ink);
+}
+.text-tabs > :is(button, a):focus-visible {
+  outline: 3px solid var(--color-brand-700);
+  outline-offset: -3px;
+}
+.text-tabs-dark {
+  border-bottom-color: #334155;
+}
+.text-tabs-dark > :is(button, a) {
+  color: #cbd5e1;
+}
+.text-tabs-dark > :is([aria-pressed='true'], [aria-selected='true'], [aria-current='page']) {
+  border-bottom-color: var(--color-brand-400);
+  color: #ffffff;
+}
+.text-tabs-dark > :is(button, a):active:not(:disabled) {
+  color: #ffffff;
+}
+.text-tabs-dark > :is(button, a):focus-visible {
+  outline-color: var(--color-brand-300);
+}
+
+/* Phones scroll the days sideways; the padding keeps each card's focus ring in view. */
+.day-strip {
+  display: flex;
+  gap: 0.5rem;
+  margin: -6px;
+  padding: 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.day-card {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.6rem;
+  min-height: 76px;
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  border: 1.5px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  line-height: 1.15;
+  cursor: pointer;
+}
+.day-card-name {
+  font-size: var(--text-status);
+  font-weight: 600;
+  color: var(--color-muted);
+}
+.day-card-date {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.day-card-month {
+  font-size: var(--text-status);
+  color: var(--color-muted);
+}
+.day-card[aria-pressed='true'] {
+  border-color: var(--color-brand-900);
+  background: var(--color-brand-900);
+  color: #ffffff;
+}
+.day-card[aria-pressed='true'] :is(.day-card-name, .day-card-month) {
+  color: var(--color-brand-100);
+}
+button.day-card:active:not(:disabled):not([aria-busy='true']) {
+  transform: none;
+}
+.day-card:focus-visible {
+  outline: 3px solid var(--color-brand-700);
+  outline-offset: 2px;
+}
+@media (min-width: 768px) {
+  .day-strip {
+    overflow-x: visible;
+  }
+  .day-card {
+    flex: 1 1 0;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .segmented > :is(button, label):not(:disabled):hover {
+    filter: none;
+    background: var(--color-brand-50);
+  }
+  .segmented > :is([aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], label:has(input:checked)):not(:disabled):hover {
+    background: var(--color-brand-800);
+  }
+  .segmented-dark > :is(button, label):not(:disabled):hover {
+    background: #1e293b;
+  }
+  .segmented-dark > :is([aria-pressed='true'], [aria-selected='true'], [aria-checked='true'], label:has(input:checked)):not(:disabled):hover {
+    background: var(--color-brand-700);
+  }
+  .text-tabs > :is(button, a):not(:disabled):hover {
+    filter: none;
+    color: var(--color-ink);
+    border-bottom-color: var(--color-brand-200);
+  }
+  .text-tabs > :is([aria-pressed='true'], [aria-selected='true'], [aria-current='page']):not(:disabled):hover {
+    border-bottom-color: var(--color-brand-900);
+  }
+  .text-tabs-dark > :is(button, a):not(:disabled):hover {
+    color: #ffffff;
+    border-bottom-color: #475569;
+  }
+  .text-tabs-dark > :is([aria-pressed='true'], [aria-selected='true'], [aria-current='page']):not(:disabled):hover {
+    border-bottom-color: var(--color-brand-400);
+  }
+  .day-card:not(:disabled):not([aria-pressed='true']):hover {
+    filter: none;
+    border-color: var(--color-brand-300);
+    background: var(--color-brand-50);
+  }
 }
 .notice {
   border-radius: 12px;

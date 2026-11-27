@@ -153,9 +153,6 @@ export function RecordMatchModal({ open, onClose, onRecord }: RecordMatchModalPr
     }
   }
 
-  // The picked format shows through aria-pressed (navy with the sky bar, like every choice chip).
-  const formatBtn = 'chip-option control-feedback px-3'
-
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-950/50 p-3 sm:p-4"
@@ -192,10 +189,10 @@ export function RecordMatchModal({ open, onClose, onRecord }: RecordMatchModalPr
         </div>
 
         <div className="overflow-y-auto p-4 space-y-4">
-          <div className="grid grid-cols-2 gap-2" role="group" aria-label="Match format">
+          {/* One joined bar; the picked format is the navy part (aria-pressed). */}
+          <div className="segmented" role="group" aria-label="Match format">
             <button
               type="button"
-              className={formatBtn}
               aria-pressed={format === 'doubles'}
               onClick={() => setFormat('doubles')}
             >
@@ -203,7 +200,6 @@ export function RecordMatchModal({ open, onClose, onRecord }: RecordMatchModalPr
             </button>
             <button
               type="button"
-              className={formatBtn}
               aria-pressed={format === 'singles'}
               onClick={() => setFormat('singles')}
             >

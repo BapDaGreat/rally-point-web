@@ -411,7 +411,7 @@ export function AdminOps() {
             </select>
           </section>
         ) : null}
-        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap" role="group" aria-label="Floor ops">
+        <div className="text-tabs text-tabs-fill" role="group" aria-label="Floor ops">
           {(
             [
               ['playing', 'Playing'],
@@ -426,7 +426,6 @@ export function AdminOps() {
               type="button"
               aria-pressed={tab === k}
               onClick={() => setTab(k)}
-              className="chip-option control-feedback shrink-0 px-2 sm:px-4"
             >
               {label}
             </button>

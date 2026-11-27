@@ -38,10 +38,13 @@ describe('bRineLy "quiet court" design tokens', () => {
   })
 
   it('defines the public-site pieces', () => {
-    for (const selector of ['.site-header', '.site-footer', '.site-nav-link', '.text-link', '.photo-label', '.chip-option', '.notice']) {
+    for (const selector of ['.site-header', '.site-footer', '.site-nav-link', '.text-link', '.photo-label', '.segmented', '.text-tabs', '.day-strip', '.day-card', '.notice']) {
       expect(css).toContain(`${selector} {`)
     }
-    expect(css).toContain(".chip-option[aria-pressed='true']")
+    expect(css).toContain(".segmented > :is([aria-pressed='true']")
+    expect(css).toContain(".text-tabs > :is([aria-pressed='true']")
+    expect(css).toContain(".day-card[aria-pressed='true']")
+    expect(css).not.toContain('.chip-option')
   })
 
   it('describes the site the same way in the page head and the app manifest', () => {

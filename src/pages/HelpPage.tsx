@@ -337,7 +337,7 @@ export function HelpPage() {
                 Refresh
               </button>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Inquiry status filter">
+            <div className="mt-3 segmented segmented-wrap" role="group" aria-label="Inquiry status filter">
               {[
                 { value: 'all' as const, label: `All (${inquiries.length})` },
                 { value: 'open' as const, label: `Open (${inquiries.filter((i) => i.status === 'open').length})` },
@@ -348,7 +348,6 @@ export function HelpPage() {
                   key={tab.value}
                   type="button"
                   aria-pressed={statusFilter === tab.value}
-                  className="chip-option control-feedback"
                   onClick={() => setStatusFilter(tab.value)}
                 >
                   {tab.label}

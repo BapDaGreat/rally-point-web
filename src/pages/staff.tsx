@@ -395,11 +395,10 @@ export function StaffCheckIn() {
         {venueError ? <section className="card p-4 text-sm text-red-600">{venueError}</section> : null}
         {rosterError ? <section className="card p-4 text-sm text-red-600" role="alert">{rosterError}</section> : null}
         {!venueLoading && !venueError && !venueId ? <section className="card p-4 text-sm text-slate-500">No assigned venue.</section> : null}
-        <div className="flex gap-2" role="group" aria-label="Check in by">
+        <div className="segmented" role="group" aria-label="Check in by">
           <button
             type="button"
             aria-pressed={tab === 'qr'}
-            className="chip-option control-feedback flex-1"
             onClick={() => setTab('qr')}
           >
             QR / code
@@ -407,7 +406,6 @@ export function StaffCheckIn() {
           <button
             type="button"
             aria-pressed={tab === 'list'}
-            className="chip-option control-feedback flex-1"
             onClick={() => setTab('list')}
           >
             Member list
@@ -650,7 +648,7 @@ export function StaffCourts() {
         {venueError ? <section className="card p-4 text-sm text-red-600">{venueError}</section> : null}
         {loadError ? <section className="card p-4 text-sm text-red-600" role="alert">{loadError}</section> : null}
         {!venueLoading && !venueError && !venueId ? <section className="card p-4 text-sm text-slate-500">No assigned venue.</section> : null}
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap" role="group" aria-label="Court ops">
+        <div className="text-tabs text-tabs-fill" role="group" aria-label="Court ops">
           {(
             [
               ['playing', 'Playing'],
@@ -664,7 +662,6 @@ export function StaffCourts() {
               type="button"
               aria-pressed={tab === k}
               onClick={() => setTab(k)}
-              className="chip-option control-feedback shrink-0"
             >
               {label}
             </button>
