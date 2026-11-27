@@ -188,8 +188,8 @@ describe('PublicCoachesPage (Rent a coach)', () => {
       '/clubs/rally-point-gensan',
     )
     expect(screen.getByRole('link', { name: 'Rally Point Davao' })).toHaveAttribute('href', '/clubs/rally-point-davao')
-    expect(screen.getByRole('link', { name: 'Call Coach' })).toHaveAttribute('href', 'tel:09175550141')
-    expect(screen.getAllByRole('link', { name: /Contact Coach/ })[0]).toHaveAttribute('href', 'https://m.me/coachmarco')
+    expect(screen.getByRole('link', { name: 'Call Marco' })).toHaveAttribute('href', 'tel:09175550141')
+    expect(screen.getAllByRole('link', { name: /Contact Marco/ })[0]).toHaveAttribute('href', 'https://m.me/coachmarco')
     expect(screen.getByText('Private lesson')).toBeInTheDocument()
     expect(screen.getByText('Group lesson · 3 places left')).toBeInTheDocument()
     expect(screen.getByText('Contact the coach or club directly to arrange a lesson.')).toBeInTheDocument()

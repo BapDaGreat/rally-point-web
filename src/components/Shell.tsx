@@ -103,7 +103,7 @@ export function ClubSwitcher({ tone = 'light', className = '' }: { tone?: 'light
   if (clubs.length < 2 || !activeClub) return null
   const selectClass =
     tone === 'dark'
-      ? 'w-full min-h-12 rounded-xl border border-white/25 bg-white/10 px-3 text-body font-semibold text-white'
+      ? 'select-on-dark w-full min-h-12 rounded-xl border border-white/25 bg-white/10 px-3 text-body font-semibold text-white'
       : 'input min-h-12 w-full'
   return (
     <label className={`block ${className}`}>
@@ -327,7 +327,7 @@ export function SignOutButton() {
 
   return (
     <SignOutAction
-      className="control-feedback min-h-12 min-w-12 px-3 rounded-2xl border-2 border-slate-200 flex items-center justify-center gap-1.5 text-slate-700 text-body font-bold md:hidden"
+      className="btn-compact min-w-12 px-3 md:hidden"
       iconOnly
     >
       <LogOut size={18} aria-hidden />

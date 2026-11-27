@@ -135,7 +135,7 @@ export function SuperadminPage({ section = 'overview' }: { section?: SuperadminS
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="btn-secondary min-h-12"
+              className="btn-compact min-w-12 px-3 sm:px-4"
               onClick={() => {
                 setRefreshing(true)
                 setRefreshKey((key) => key + 1)
@@ -145,7 +145,8 @@ export function SuperadminPage({ section = 'overview' }: { section?: SuperadminS
               aria-busy={refreshing}
             >
               <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} aria-hidden />
-              Refresh
+              {/* An icon beside the log-out icon on a phone, so the page title keeps its line. */}
+              <span className="max-sm:sr-only">Refresh</span>
             </button>
             <SignOutButton />
           </div>
@@ -1309,9 +1310,7 @@ function OwnerRequests({
             type="button"
             aria-pressed={filter === option.value}
             onClick={() => setFilter(option.value)}
-            className={`control-feedback min-h-12 rounded-2xl px-4 text-body font-semibold ${
-              filter === option.value ? 'bg-brand-700 text-white' : 'border-2 border-slate-200 text-slate-700'
-            }`}
+            className="chip-option control-feedback"
           >
             {option.label} ({count(option.value)})
           </button>

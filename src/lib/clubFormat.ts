@@ -22,6 +22,19 @@ export function plural(count: number, one: string, many = `${one}s`) {
   return `${count} ${count === 1 ? one : many}`
 }
 
+const NAME_TITLES = new Set(['coach', 'coach.', 'mr', 'mr.', 'mrs', 'mrs.', 'ms', 'ms.', 'dr', 'dr.', 'sir', "ma'am"])
+
+/**
+ * The name for a short button such as "Call Marco": the first word of the name, skipping a title
+ * a club typed in front of it ("Coach Marco Santos" gives "Marco"). A one-word name stays as it is.
+ */
+export function callName(fullName: string) {
+  const words = fullName.trim().split(/\s+/).filter(Boolean)
+  let index = 0
+  while (index < words.length - 1 && NAME_TITLES.has(words[index].toLowerCase())) index += 1
+  return words[index] ?? fullName.trim()
+}
+
 /** A peso amount that never breaks between "Php" and the number. */
 export function pesoKeep(amount: number) {
   return peso(amount).replace(/^Php /, 'Php ')

@@ -411,7 +411,7 @@ export function AdminOps() {
             </select>
           </section>
         ) : null}
-        <div className="flex gap-1 overflow-x-auto pb-1">
+        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap" role="group" aria-label="Floor ops">
           {(
             [
               ['playing', 'Playing'],
@@ -424,10 +424,9 @@ export function AdminOps() {
             <button
               key={k}
               type="button"
+              aria-pressed={tab === k}
               onClick={() => setTab(k)}
-              className={`shrink-0 px-3 py-2 rounded-full text-xs font-bold border ${
-                tab === k ? 'bg-brand-700 text-white border-brand-700' : 'bg-white text-slate-600 border-slate-200'
-              }`}
+              className="chip-option control-feedback shrink-0 px-2 sm:px-4"
             >
               {label}
             </button>
@@ -449,19 +448,19 @@ export function AdminOps() {
               const playerLabel = names.length ? names.join(', ') : 'Guest'
 
               return (
-                <div key={s.id} className="list-row items-start">
-                  <div className="flex-1 min-w-0">
+                <div key={s.id} className="list-row flex-wrap items-start">
+                  <div className="flex-1 min-w-0 basis-full">
                     <p className="font-bold text-sm">{s.court?.name}</p>
                     <p className="text-xs text-slate-500">
                       {playerLabel} · until {fmtTime(s.end_at)}
                     </p>
                     <p className="text-xs font-semibold text-brand-800 mt-1">{peso(s.amount)}</p>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <button type="button" className="text-xs font-bold text-brand-700 px-2 py-1" onClick={() => void extend(s.id)}>
+                  <div className="flex w-full flex-wrap gap-2">
+                    <button type="button" className="btn-compact" onClick={() => void extend(s.id)}>
                       +1h
                     </button>
-                    <button type="button" className="text-xs font-bold text-slate-500 px-2 py-1" onClick={() => void end(s.id)}>
+                    <button type="button" className="btn-compact btn-compact-danger" onClick={() => void end(s.id)}>
                       End
                     </button>
                   </div>

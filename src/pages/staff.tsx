@@ -395,17 +395,19 @@ export function StaffCheckIn() {
         {venueError ? <section className="card p-4 text-sm text-red-600">{venueError}</section> : null}
         {rosterError ? <section className="card p-4 text-sm text-red-600" role="alert">{rosterError}</section> : null}
         {!venueLoading && !venueError && !venueId ? <section className="card p-4 text-sm text-slate-500">No assigned venue.</section> : null}
-        <div className="flex gap-2">
+        <div className="flex gap-2" role="group" aria-label="Check in by">
           <button
             type="button"
-            className={`flex-1 min-h-12 rounded-xl font-bold border ${tab === 'qr' ? 'bg-brand-700 text-white border-brand-700' : 'bg-white border-slate-200'}`}
+            aria-pressed={tab === 'qr'}
+            className="chip-option control-feedback flex-1"
             onClick={() => setTab('qr')}
           >
             QR / code
           </button>
           <button
             type="button"
-            className={`flex-1 min-h-12 rounded-xl font-bold border ${tab === 'list' ? 'bg-brand-700 text-white border-brand-700' : 'bg-white border-slate-200'}`}
+            aria-pressed={tab === 'list'}
+            className="chip-option control-feedback flex-1"
             onClick={() => setTab('list')}
           >
             Member list
@@ -648,7 +650,7 @@ export function StaffCourts() {
         {venueError ? <section className="card p-4 text-sm text-red-600">{venueError}</section> : null}
         {loadError ? <section className="card p-4 text-sm text-red-600" role="alert">{loadError}</section> : null}
         {!venueLoading && !venueError && !venueId ? <section className="card p-4 text-sm text-slate-500">No assigned venue.</section> : null}
-        <div className="flex gap-1 overflow-x-auto no-scrollbar pb-1">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap" role="group" aria-label="Court ops">
           {(
             [
               ['playing', 'Playing'],
@@ -660,10 +662,9 @@ export function StaffCourts() {
             <button
               key={k}
               type="button"
+              aria-pressed={tab === k}
               onClick={() => setTab(k)}
-              className={`shrink-0 px-3 py-2 rounded-full text-xs font-bold border ${
-                tab === k ? 'bg-brand-700 text-white border-brand-700' : 'bg-white text-slate-600 border-slate-200'
-              }`}
+              className="chip-option control-feedback shrink-0"
             >
               {label}
             </button>
@@ -679,17 +680,17 @@ export function StaffCourts() {
               <p className="text-sm text-slate-500">No live sessions.</p>
             ) : (
               sessions.map((s) => (
-                <div key={s.id} className="list-row items-start">
-                  <div className="flex-1 min-w-0">
+                <div key={s.id} className="list-row flex-wrap items-start">
+                  <div className="flex-1 min-w-0 basis-full">
                     <p className="font-bold text-sm">{s.court?.name}</p>
                     <p className="text-xs text-slate-500">
                       {sessionPlayers(s).join(', ') || 'Guest'} · until {fmtTime(s.end_at)}
                     </p>
                     <p className="text-xs font-semibold text-brand-800 mt-1">{peso(s.amount)}{!isDemoMode ? ' recorded' : ''}</p>
                   </div>
-                  <div className="flex flex-col gap-1">
+                  <div className="flex w-full flex-wrap gap-2">
                     {addSessionId === s.id ? (
-                      <form className="mt-2 space-y-2" onSubmit={saveAddedMember}>
+                      <form className="basis-full space-y-2" onSubmit={saveAddedMember}>
                         <div>
                           <label className="label" htmlFor={`add-member-${s.id}`}>Member</label>
                           <select
@@ -722,7 +723,7 @@ export function StaffCourts() {
                     ) : (
                       <button
                         type="button"
-                        className="text-xs font-bold text-brand-700 px-2 py-1"
+                        className="btn-compact"
                         onClick={() => {
                           setAddSessionId(s.id)
                           setAddMemberId(members[0]?.id ?? '')
@@ -731,10 +732,10 @@ export function StaffCourts() {
                         Add member
                       </button>
                     )}
-                    <button type="button" className="text-xs font-bold text-brand-700 px-2 py-1" onClick={() => void extend(s.id)}>
+                    <button type="button" className="btn-compact" onClick={() => void extend(s.id)}>
                       +1h
                     </button>
-                    <button type="button" className="text-xs font-bold text-slate-500 px-2 py-1" onClick={() => void end(s.id)}>
+                    <button type="button" className="btn-compact btn-compact-danger" onClick={() => void end(s.id)}>
                       End
                     </button>
                   </div>

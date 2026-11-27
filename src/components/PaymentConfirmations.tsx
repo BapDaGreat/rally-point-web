@@ -230,7 +230,7 @@ export function PaymentConfirmations({ venueId, onDecided }: { venueId?: string;
           onClick={() => void load(true)}
           disabled={refreshing}
           aria-busy={refreshing}
-          className="inline-flex min-h-12 shrink-0 items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 text-sm font-bold text-brand-800"
+          className="btn-compact shrink-0"
         >
           <RefreshCw size={16} aria-hidden className={refreshing ? 'animate-spin' : undefined} />
           {refreshing ? 'Refreshing…' : 'Refresh'}

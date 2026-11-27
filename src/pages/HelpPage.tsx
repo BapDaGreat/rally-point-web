@@ -201,7 +201,7 @@ export function HelpPage() {
       <AppHeader title="Help" subtitle="Answers and a direct line to the team" right={<SignOutButton />} />
       <main className="safe-bottom px-4 pt-4 space-y-4">
         <details className="card p-4">
-          <summary className="cursor-pointer min-h-12 flex items-center gap-3">
+          <summary className="disclosure-summary gap-3">
             <HelpCircle className="text-brand-700 shrink-0" size={24} aria-hidden />
             <span className="block">
               <span role="heading" aria-level={2} className="block text-title font-bold text-slate-900">Quick answers</span>
@@ -211,7 +211,7 @@ export function HelpPage() {
           <div className="mt-3 divide-y divide-slate-200">
             {signedInHelpFaqs[role].map(({ question, answer, action }) => (
               <details key={question} className="py-3">
-                <summary className="cursor-pointer min-h-12 flex items-center text-subtitle font-semibold text-slate-800">{question}</summary>
+                <summary className="disclosure-summary text-subtitle font-semibold text-slate-800">{question}</summary>
                 <p className="text-body text-slate-600 pb-1">{answer}</p>
                 {action ? (
                   <Link className="mt-2 inline-flex min-h-12 items-center font-semibold text-brand-800 underline" to={action.to}>
@@ -225,7 +225,7 @@ export function HelpPage() {
 
         {canUseInquiries ? (
           <details className="card p-4">
-            <summary className="cursor-pointer min-h-12 text-title font-bold text-slate-900">
+            <summary className="disclosure-summary text-title font-bold text-slate-900">
               <span role="heading" aria-level={2}>Ask a question or submit an inquiry</span>
             </summary>
             <p className="text-body text-slate-600 mt-1">Send the details so the right admin team can follow up.</p>
@@ -253,7 +253,7 @@ export function HelpPage() {
           <details className="card p-4" onToggle={(event) => {
             if (event.currentTarget.open) void loadInquiries()
           }}>
-            <summary className="cursor-pointer min-h-12">
+            <summary className="disclosure-summary">
               <span role="heading" aria-level={2} className="text-title font-bold text-slate-900">Your inquiries</span>
               {unreadUpdateCount > 0 ? (
                 <span className="ml-2 text-body font-semibold text-brand-800">
@@ -267,7 +267,7 @@ export function HelpPage() {
               </div>
               <button
                 type="button"
-                className="control-feedback inline-flex min-h-12 shrink-0 items-center gap-2 rounded-xl border border-slate-300 px-3 text-body font-semibold text-brand-800"
+                className="btn-compact shrink-0"
                 onClick={() => void loadInquiries(true)}
                 disabled={loadingInquiries}
               >
@@ -315,7 +315,7 @@ export function HelpPage() {
           <details className="card p-4" onToggle={(event) => {
             if (event.currentTarget.open) void loadInquiries()
           }}>
-            <summary className="cursor-pointer min-h-12">
+            <summary className="disclosure-summary">
               <span role="heading" aria-level={2} className="text-title font-bold text-slate-900">Inquiry inbox</span>
               {hasLoadedInquiries && openInquiryCount > 0 ? (
                 <span className="ml-2 text-body font-semibold text-brand-800">
@@ -329,7 +329,7 @@ export function HelpPage() {
               </div>
               <button
                 type="button"
-                className="control-feedback inline-flex min-h-12 shrink-0 items-center gap-2 rounded-xl border border-slate-300 px-3 text-body font-semibold text-brand-800"
+                className="btn-compact shrink-0"
                 onClick={() => void loadInquiries(true)}
                 disabled={loadingInquiries}
               >
@@ -337,7 +337,7 @@ export function HelpPage() {
                 Refresh
               </button>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="Inquiry status filter">
+            <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Inquiry status filter">
               {[
                 { value: 'all' as const, label: `All (${inquiries.length})` },
                 { value: 'open' as const, label: `Open (${inquiries.filter((i) => i.status === 'open').length})` },
@@ -347,11 +347,8 @@ export function HelpPage() {
                 <button
                   key={tab.value}
                   type="button"
-                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                    statusFilter === tab.value
-                      ? 'bg-brand-700 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
+                  aria-pressed={statusFilter === tab.value}
+                  className="chip-option control-feedback"
                   onClick={() => setStatusFilter(tab.value)}
                 >
                   {tab.label}
@@ -382,7 +379,7 @@ export function HelpPage() {
         ) : null}
 
         <details className="card p-4">
-          <summary className="cursor-pointer min-h-12 text-title font-bold text-slate-900">
+          <summary className="disclosure-summary text-title font-bold text-slate-900">
             <span role="heading" aria-level={2}>{contact.title}</span>
           </summary>
           <p className="text-body text-slate-600 mt-1">{contact.body}</p>

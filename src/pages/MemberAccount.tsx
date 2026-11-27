@@ -338,7 +338,7 @@ function ClubMembershipCard({
   const askLabel = pass.membership_type ? 'Renew membership' : 'Become a member'
   return (
     <article className="enter-rise card p-4 space-y-3" style={stagger(index + 1)} aria-label={pass.club_name}>
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col items-start gap-2 min-[440px]:flex-row min-[440px]:justify-between min-[440px]:gap-3">
         <div className="min-w-0">
           <h3 className="text-subtitle font-semibold break-words">{pass.club_name}</h3>
           <p className="text-body text-slate-600">{status.detail}</p>
@@ -359,7 +359,7 @@ function ClubMembershipCard({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 min-[440px]:grid-cols-2">
         <Link to={`/member/pass?club=${encodeURIComponent(pass.club_id)}`} className="btn-secondary">
           <QrCode size={18} aria-hidden /> Show my QR
         </Link>

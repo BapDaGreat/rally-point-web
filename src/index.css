@@ -293,10 +293,143 @@ body {
 .input:focus {
   outline: 3px solid rgb(3 105 161 / 0.3);
   border-color: var(--color-brand-700);
-  background: white;
+  background-color: white;
+}
+/*
+ * Drop-down lists: the same box as a text field, with one clear chevron set in from the edge and
+ * the chosen words lined up with the text in the fields above and below. The browser's own arrow
+ * sat tight against the border and pushed the words in further than a text field's.
+ */
+select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.9rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230b2a5b' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.95rem center;
+  background-size: 1.2rem;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+select.input:disabled {
+  background-color: var(--color-canvas);
+  color: var(--color-muted);
+  cursor: not-allowed;
+}
+/* On the navy sidebar: a white chevron. */
+select.select-on-dark {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.6rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.8rem center;
+  background-size: 1.1rem;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+select.select-on-dark:focus-visible {
+  outline: 3px solid var(--color-brand-300);
+  outline-offset: 2px;
+}
+/* Windows high contrast drops background images: give the browser's own arrow back. */
+@media (forced-colors: active) {
+  select.input,
+  select.select-on-dark {
+    appearance: auto;
+    -webkit-appearance: auto;
+    background-image: none;
+    padding-right: 0.75rem;
+  }
 }
 .input-with-icon {
   padding-left: 2.85rem;
+}
+
+/*
+ * Defaults the big buttons were missing. They sit in the components layer, so a page's own
+ * utilities (`px-6`, `text-left`) still win. A narrow button (`w-auto`) or a label that wraps
+ * no longer runs into the border.
+ */
+@layer components {
+  .btn-primary,
+  .btn-secondary {
+    padding-inline: 1.25rem;
+    padding-block: 0.55rem;
+    text-align: center;
+    text-wrap: balance;
+    line-height: 1.25;
+  }
+
+  /*
+   * The small outlined action that sits inside a card or a row: Call, Contact, Book, Refresh, +1h.
+   * Same border, radius and weight as the big secondary button, sized to its words, 48px tall.
+   */
+  .btn-compact {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    min-height: 48px;
+    padding-inline: 1rem;
+    border-radius: 10px;
+    border: 1.5px solid var(--color-field);
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font-size: var(--text-subtitle);
+    line-height: 1.25;
+    font-weight: 600;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  /* For "End" and other actions that stop something: red words, a soft red border. */
+  .btn-compact-danger {
+    color: var(--color-danger);
+    border-color: #f87171;
+  }
+}
+
+/*
+ * A <details> heading row: the browser's small black triangle replaced by the same chevron as
+ * the drop-down lists, on the right, turning when the section is open. The words sit in the
+ * middle of the 48px row instead of at its top.
+ */
+.disclosure-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 48px;
+  cursor: pointer;
+  list-style: none;
+}
+.disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+.disclosure-summary::after {
+  content: '';
+  flex-shrink: 0;
+  margin-left: auto;
+  width: 1.25rem;
+  height: 1.25rem;
+  background-color: var(--color-muted);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  transition: transform var(--interaction-duration) var(--interaction-easing);
+}
+details[open] > .disclosure-summary::after {
+  transform: rotate(180deg);
+}
+.disclosure-summary:focus-visible {
+  outline: 3px solid var(--color-brand-700);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+@media (forced-colors: active) {
+  .disclosure-summary::after {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
 }
 
 .label {
@@ -397,6 +530,7 @@ button,
 .action-tile,
 .btn-primary,
 .btn-secondary,
+.btn-compact,
 .list-row:is(a, button) {
   min-height: 48px;
   touch-action: manipulation;
@@ -426,9 +560,15 @@ button {
     background-color: var(--color-brand-800);
   }
 
-  .btn-secondary:not(:disabled):hover {
+  .btn-secondary:not(:disabled):hover,
+  .btn-compact:not(:disabled):not(.btn-compact-danger):hover {
     background-color: var(--color-brand-50);
     border-color: var(--color-brand-400);
+  }
+
+  .btn-compact-danger:not(:disabled):hover {
+    background-color: #fef2f2;
+    border-color: var(--color-danger);
   }
 
   .action-tile:hover {
@@ -448,6 +588,7 @@ button:active:not(:disabled):not([aria-busy='true']),
 .action-tile:active,
 .btn-primary:active:not(:disabled),
 .btn-secondary:active:not(:disabled),
+.btn-compact:active:not(:disabled),
 .list-row:is(a, button):active {
   filter: brightness(0.9);
   opacity: 0.94;
@@ -459,6 +600,7 @@ button:active:not(:disabled):not([aria-busy='true']),
 .action-tile:focus-visible,
 .btn-primary:focus-visible,
 .btn-secondary:focus-visible,
+.btn-compact:focus-visible,
 .control-feedback:focus-visible,
 button:focus-visible,
 .list-row:is(a, button):focus-visible {
@@ -482,7 +624,8 @@ button:disabled,
 button[aria-disabled='true'],
 .control-feedback[aria-disabled='true'],
 .btn-primary[aria-disabled='true'],
-.btn-secondary[aria-disabled='true'] {
+.btn-secondary[aria-disabled='true'],
+.btn-compact[aria-disabled='true'] {
   opacity: 0.55;
   cursor: not-allowed;
   filter: none;
@@ -667,6 +810,7 @@ button[aria-busy='true'],
   .action-tile:active,
   .btn-primary:active,
   .btn-secondary:active,
+  .btn-compact:active,
   .list-row:is(a, button):active {
     transform: none !important;
   }
