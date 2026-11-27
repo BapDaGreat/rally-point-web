@@ -18,6 +18,7 @@ import {
   weekdayOfYmd,
 } from '../lib/ownerRequests'
 import { OWNERS_PHOTO, stockSrc, stockSrcSet } from '../lib/stockPhotos'
+import { PRIVACY_READ_FIRST_ERROR, usePrivacyGate } from '../lib/usePrivacyGate'
 import { BOOKING_HOLD_MINUTES } from '../types'
 import type { OwnerCallRequestInput, OwnerCallTime } from '../types'
 
@@ -96,13 +97,23 @@ function prefersReducedMotion() {
 /** The public "I own a court" page: what listing gives a club, how it works, and a request for a call. */
 export function OwnersPage() {
   const [form, setForm] = useState<OwnerCallRequestInput>(emptyRequest)
-  const [consent, setConsent] = useState(false)
-  const consentRef = useRef<HTMLInputElement>(null)
   // Left empty by people; filled in by some automated form fillers.
   const [trap, setTrap] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sent, setSent] = useState<OwnerCallRequestInput | null>(null)
+  const privacyGate = usePrivacyGate({
+    onUnlock: () => {
+      setError((current) => (current === PRIVACY_READ_FIRST_ERROR ? null : current))
+    },
+    onCheck: (checked) => {
+      if (checked) {
+        setError((current) =>
+          current === OWNER_CONSENT_ERROR || current === PRIVACY_READ_FIRST_ERROR ? null : current,
+        )
+      }
+    },
+  })
   const callRef = useRef<HTMLDivElement>(null)
   const formHeadingRef = useRef<HTMLHeadingElement>(null)
   const thanksHeadingRef = useRef<HTMLHeadingElement>(null)
@@ -130,10 +141,13 @@ export function OwnersPage() {
   async function submit(event: FormEvent) {
     event.preventDefault()
     const fieldProblem = ownerCallProblem(form)
-    const problem = fieldProblem ?? (consent ? null : OWNER_CONSENT_ERROR)
-    if (problem) {
-      setError(problem)
-      if (!fieldProblem && !consent) consentRef.current?.focus()
+    if (fieldProblem) {
+      setError(fieldProblem)
+      return
+    }
+    const consentProblem = privacyGate.validate(OWNER_CONSENT_ERROR)
+    if (consentProblem) {
+      setError(consentProblem)
       return
     }
     setError(null)
@@ -352,13 +366,8 @@ export function OwnersPage() {
               </div>
               <div className="mt-6 space-y-4 border-t border-line pt-6">
                 <PrivacyAcknowledgement
-                  checked={consent}
-                  onChange={(checked) => {
-                    setConsent(checked)
-                    if (checked && error === OWNER_CONSENT_ERROR) setError(null)
-                  }}
+                  gate={privacyGate}
                   label="bRineLy may contact me about listing my club, and I have read and understood the Privacy Notice."
-                  inputRef={consentRef}
                 />
                 {error ? <p role="alert" className="notice notice-error text-body font-semibold">{error}</p> : null}
                 <button type="submit" className={`btn-primary ${fitButton}`} disabled={busy} aria-busy={busy}>

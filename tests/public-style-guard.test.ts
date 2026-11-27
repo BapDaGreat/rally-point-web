@@ -7,6 +7,8 @@ import { describe, expect, it } from 'vitest'
  * visitors see first.
  */
 const publicFiles = [
+  'src/lib/privacyNoticeContent.tsx',
+  'src/lib/usePrivacyGate.ts',
   'src/components/PublicFrame.tsx',
   'src/components/CourtSymbolsBackdrop.tsx',
   'src/components/PrivacyAcknowledgement.tsx',
