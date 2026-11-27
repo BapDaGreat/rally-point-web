@@ -129,6 +129,12 @@ export const tournamentFixesChecks = Object.freeze([
   'tournaments_within_limits', 'tournament_fix_counts',
 ])
 
+export const coachesCourtTypesChecks = Object.freeze([
+  'ledger_has_coaches_court_types', 'reservation_writes_still_paused', 'court_type_column_checked',
+  'court_type_setter_signed_in_only', 'public_reads_open_to_visitors', 'changed_functions_pin_search_path',
+  'court_type_counts',
+])
+
 export const isolationCheckCount = 55
 
 const same = (actual, expected, message) => assert.ok(isDeepStrictEqual(actual, expected), message)
@@ -160,7 +166,8 @@ export function evaluateChecks(rows, kind, { ignore = [] } = {}) {
     memberCodesBookingLength: memberCodesBookingLengthChecks,
     rentACoach: rentACoachChecks,
     memberAccount: memberAccountChecks, dashboardAnalytics: dashboardAnalyticsChecks,
-    leaderboardTournaments: leaderboardTournamentsChecks, tournamentFixes: tournamentFixesChecks }
+    leaderboardTournaments: leaderboardTournamentsChecks, tournamentFixes: tournamentFixesChecks,
+    coachesCourtTypes: coachesCourtTypesChecks }
   const expected = Object.hasOwn(kinds, kind) ? kinds[kind] : null
   assert.ok(expected, 'Unknown check kind')
   assert.ok(ignore.every(name => expected.includes(name)), `${kind}: unknown check in ignore list`)

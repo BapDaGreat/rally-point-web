@@ -637,6 +637,41 @@ export const tournamentFixesRelease = Object.freeze({
     dryRun: 'rally_staging_backup_20261126_fixes_r1_dryrun' }),
 })
 
+// Staging at 41 migrations (tournament fixes applied) plus PR #33's public coaches list
+// (list_public_coaches, read-only, open to visitors; merged and published before its migration
+// reached staging) and indoor/outdoor courts: courts.court_type (NULL until an admin sets it),
+// admin_set_court_type, list_public_club_court_types and get_public_club_detail returning the type.
+// courts gains a column and is written only by the admin definer function, so the
+// reservation-write pause is unchanged.
+export const coachesCourtTypesRelease = Object.freeze({
+  id: 'coaches-court-types-20261126',
+  title: 'Public coaches and indoor/outdoor courts',
+  baseVersions: Object.freeze([...tournamentFixesRelease.baseVersions, '20261126110000'].sort()),
+  migrations: Object.freeze(['20261127090000_public_coaches.sql', '20261127100000_court_types.sql']),
+  // The SQL that runs and the code that runs it. Approval pins all of these bytes.
+  files: Object.freeze(['supabase/migrations/20261127090000_public_coaches.sql',
+    'supabase/migrations/20261127100000_court_types.sql',
+    'supabase/verification/coaches_court_types_postflight.sql',
+    ...tournamentFixesRelease.files.filter(path => path.startsWith('supabase/verification/') || path.startsWith('scripts/'))]),
+  stateCheck: Object.freeze({ file: 'tournament_fixes_postflight.sql', kind: 'tournamentFixes' }),
+  postChecks: Object.freeze([
+    Object.freeze({ file: 'coaches_court_types_postflight.sql', kind: 'coachesCourtTypes', ignore: Object.freeze([]) }),
+    // Earlier postflights count 22 to 41 migrations; this release brings staging to 43.
+    Object.freeze({ file: 'tournament_fixes_postflight.sql', kind: 'tournamentFixes',
+      ignore: Object.freeze(['ledger_has_tournament_fixes']) }),
+    ...tournamentFixesRelease.postChecks.slice(1),
+  ]),
+  isolation: Object.freeze({ file: 'two_club_isolation.sql', plan: 55 }),
+  dirs: Object.freeze({
+    capture: 'docs/release-private/staging-backup-20261126-court-types-r1',
+    restore: 'docs/release-private/staging-backup-restore-20261126-court-types-r1',
+    dryRun: 'docs/release-private/coaches-court-types-staging-dryrun-20261126-r1',
+    apply: 'docs/release-private/coaches-court-types-staging-apply-20261126-r1',
+  }),
+  databases: Object.freeze({ restore: 'rally_staging_backup_20261126_court_types_r1_restore',
+    dryRun: 'rally_staging_backup_20261126_court_types_r1_dryrun' }),
+})
+
 export const releases = Object.freeze({ [advisorFixesRelease.id]: advisorFixesRelease,
   [advisorFollowupRelease.id]: advisorFollowupRelease, [courtMarketplaceRelease.id]: courtMarketplaceRelease,
   [courtPhotosRelease.id]: courtPhotosRelease, [clubProfileRelease.id]: clubProfileRelease,
@@ -645,7 +680,8 @@ export const releases = Object.freeze({ [advisorFixesRelease.id]: advisorFixesRe
   [rentACoachRelease.id]: rentACoachRelease,
   [memberAccountRelease.id]: memberAccountRelease, [dashboardAnalyticsRelease.id]: dashboardAnalyticsRelease,
   [leaderboardTournamentsRelease.id]: leaderboardTournamentsRelease,
-  [tournamentFixesRelease.id]: tournamentFixesRelease })
+  [tournamentFixesRelease.id]: tournamentFixesRelease,
+  [coachesCourtTypesRelease.id]: coachesCourtTypesRelease })
 
 export function getRelease(id) {
   assert.ok(Object.hasOwn(releases, id ?? ''), `Unknown release: ${id}. Known: ${Object.keys(releases).join(', ')}`)
