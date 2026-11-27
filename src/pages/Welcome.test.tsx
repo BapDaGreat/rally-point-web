@@ -26,7 +26,7 @@ import { api } from '../lib/api'
 import { HERO_PHOTO } from '../lib/stockPhotos'
 
 function club(slug: string, name: string, city: string): PublicClubListing {
-  return { slug, name, city, address: null, cities: [city], venue_count: 1, court_count: 2, min_rate: 450, min_member_rate: null }
+  return { slug, name, city, address: null, cities: [city], venue_count: 1, court_count: 2, min_rate: 450, min_member_rate: null, indoor_courts: 0, outdoor_courts: 0 }
 }
 
 const clubs: PublicClubListing[] = [

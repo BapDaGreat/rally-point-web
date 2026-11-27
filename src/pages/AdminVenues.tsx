@@ -5,8 +5,8 @@ import { LoadingShapes, SkeletonBlock, SkeletonLine } from '../components/Skelet
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import { stagger } from '../lib/motion'
-import type { Court, CourtInput, CourtPhoto, PictureCleanup, Profile, Venue, VenueLocationInput } from '../types'
-import { hourLabel, openingHoursLabel, peso } from '../types'
+import type { Court, CourtInput, CourtPhoto, CourtType, PictureCleanup, Profile, Venue, VenueLocationInput } from '../types'
+import { courtTypeLabel, hourLabel, isCourtType, openingHoursLabel, peso } from '../types'
 import { directionsUrl, mapEmbedUrl, placeLine } from '../lib/maps'
 import { useFocusFirstField, useInlineForm } from '../lib/formFocus'
 import { CourtPhotosEditor, VenueCoverEditor } from './AdminPhotos'
@@ -503,6 +503,9 @@ function VenueCard({
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-semibold truncate">{court.name}</p>
+                    <p className="text-sm text-slate-600">
+                      {courtTypeLabel(court.court_type) ?? 'Indoor or outdoor not set'}
+                    </p>
                     <p className="text-sm text-slate-600">{peso(court.hourly_rate)} per hour</p>
                     {court.member_rate != null ? (
                       <p className="text-sm text-brand-800">Members {peso(court.member_rate)} per hour</p>
@@ -742,6 +745,7 @@ function CourtForm({
   const [rate, setRate] = useState(String(court?.hourly_rate ?? DEFAULT_COURT_RATE))
   const [memberRate, setMemberRate] = useState(court?.member_rate != null ? String(court.member_rate) : '')
   const [inService, setInService] = useState(court ? court.status !== 'maintenance' : true)
+  const [courtType, setCourtType] = useState<'' | CourtType>(court?.court_type ?? '')
   const idPrefix = court ? `court-${court.id}` : `new-court-${venue.id}`
 
   function submit(event: FormEvent) {
@@ -753,6 +757,7 @@ function CourtForm({
       hourly_rate: Number(rate),
       member_rate: memberRate.trim() === '' ? null : Number(memberRate),
       in_service: inService,
+      court_type: courtType || null,
     })
   }
 
@@ -799,6 +804,19 @@ function CourtForm({
             onChange={(event) => setMemberRate(event.target.value)}
             placeholder="Same as hourly rate"
           />
+        </div>
+        <div>
+          <label className="label" htmlFor={`${idPrefix}-type`}>Indoor or outdoor</label>
+          <select
+            id={`${idPrefix}-type`}
+            className="input"
+            value={courtType}
+            onChange={(event) => setCourtType(isCourtType(event.target.value) ? event.target.value : '')}
+          >
+            <option value="">Not set</option>
+            <option value="indoor">Indoor</option>
+            <option value="outdoor">Outdoor</option>
+          </select>
         </div>
       </div>
       <label className="min-h-12 rounded-xl border border-slate-200 px-3 py-2 flex items-center gap-3 text-sm">

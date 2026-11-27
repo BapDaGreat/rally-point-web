@@ -342,6 +342,20 @@ export interface MembershipApproval {
   amount: number
 }
 
+/** Whether a court has a roof over it. A court an admin has not set yet has no type (null). */
+export type CourtType = 'indoor' | 'outdoor'
+
+export function isCourtType(value: unknown): value is CourtType {
+  return value === 'indoor' || value === 'outdoor'
+}
+
+/** "Indoor" or "Outdoor"; null when the court's type is not set, so nothing is shown. */
+export function courtTypeLabel(type: CourtType | null | undefined): string | null {
+  if (type === 'indoor') return 'Indoor'
+  if (type === 'outdoor') return 'Outdoor'
+  return null
+}
+
 export interface Court {
   id: string
   club_id?: string
@@ -351,6 +365,8 @@ export interface Court {
   hourly_rate: number
   /** Lower price for players with an active membership; NULL means the regular rate. */
   member_rate?: number | null
+  /** Indoor or outdoor; null or missing means the admin has not set it. */
+  court_type?: CourtType | null
 }
 
 /** What an admin sends to add or edit a court. Out of service is the 'maintenance' status. */
@@ -362,6 +378,8 @@ export interface CourtInput {
   /** Optional lower member price; null or omitted means members pay the regular rate. */
   member_rate?: number | null
   in_service: boolean
+  /** Indoor, outdoor, or null to clear it. Omitted leaves the court's type as it is. */
+  court_type?: CourtType | null
 }
 
 /** One club in the public "Find a court" list. */
@@ -378,6 +396,9 @@ export interface PublicClubListing {
   min_member_rate: number | null
   /** Photo for the club card (a location cover or a court photo); null shows a sample picture. */
   cover_photo?: string | null
+  /** In-service indoor and outdoor courts at active locations; courts with no type are in neither. */
+  indoor_courts: number
+  outdoor_courts: number
 }
 
 /** A club's public page: its active venues and their courts. */
@@ -403,6 +424,8 @@ export interface PublicClubDetail {
       hourly_rate: number
       member_rate: number | null
       in_service: boolean
+      /** Indoor or outdoor; null when the club has not set it. */
+      court_type?: CourtType | null
       /** Photo links, main photo first. Empty means a sample picture is shown. */
       photos?: string[]
     }[]

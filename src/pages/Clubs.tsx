@@ -24,8 +24,8 @@ import { stagger } from '../lib/motion'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
 import { DEFAULT_CLUB_SLUG } from '../lib/tenant'
-import type { ClubLeaderboardSnapshot, PublicClubDetail, PublicClubListing, PublicClubProfile, TournamentSummary } from '../types'
-import { openingHoursLabel } from '../types'
+import type { ClubLeaderboardSnapshot, CourtType, PublicClubDetail, PublicClubListing, PublicClubProfile, TournamentSummary } from '../types'
+import { courtTypeLabel, isCourtType, openingHoursLabel } from '../types'
 import { directionsUrl, mapEmbedUrl, placeLine } from '../lib/maps'
 
 const textLink = 'text-link inline-flex min-h-12 items-center gap-1 text-subtitle'
@@ -91,6 +91,7 @@ function CourtCard({
       <div className="flex flex-1 flex-col justify-between p-3">
         <div>
           <p className="text-subtitle font-semibold text-ink">{court.name}</p>
+          <CourtTypeLine type={court.court_type} />
           {/* Courts open for booking say so with their price and Book button; only a closed court gets a label. */}
           {court.in_service ? (
             <>
@@ -117,6 +118,12 @@ function CourtCard({
       </div>
     </li>
   )
+}
+
+/** "Indoor" or "Outdoor" under a court's name; nothing when the club has not set it. */
+function CourtTypeLine({ type }: { type: CourtType | null | undefined }) {
+  const label = courtTypeLabel(type)
+  return label ? <p className="text-subtitle font-normal text-muted">{label}</p> : null
 }
 
 /** A court's photos, swipeable when there are several; a sample drawing when there are none. */
@@ -155,10 +162,21 @@ function byDefaultThenName(a: PublicClubListing, b: PublicClubListing) {
   return a.name.localeCompare(b.name)
 }
 
+const COURT_TYPE_FILTERS: { value: '' | CourtType; label: string }[] = [
+  { value: '', label: 'All' },
+  { value: 'indoor', label: 'Indoor' },
+  { value: 'outdoor', label: 'Outdoor' },
+]
+
+/** Whether a club has at least one in-service court of this type. */
+function hasCourtType(club: PublicClubListing, type: CourtType) {
+  return (type === 'indoor' ? club.indoor_courts : club.outdoor_courts) > 0
+}
+
 /**
- * Find a court: every club taking bookings, filtered by name or city. The filters live in the
- * link (`?q=` and `?city=`), so a search from the landing page, a shared link and the back button
- * all show the same list.
+ * Find a court: every club taking bookings, filtered by name, city or court type. The filters
+ * live in the link (`?q=`, `?city=` and `?type=`), so a search from the landing page, a shared
+ * link and the back button all show the same list.
  */
 export function ClubDirectory() {
   const [clubs, setClubs] = useState<PublicClubListing[] | null>(null)
@@ -167,8 +185,10 @@ export function ClubDirectory() {
   const [searchParams, setSearchParams] = useSearchParams()
   const query = searchParams.get('q') ?? ''
   const city = searchParams.get('city') ?? ''
+  const typeParam = searchParams.get('type')
+  const courtType: '' | CourtType = isCourtType(typeParam) ? typeParam : ''
 
-  const setFilter = useCallback((name: 'q' | 'city', value: string) => {
+  const setFilter = useCallback((name: 'q' | 'city' | 'type', value: string) => {
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
       if (value) next.set(name, value)
@@ -182,6 +202,7 @@ export function ClubDirectory() {
       const next = new URLSearchParams(current)
       next.delete('q')
       next.delete('city')
+      next.delete('type')
       return next
     }, { replace: true })
   }
@@ -207,12 +228,15 @@ export function ClubDirectory() {
     [clubs],
   )
   const orderedClubs = useMemo(() => (clubs ? clubs.slice().sort(byDefaultThenName) : []), [clubs])
+  // The type choice appears once any club has said which of its courts are indoor or outdoor
+  // (or a shared link already picked one, so it can be changed back).
+  const showTypeFilter = Boolean(courtType) || (clubs ?? []).some((club) => club.indoor_courts > 0 || club.outdoor_courts > 0)
 
   const q = query.trim().toLowerCase()
-  const filtering = Boolean(q || city)
+  const filtering = Boolean(q || city || courtType)
   const shown = orderedClubs.filter((club) => {
     const matchesQuery = !q || [club.name, club.address, ...club.cities].some((field) => field?.toLowerCase().includes(q))
-    return matchesQuery && (!city || club.cities.includes(city))
+    return matchesQuery && (!city || club.cities.includes(city)) && (!courtType || hasCourtType(club, courtType))
   })
   // One or two clubs share their row with the owners tile instead of leaving a column empty.
   const short = shortClubGrid(shown.length)
@@ -252,6 +276,24 @@ export function ClubDirectory() {
             {city && clubs && !cities.includes(city) ? <option value={city}>{city}</option> : null}
           </select>
         </div>
+        {showTypeFilter ? (
+          <div className="sm:col-span-2 lg:col-span-3" role="group" aria-labelledby="club-type-label">
+            <p id="club-type-label" className="label">Indoor or outdoor</p>
+            <div className="flex flex-wrap gap-2">
+              {COURT_TYPE_FILTERS.map((option) => (
+                <button
+                  key={option.value || 'all'}
+                  type="button"
+                  className="chip-option"
+                  aria-pressed={courtType === option.value}
+                  onClick={() => setFilter('type', option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {error ? (
@@ -275,7 +317,9 @@ export function ClubDirectory() {
             {shown.length > 0
               ? plural(shown.length, 'club')
               : filtering
-                ? 'No clubs match. Try another name or city.'
+                ? courtType
+                  ? `No clubs with ${courtType} courts match. Try another name, city or court type.`
+                  : 'No clubs match. Try another name or city.'
                 : 'No clubs are taking bookings yet.'}
           </p>
           {shown.length === 0 && filtering ? (
@@ -286,15 +330,15 @@ export function ClubDirectory() {
         </div>
       ) : null}
 
-      {/* Keyed by city so picking a city replays the entrance; typing a search does not. */}
+      {/* Keyed by city and type so picking one replays the entrance; typing a search does not. */}
       {shown.length && short ? (
-        <div key={city || 'all'} className={clubGrid}>
+        <div key={`${city || 'all'}:${courtType || 'all'}`} className={clubGrid}>
           <ul className={short.list}>{clubItems}</ul>
           <OwnersStrip className={short.tile} />
         </div>
       ) : (
         <>
-          {shown.length ? <ul key={city || 'all'} className={clubGrid}>{clubItems}</ul> : null}
+          {shown.length ? <ul key={`${city || 'all'}:${courtType || 'all'}`} className={clubGrid}>{clubItems}</ul> : null}
           <div className="pt-4">
             <OwnersStrip />
           </div>

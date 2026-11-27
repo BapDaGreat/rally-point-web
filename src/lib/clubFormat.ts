@@ -27,6 +27,15 @@ export function pesoKeep(amount: number) {
   return peso(amount).replace(/^Php /, 'Php ')
 }
 
+/** "4 indoor · 2 outdoor", or one of the two; null when the club has no courts with a type. */
+export function courtTypeCounts(indoor: number | null | undefined, outdoor: number | null | undefined) {
+  const parts = [
+    indoor ? `${indoor} indoor` : null,
+    outdoor ? `${outdoor} outdoor` : null,
+  ].filter((part): part is string => part != null)
+  return parts.length ? parts.join(' · ') : null
+}
+
 /** The cheapest hour, and the members' price on a line of its own when it is lower. */
 export function rateLines(regular: number | null, member: number | null) {
   if (regular == null) return { regular: 'No courts open for booking yet', member: null }

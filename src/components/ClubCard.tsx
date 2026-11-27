@@ -1,12 +1,13 @@
 import { Link } from 'react-router-dom'
 import { LoadingShapes } from './Skeleton'
 import { ClubImage } from './ClubImage'
-import { clubGrid, plural, rateLines } from '../lib/clubFormat'
+import { clubGrid, courtTypeCounts, plural, rateLines } from '../lib/clubFormat'
 import type { PublicClubListing } from '../types'
 
 /** A club in a list: its picture, where it is, how big it is and what an hour costs. The whole card opens the club. */
 export function ClubCard({ club, lazy = true }: { club: PublicClubListing; lazy?: boolean }) {
   const rates = rateLines(club.min_rate, club.min_member_rate)
+  const types = club.court_count === 0 ? null : courtTypeCounts(club.indoor_courts, club.outdoor_courts)
   return (
     <Link to={`/clubs/${club.slug}`} className="control-feedback club-card card flex h-full flex-col overflow-hidden">
       <ClubImage
@@ -25,6 +26,7 @@ export function ClubCard({ club, lazy = true }: { club: PublicClubListing; lazy?
             ? 'Courts coming soon'
             : `${plural(club.venue_count, 'location')} · ${plural(club.court_count, 'court')}`}
         </span>
+        {types ? <span className="text-body text-muted">{types}</span> : null}
         <span className="mt-1 text-body font-semibold text-brand-700">{rates.regular}</span>
         {rates.member ? <span className="text-body font-semibold text-brand-700">{rates.member}</span> : null}
       </span>

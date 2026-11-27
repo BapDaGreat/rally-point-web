@@ -21,7 +21,7 @@ import type {
   TournamentSummary,
   Venue,
 } from '../types'
-import { APP_TIME_ZONE, appHour, fmtTime, hourLabel, ymdLocal } from '../types'
+import { APP_TIME_ZONE, appHour, courtTypeLabel, fmtTime, hourLabel, ymdLocal } from '../types'
 import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, venueHours } from '../types'
 
 /** A TV board court: every court of the club, with its location, whether or not it has bookings. */
@@ -240,6 +240,7 @@ export function ScheduleBoard({
           name: court.name,
           status: court.in_service ? 'available' as const : 'maintenance' as const,
           hourly_rate: court.hourly_rate,
+          court_type: court.court_type ?? null,
         }))))
         return
       }
@@ -514,6 +515,9 @@ export function ScheduleBoard({
                     <span className="block text-[10px] font-semibold text-slate-500 truncate">{c.venue_name}</span>
                   ) : null}
                   {c.name}
+                  {courtTypeLabel(c.court_type) ? (
+                    <span className={`block text-xs font-semibold ${tv ? 'text-slate-400' : 'text-slate-500'}`}>{courtTypeLabel(c.court_type)}</span>
+                  ) : null}
                   {c.status === 'maintenance' ? (
                     <span className={`block text-[10px] font-semibold ${tv ? 'text-amber-300' : 'text-amber-700'}`}>Out of service</span>
                   ) : null}
@@ -572,6 +576,7 @@ export function ScheduleBoard({
                       {c.status === 'maintenance' ? 'Out of service' : courtBlocks.length ? `${courtBlocks.length} booked` : 'Free'}
                     </span>
                   </div>
+                  {courtTypeLabel(c.court_type) ? <p className="text-sm mt-1 text-slate-300">{courtTypeLabel(c.court_type)}</p> : null}
                   {showVenueNames ? <p className="text-xs mt-1 text-slate-400">{c.venue_name}</p> : null}
                   {courtBlocks.map((b) => (
                     <p key={b.id} className="text-sm mt-1 text-slate-300">

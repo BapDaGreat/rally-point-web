@@ -64,8 +64,8 @@ import { api } from '../lib/api'
 import { stockPhotoFor } from '../lib/stockPhotos'
 
 const clubs: PublicClubListing[] = [
-  { slug: 'rally-point-davao', name: 'Rally Point Davao', city: 'Davao City', address: 'Lanang', cities: ['Davao City'], venue_count: 1, court_count: 2, min_rate: 450, min_member_rate: 400 },
-  { slug: 'rally-point-gensan', name: 'Rally Point Gensan', city: 'General Santos City', address: null, cities: ['General Santos City', 'Koronadal City'], venue_count: 2, court_count: 4, min_rate: 500, min_member_rate: 500 },
+  { slug: 'rally-point-davao', name: 'Rally Point Davao', city: 'Davao City', address: 'Lanang', cities: ['Davao City'], venue_count: 1, court_count: 2, min_rate: 450, min_member_rate: 400, indoor_courts: 0, outdoor_courts: 0 },
+  { slug: 'rally-point-gensan', name: 'Rally Point Gensan', city: 'General Santos City', address: null, cities: ['General Santos City', 'Koronadal City'], venue_count: 2, court_count: 4, min_rate: 500, min_member_rate: 500, indoor_courts: 0, outdoor_courts: 0 },
 ]
 
 const davao: PublicClubDetail = {
@@ -463,5 +463,157 @@ describe('Find a court', () => {
     expect(summary.getByRole('link', { name: 'Book a court' }))
       .toHaveAttribute('href', '/clubs/rally-point-davao/book?venue=venue-davao')
     expect(screen.queryByText(/Staff accounts cannot book online/)).not.toBeInTheDocument()
+  })
+})
+
+describe('Indoor and outdoor courts', () => {
+  const typedClubs: PublicClubListing[] = [
+    { ...clubs[0], indoor_courts: 2, outdoor_courts: 0 },
+    { ...clubs[1], indoor_courts: 4, outdoor_courts: 2 },
+  ]
+  const slots = Array.from({ length: 16 }, (_, index) => ({ startHour: index + 6, label: `${index + 6}:00`, available: true }))
+
+  beforeEach(() => {
+    auth.user = null
+    auth.listeners.clear()
+    vi.mocked(api.listPublicClubs).mockReset().mockResolvedValue(typedClubs)
+    vi.mocked(api.publicClubDetail).mockReset().mockResolvedValue(davao)
+    vi.mocked(api.publicClubProfile).mockReset().mockResolvedValue(null)
+    vi.mocked(api.checkoutPaymentMethods).mockReset().mockResolvedValue([
+      { id: 'pay-davao', label: 'GCash', account_name: 'Rally Point Davao', account_number: '0917 000 0000', qr_url: null },
+    ])
+  })
+
+  function renderDirectory(path: string) {
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/clubs" element={<ClubDirectory />} />
+        </Routes>
+        <Where />
+      </MemoryRouter>,
+    )
+  }
+
+  it('counts indoor and outdoor courts on club cards, and filters clubs by court type', async () => {
+    const user = userEvent.setup()
+    renderDirectory('/clubs')
+
+    const gensan = await screen.findByRole('link', { name: /Rally Point Gensan/ })
+    expect(within(gensan).getByText('4 indoor · 2 outdoor')).toBeInTheDocument()
+    // The court count wording stays as it was.
+    expect(gensan).toHaveTextContent('2 locations · 4 courts')
+    expect(within(screen.getByRole('link', { name: /Rally Point Davao/ })).getByText('2 indoor')).toBeInTheDocument()
+
+    const types = within(screen.getByRole('group', { name: 'Indoor or outdoor' }))
+    expect(types.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(types.getByRole('button', { name: 'Outdoor' }))
+    expect(types.getByRole('button', { name: 'Outdoor' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('link', { name: /Rally Point Gensan/ })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Rally Point Davao/ })).not.toBeInTheDocument()
+    expect(screen.getByText('1 club')).toBeInTheDocument()
+    expect(screen.getByText(/At \/clubs\?type=outdoor/)).toBeInTheDocument()
+
+    await user.click(types.getByRole('button', { name: 'Indoor' }))
+    expect(screen.getByText('2 clubs')).toBeInTheDocument()
+
+    await user.click(types.getByRole('button', { name: 'All' }))
+    expect(screen.getByText('2 clubs')).toBeInTheDocument()
+    expect(screen.queryByText(/type=/)).not.toBeInTheDocument()
+  })
+
+  it('reads the court type from the link and clears it with the search', async () => {
+    const user = userEvent.setup()
+    renderDirectory('/clubs?q=lanang&type=outdoor')
+
+    expect(await screen.findByText('No clubs with outdoor courts match. Try another name, city or court type.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Clear search' }))
+    expect(screen.getByText('2 clubs')).toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: 'Indoor or outdoor' })).getByRole('button', { name: 'All' }))
+      .toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('hides the court type choice and counts while no club has set its courts', async () => {
+    vi.mocked(api.listPublicClubs).mockResolvedValue(clubs)
+    renderDirectory('/clubs')
+
+    const gensan = await screen.findByRole('link', { name: /Rally Point Gensan/ })
+    expect(gensan).not.toHaveTextContent(/indoor|outdoor/)
+    expect(screen.queryByRole('group', { name: 'Indoor or outdoor' })).not.toBeInTheDocument()
+  })
+
+  it("labels each court on a club's page, and nothing for a court that is not set", async () => {
+    vi.mocked(api.publicClubDetail).mockResolvedValue({
+      ...davao,
+      venues: [{
+        ...davao.venues[0],
+        courts: [
+          { ...davao.venues[0].courts[0], court_type: 'indoor' },
+          { ...davao.venues[0].courts[1], court_type: null },
+        ],
+      }],
+    })
+    renderAt('/clubs/rally-point-davao')
+
+    const venue = within((await screen.findByRole('heading', { name: 'Davao Main' })).closest('section')!)
+    expect(within(venue.getByText('Davao Court 1').closest('li')!).getByText('Indoor')).toBeInTheDocument()
+    expect(venue.getByText('Davao Court 2').closest('li')!).not.toHaveTextContent(/Indoor|Outdoor/)
+  })
+
+  it('filters the booking screen to indoor or outdoor courts', async () => {
+    const user = userEvent.setup()
+    const court = (id: string, name: string, court_type: 'indoor' | 'outdoor' | null) => ({
+      id, club_id: 'club-davao', venue_id: 'venue-davao', name, status: 'available' as const, hourly_rate: 450, member_rate: 400, court_type,
+    })
+    vi.mocked(api.publicClubAvailability).mockResolvedValue([
+      { court: court('c1', 'Davao Court 1', 'indoor'), slots },
+      { court: court('c2', 'Davao Court 2', 'outdoor'), slots },
+      { court: court('c3', 'Davao Court 3', null), slots },
+    ])
+    renderAt('/clubs/rally-point-davao/book?venue=venue-davao&court=c1', true)
+
+    expect(await screen.findByText(/Available times/)).toBeInTheDocument()
+    const courtOne = screen.getByRole('button', { name: /Davao Court 1/ })
+    expect(courtOne).toHaveTextContent('Indoor')
+    expect(courtOne).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /Davao Court 3/ })).not.toHaveTextContent(/Indoor|Outdoor/)
+
+    const types = within(screen.getByRole('group', { name: 'Indoor or outdoor courts' }))
+    expect(types.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(types.getByRole('button', { name: 'Outdoor' }))
+    // Only outdoor courts are shown, and the pick moves to the first of them.
+    expect(screen.queryByRole('button', { name: /Davao Court 1/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Davao Court 3/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Davao Court 2/ })).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(types.getByRole('button', { name: 'All' }))
+    expect(screen.getByRole('button', { name: /Davao Court 1/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Davao Court 3/ })).toBeInTheDocument()
+    // Going back to all keeps the court the player had.
+    expect(screen.getByRole('button', { name: /Davao Court 2/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('says when no court of the chosen type is open on the booking screen', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.publicClubAvailability).mockResolvedValue([
+      { court: { id: 'c1', club_id: 'club-davao', venue_id: 'venue-davao', name: 'Davao Court 1', status: 'available', hourly_rate: 450, court_type: 'indoor' }, slots },
+      { court: { id: 'c2', club_id: 'club-davao', venue_id: 'venue-davao', name: 'Davao Court 2', status: 'maintenance', hourly_rate: 450, court_type: 'outdoor' }, slots },
+    ])
+    renderAt('/clubs/rally-point-davao/book?venue=venue-davao', true)
+
+    expect(await screen.findByText(/Available times/)).toBeInTheDocument()
+    await user.click(within(screen.getByRole('group', { name: 'Indoor or outdoor courts' })).getByRole('button', { name: 'Outdoor' }))
+    expect(screen.getByText(/Every outdoor court here is out of service\. Pick All to see every court\./)).toBeInTheDocument()
+  })
+
+  it('shows no court type choice on the booking screen when no court has a type', async () => {
+    vi.mocked(api.publicClubAvailability).mockResolvedValue([
+      { court: { id: 'c1', club_id: 'club-davao', venue_id: 'venue-davao', name: 'Davao Court 1', status: 'available', hourly_rate: 450 }, slots },
+    ])
+    renderAt('/clubs/rally-point-davao/book?venue=venue-davao', true)
+
+    expect(await screen.findByText(/Available times/)).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Indoor or outdoor courts' })).not.toBeInTheDocument()
   })
 })
