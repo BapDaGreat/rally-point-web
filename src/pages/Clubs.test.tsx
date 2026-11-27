@@ -293,7 +293,7 @@ describe('Find a court', () => {
     vi.mocked(api.publicClubAvailability).mockResolvedValue([])
     renderAt('/clubs/rally-point-davao', true)
 
-    await user.click(await screen.findByRole('button', { name: 'Book a court at Davao Main' }))
+    await user.click(await screen.findByRole('button', { name: 'Book a court here at Davao Main' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Book at Rally Point Davao' })).toBeInTheDocument()
   })
 
@@ -429,7 +429,7 @@ describe('Find a court', () => {
     expect(await notice.findByRole('link', { name: 'Call 0917 123 4567' })).toHaveAttribute('href', 'tel:09171234567')
     expect(notice.getByRole('link', { name: 'Email the club' })).toHaveAttribute('href', 'mailto:hello@davao.example')
     expect(notice.getByRole('link', { name: 'Find another club' })).toHaveAttribute('href', '/clubs')
-    expect(screen.queryByRole('button', { name: /Book a court at/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Book a court here/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /^Book/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Book|No courts open/ })).not.toBeInTheDocument()
   })

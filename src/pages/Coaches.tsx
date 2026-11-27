@@ -7,7 +7,7 @@ import { PublicFrame } from '../components/PublicFrame'
 import { LoadingShapes, SkeletonCard, SkeletonLine } from '../components/Skeleton'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
-import { pesoKeep, plural } from '../lib/clubFormat'
+import { callName, pesoKeep, plural } from '../lib/clubFormat'
 import { isSafeLink } from '../lib/clubProfile'
 import { useClubLiveRefresh } from '../lib/livePulse'
 import { stagger } from '../lib/motion'
@@ -499,12 +499,12 @@ export function PublicCoachesPage() {
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <h2 className="text-title font-semibold text-ink">{coach.full_name}</h2>
                     {coach.headline ? <p className="text-body text-muted">{coach.headline}</p> : null}
-                    <p className="flex flex-wrap items-center gap-x-1.5 text-body">
+                    <p className="text-body">
                       <Link to={`/clubs/${coach.club.slug}`} className="text-link inline-flex min-h-12 items-center">
                         {coach.club.name}
                       </Link>
-                      {coach.club.city ? <span className="text-muted">· {coach.club.city}</span> : null}
                     </p>
+                    {coach.club.city ? <p className="-mt-2 text-body text-muted">{coach.club.city}</p> : null}
                     {coach.hourly_rate != null ? (
                       <p className="text-body font-semibold text-brand-700">
                         {coach.hourly_rate === 0 ? 'Free' : `${pesoKeep(coach.hourly_rate)} per hour`}
@@ -532,21 +532,13 @@ export function PublicCoachesPage() {
                 {coach.contact_phone || isSafeLink(coach.contact_url) ? (
                   <div className="flex flex-wrap gap-2">
                     {coach.contact_phone ? (
-                      <a
-                        className="control-feedback inline-flex min-h-12 items-center gap-2 rounded-[10px] border-[1.5px] border-field bg-white px-4 text-body font-semibold text-ink"
-                        href={telHref(coach.contact_phone)}
-                      >
-                        Call {coach.full_name.split(' ')[0]}
+                      <a className="btn-compact" href={telHref(coach.contact_phone)}>
+                        Call {callName(coach.full_name)}
                       </a>
                     ) : null}
                     {isSafeLink(coach.contact_url) ? (
-                      <a
-                        className="control-feedback inline-flex min-h-12 items-center gap-2 rounded-[10px] border-[1.5px] border-field bg-white px-4 text-body font-semibold text-ink"
-                        href={coach.contact_url!}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Contact {coach.full_name.split(' ')[0]}
+                      <a className="btn-compact" href={coach.contact_url!} target="_blank" rel="noopener noreferrer">
+                        Contact {callName(coach.full_name)}
                         <ExternalLink size={14} className="text-muted" aria-hidden />
                         <span className="sr-only">(opens in a new tab)</span>
                       </a>

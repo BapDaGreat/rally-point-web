@@ -5,7 +5,7 @@ import { Photo } from './Photo'
 import { stagger } from '../lib/motion'
 import { addonPriceLabel, amenityLabel, isSafeLink } from '../lib/clubProfile'
 import type { PublicClubProfile } from '../types'
-import { PLAIN_EMAIL, clubContactLinks, pesoKeep } from '../lib/clubFormat'
+import { PLAIN_EMAIL, callName, clubContactLinks, pesoKeep } from '../lib/clubFormat'
 
 /**
  * The parts of a club page that come from the club's business profile. Every
@@ -14,8 +14,7 @@ import { PLAIN_EMAIL, clubContactLinks, pesoKeep } from '../lib/clubFormat'
  * when they are https.
  */
 
-const linkButton =
-  'control-feedback inline-flex min-h-12 items-center gap-2 rounded-[10px] border-[1.5px] border-field bg-white px-4 text-subtitle font-semibold text-ink'
+const linkButton = 'btn-compact'
 
 function telHref(phone: string) {
   return `tel:${phone.replace(/[^0-9+]/g, '')}`
@@ -178,11 +177,11 @@ export function ClubCoachesCard({ clubSlug, profile, index }: { clubSlug?: strin
             <div className="flex flex-wrap gap-2">
               {coach.contact_phone ? (
                 <a className={linkButton} href={telHref(coach.contact_phone)}>
-                  Call {coach.full_name.split(' ')[0]}
+                  Call {callName(coach.full_name)}
                 </a>
               ) : null}
               <ExternalButton href={coach.contact_url}>
-                Contact {coach.full_name.split(' ')[0]}
+                Contact {callName(coach.full_name)}
               </ExternalButton>
             </div>
           </li>

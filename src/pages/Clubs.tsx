@@ -108,11 +108,11 @@ function CourtCard({
           <Link
             to={target}
             aria-label={`Book ${court.name}`}
-            className="control-feedback mt-3 inline-flex min-h-12 items-center justify-between gap-1 rounded-[10px] border-[1.5px] border-field bg-white px-3 text-subtitle font-semibold text-ink"
+            className="btn-compact mt-3 w-full"
           >
             {/* The card already names the court, so the button just says Book. */}
             <span>Book</span>
-            <ChevronRight size={16} className="hidden shrink-0 sm:block" aria-hidden />
+            <ChevronRight size={18} className="shrink-0" aria-hidden />
           </Link>
         ) : null}
       </div>
@@ -583,9 +583,11 @@ export function ClubDetailPage() {
                     type="button"
                     className={`btn-primary ${fitButton}`}
                     disabled={!bookable}
+                    // Short on screen; the full name tells screen readers which location it books.
+                    aria-label={bookable ? `Book a court here at ${venue.name}` : undefined}
                     onClick={() => nav(courtBookPath(club.slug, venue.id))}
                   >
-                    {bookable ? `Book a court at ${venue.name}` : 'No courts open for booking'}
+                    {bookable ? 'Book a court here' : 'No courts open for booking'}
                   </button>
                 ) : null}
               </section>

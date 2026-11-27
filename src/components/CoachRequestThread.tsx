@@ -50,7 +50,7 @@ export function CoachRequestThread({
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3" aria-label={`Conversation with ${otherName}`}>
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-subtitle font-semibold text-slate-900">Message {otherName}</h3>
-        <button type="button" className="control-feedback min-h-11 rounded-lg px-3 text-body font-semibold text-brand-800"
+        <button type="button" className="btn-compact shrink-0"
           onClick={() => void refresh()}>
           Refresh
         </button>

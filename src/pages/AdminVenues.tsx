@@ -407,9 +407,6 @@ function VenueCard({
             {venue.slug} · Philippine time · {openingHoursLabel(venue.open_hour, venue.close_hour)}{venue.is_active ? '' : ' · Inactive'}
           </p>
         </div>
-        <button type="button" className="btn-secondary text-sm" onClick={onToggleVenue} disabled={busy === venue.id}>
-          {venue.is_active ? `Deactivate ${venue.name}` : `Activate ${venue.name}`}
-        </button>
       </div>
 
       <div>
@@ -555,6 +552,14 @@ function VenueCard({
           Add a court to {venue.name}
         </button>
       )}
+
+      {/* Kept small and at the bottom so it is not hit by mistake; inactive venues get a plain Activate. */}
+      <div className="border-t border-line pt-3">
+        <button type="button" className={venue.is_active ? 'btn-compact btn-compact-danger' : 'btn-compact'}
+          onClick={onToggleVenue} disabled={busy === venue.id}>
+          {venue.is_active ? `Deactivate ${venue.name}` : `Activate ${venue.name}`}
+        </button>
+      </div>
     </section>
   )
 }

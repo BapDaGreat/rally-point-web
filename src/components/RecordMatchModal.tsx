@@ -153,10 +153,8 @@ export function RecordMatchModal({ open, onClose, onRecord }: RecordMatchModalPr
     }
   }
 
-  const formatBtn = (target: MatchFormat) =>
-    `control-feedback min-h-12 rounded-xl border px-3 text-body font-semibold ${
-      format === target ? 'border-brand-700 bg-brand-700 text-white' : 'border-line bg-white text-ink'
-    }`
+  // The picked format shows through aria-pressed (navy with the sky bar, like every choice chip).
+  const formatBtn = 'chip-option control-feedback px-3'
 
   return createPortal(
     <div
@@ -197,7 +195,7 @@ export function RecordMatchModal({ open, onClose, onRecord }: RecordMatchModalPr
           <div className="grid grid-cols-2 gap-2" role="group" aria-label="Match format">
             <button
               type="button"
-              className={formatBtn('doubles')}
+              className={formatBtn}
               aria-pressed={format === 'doubles'}
               onClick={() => setFormat('doubles')}
             >
@@ -205,7 +203,7 @@ export function RecordMatchModal({ open, onClose, onRecord }: RecordMatchModalPr
             </button>
             <button
               type="button"
-              className={formatBtn('singles')}
+              className={formatBtn}
               aria-pressed={format === 'singles'}
               onClick={() => setFormat('singles')}
             >
