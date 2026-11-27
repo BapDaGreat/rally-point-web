@@ -9,7 +9,7 @@ import { api } from '../lib/api'
 import { stagger } from '../lib/motion'
 import { isDemoMode } from '../lib/supabase'
 import type { CheckIn, CheckInMember, Court, CourtSession, Member, Venue } from '../types'
-import { fmtDate, fmtDateTime, fmtTime, peso } from '../types'
+import { courtTypeLabel, fmtDate, fmtDateTime, fmtTime, peso } from '../types'
 
 function useStaffVenues(userId?: string) {
   const [venues, setVenues] = useState<Venue[]>([])
@@ -751,7 +751,7 @@ export function StaffCourts() {
               <select className="input" value={courtId} onChange={(e) => setCourtId(e.target.value)}>
                 {courts.map((c) => (
                   <option key={c.id} value={c.id} disabled={c.status === 'maintenance'}>
-                    {c.name} · {c.status} · {peso(c.hourly_rate)}/h
+                    {c.name}{courtTypeLabel(c.court_type) ? ` · ${courtTypeLabel(c.court_type)}` : ''} · {c.status} · {peso(c.hourly_rate)}/h
                   </option>
                 ))}
               </select>
@@ -847,6 +847,7 @@ export function StaffCourts() {
             {courts.map((c) => (
               <div key={c.id} className="rounded-xl border border-slate-100 p-3">
                 <p className="font-bold text-sm">{c.name}</p>
+                {courtTypeLabel(c.court_type) ? <p className="text-xs font-semibold text-slate-600 mt-1">{courtTypeLabel(c.court_type)}</p> : null}
                 <p className="text-xs text-slate-400 capitalize mt-1">{c.status}</p>
                 <p className="text-xs font-semibold text-brand-800 mt-1">{peso(c.hourly_rate)}/h</p>
               </div>

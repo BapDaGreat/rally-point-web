@@ -88,7 +88,7 @@ import type {
   PublicTournamentSummary,
   TournamentTeam,
 } from '../types'
-import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, fmtDateTime, fmtTime, localRangeISO, timeSlot, venueHours } from '../types'
+import { CLUB_CLOSE_HOUR, CLUB_OPEN_HOUR, fmtDateTime, fmtTime, isCourtType, localRangeISO, timeSlot, venueHours } from '../types'
 import { CLUB_HEADER, getActiveClubId, notifyClubUnavailable, requireActiveClubId } from './clubContext'
 import { emitClubLiveUpdate } from './livePulse'
 import { MEMBER_PHOTO_BUCKET, PHOTO_BUCKET, memberPhotoUrl, photoUrl, shrinkPhoto, shrinkPhotoToDataUrl } from './photos'
@@ -1011,7 +1011,15 @@ export const api = {
       p_in_service: input.in_service,
     })
     if (error) throw error
-    return data as Court
+    const court = data as Court
+    // The type has its own function; it is called only when the admin changed it.
+    if (input.court_type === undefined || (court.court_type ?? null) === input.court_type) return court
+    const { data: typed, error: typeError } = await supabase!.rpc('admin_set_court_type', {
+      p_court_id: court.id,
+      p_court_type: input.court_type,
+    })
+    if (typeError) throw typeError
+    return typed as Court
   },
 
   // ---- Court and location photos (admins only; public as soon as saved) ----
@@ -1908,19 +1916,33 @@ export const api = {
     /** Every club taking bookings, for the public "Find a court" list. */
     async listPublicClubs(): Promise<PublicClubListing[]> {
       if (isDemoMode) return demoStore.publicClubs()
-      const [{ data, error }, covers] = await Promise.all([
+      const [{ data, error }, covers, courtTypes] = await Promise.all([
         supabase!.rpc('list_public_clubs'),
         // Photos are extra: the list still shows, with sample pictures, if they cannot load.
         Promise.resolve(supabase!.rpc('list_public_club_covers')).then(
           ({ data: rows, error: coverError }) => coverError ? [] : (rows ?? []) as { slug: string; cover_photo: string | null }[],
           () => [],
         ),
+        // Indoor and outdoor counts are extra too: without them every club counts zero of each.
+        Promise.resolve(supabase!.rpc('list_public_club_court_types')).then(
+          ({ data: rows, error: typeError }) => typeError
+            ? []
+            : (rows ?? []) as { slug: string; indoor_courts: number | string | null; outdoor_courts: number | string | null }[],
+          () => [],
+        ),
       ])
       if (error) throw error
       const coverBySlug = new Map(covers.map((row) => [row.slug, row.cover_photo]))
+      const typesBySlug = new Map(courtTypes.map((row) => [row.slug, row]))
+      const count = (value: number | string | null | undefined) => {
+        const n = Number(value ?? 0)
+        return Number.isFinite(n) && n > 0 ? n : 0
+      }
       return ((data ?? []) as PublicClubListing[]).map((row) => ({
         ...row,
         cover_photo: coverBySlug.get(row.slug) ? photoUrl(coverBySlug.get(row.slug)!) : null,
+        indoor_courts: count(typesBySlug.get(row.slug)?.indoor_courts),
+        outdoor_courts: count(typesBySlug.get(row.slug)?.outdoor_courts),
         venue_count: Number(row.venue_count),
         court_count: Number(row.court_count),
         min_rate: row.min_rate == null ? null : Number(row.min_rate),
@@ -1945,6 +1967,7 @@ export const api = {
             photos: (court.photos ?? []).map(photoUrl),
             hourly_rate: Number(court.hourly_rate),
             member_rate: court.member_rate == null ? null : Number(court.member_rate),
+            court_type: isCourtType(court.court_type) ? court.court_type : null,
           })),
         })),
       }
@@ -1999,6 +2022,7 @@ export const api = {
           status: ct.in_service ? 'available' : 'maintenance',
           hourly_rate: ct.hourly_rate,
           member_rate: ct.member_rate,
+          court_type: ct.court_type ?? null,
         })),
       )
       const dayStart = localRangeISO(dateYmd, CLUB_OPEN_HOUR, 1).start_at

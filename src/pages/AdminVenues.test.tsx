@@ -95,7 +95,7 @@ describe('AdminVenues courts', () => {
     await user.click(form.getByRole('button', { name: 'Add court' }))
 
     expect(api.upsertCourt).toHaveBeenCalledWith({
-      id: undefined, venue_id: 'venue-east', name: 'East 1', hourly_rate: 450, member_rate: null, in_service: true,
+      id: undefined, venue_id: 'venue-east', name: 'East 1', hourly_rate: 450, member_rate: null, in_service: true, court_type: null,
     })
     expect(await screen.findByRole('status')).toHaveTextContent('East 1 added')
     await waitFor(() => expect(screen.queryByRole('form', { name: 'Add a court to East Venue' })).not.toBeInTheDocument())
@@ -114,7 +114,7 @@ describe('AdminVenues courts', () => {
     await user.click(form.getByRole('button', { name: 'Save court' }))
 
     expect(api.upsertCourt).toHaveBeenCalledWith({
-      id: 'court-a', venue_id: 'venue-main', name: 'Court A', hourly_rate: 500, member_rate: null, in_service: false,
+      id: 'court-a', venue_id: 'venue-main', name: 'Court A', hourly_rate: 500, member_rate: null, in_service: false, court_type: null,
     })
   })
 
@@ -153,6 +153,49 @@ describe('AdminVenues courts', () => {
 
     expect(api.upsertCourt).toHaveBeenCalledWith(expect.objectContaining({ id: 'court-a', hourly_rate: 500, member_rate: 400 }))
     expect(await screen.findByText('Members Php 400.00 per hour')).toBeInTheDocument()
+  })
+
+  it('shows whether each court is indoor or outdoor, and says when it is not set', async () => {
+    vi.mocked(api.listCourts).mockResolvedValue([{ ...courtA, court_type: 'indoor' }, courtB])
+    renderPage()
+    await screen.findByRole('heading', { name: 'Main Venue' })
+
+    const main = venueCard('Main Venue')
+    expect(main.getByText('Indoor')).toBeInTheDocument()
+    expect(main.getByText('Indoor or outdoor not set')).toBeInTheDocument()
+  })
+
+  it('sets a new court to indoor or outdoor when adding it', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.upsertCourt).mockResolvedValue({ ...courtA, id: 'court-new', venue_id: 'venue-east', name: 'East 1', court_type: 'outdoor' })
+    renderPage()
+    await screen.findByRole('heading', { name: 'East Venue' })
+
+    await user.click(screen.getByRole('button', { name: 'Add a court to East Venue' }))
+    const form = within(screen.getByRole('form', { name: 'Add a court to East Venue' }))
+    const type = form.getByLabelText('Indoor or outdoor')
+    expect(type).toHaveValue('')
+    expect(within(type).getAllByRole('option').map((option) => option.textContent)).toEqual(['Not set', 'Indoor', 'Outdoor'])
+    await user.type(form.getByLabelText('Court name'), 'East 1')
+    await user.selectOptions(type, 'outdoor')
+    await user.click(form.getByRole('button', { name: 'Add court' }))
+
+    expect(api.upsertCourt).toHaveBeenCalledWith(expect.objectContaining({ venue_id: 'venue-east', name: 'East 1', court_type: 'outdoor' }))
+  })
+
+  it("changes a court's type from its edit form, and can clear it to not set", async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.listCourts).mockResolvedValue([{ ...courtA, court_type: 'indoor' }, courtB])
+    vi.mocked(api.upsertCourt).mockResolvedValue({ ...courtA, court_type: null })
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Court A' }))
+    const form = within(screen.getByRole('form', { name: 'Edit Court A' }))
+    expect(form.getByLabelText('Indoor or outdoor')).toHaveValue('indoor')
+    await user.selectOptions(form.getByLabelText('Indoor or outdoor'), '')
+    await user.click(form.getByRole('button', { name: 'Save court' }))
+
+    expect(api.upsertCourt).toHaveBeenCalledWith(expect.objectContaining({ id: 'court-a', court_type: null }))
   })
 
   it('keeps the form open and shows the reason when saving fails', async () => {

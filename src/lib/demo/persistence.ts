@@ -1,4 +1,5 @@
 import type { ClubAccount, ClubStaffRole, Court } from '../../types'
+import { isCourtType } from '../../types'
 import type { DemoDB, DemoPlatformRole } from './model'
 import { seed } from './seed'
 import { retireLapsedHolds } from './common'
@@ -104,9 +105,13 @@ export function normalizeStored(
   // Rows saved without ownership take it from their court or member, then the default club.
   const courts = db.courts.map((court, index) => {
     const { branch_id: legacyBranch, ...rest } = court as Court & { branch_id?: unknown }
-    if (court.club_id && court.venue_id && legacyBranch === undefined) return court
+    // Saved before courts had a type, a court has none: it reads as not set. Anything other than
+    // indoor or outdoor is cleared to not set too.
+    const badType = court.court_type != null && !isCourtType(court.court_type)
+    if (court.club_id && court.venue_id && legacyBranch === undefined && !badType) return court
     return {
       ...rest,
+      ...(badType ? { court_type: null } : {}),
       club_id: court.club_id ?? DEMO_CLUB_ID,
       venue_id: court.venue_id ?? (db.venues[index < 2 ? 0 : 1]?.id ?? DEMO_VENUE_ID),
     }

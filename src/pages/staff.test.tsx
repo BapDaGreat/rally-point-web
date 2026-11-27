@@ -458,6 +458,23 @@ describe('StaffCourts', () => {
     expect(screen.getByRole('option', { name: /Court A/ })).toBeDisabled()
   })
 
+  it('shows whether each court is indoor or outdoor, and nothing for a court that is not set', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.listCourts).mockResolvedValue([
+      { id: 'court_a', name: 'Court A', status: 'available', hourly_rate: 500, court_type: 'indoor' },
+      { id: 'court_b', name: 'Court B', status: 'available', hourly_rate: 500, court_type: 'outdoor' },
+      { id: 'court_c', name: 'Court C', status: 'available', hourly_rate: 500, court_type: null },
+    ])
+    render(<MemoryRouter><StaffCourts /></MemoryRouter>)
+    expect(await screen.findByText('Indoor')).toBeInTheDocument()
+    expect(screen.getByText('Outdoor')).toBeInTheDocument()
+    expect(screen.getByText('Court C').parentElement).not.toHaveTextContent(/Indoor|Outdoor/)
+
+    await user.click(screen.getByRole('button', { name: 'Rent' }))
+    expect(screen.getByRole('option', { name: /Court A · Indoor · available/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Court C · available/ })).toBeInTheDocument()
+  })
+
   it('shows an empty floor when no live sessions remain', async () => {
     vi.mocked(api.playingSessions).mockResolvedValue([])
     render(<MemoryRouter><StaffCourts /></MemoryRouter>)

@@ -120,11 +120,12 @@ export function seed(): DemoDB {
     })
   }
 
+  // Courts A and B (Rally Point Gensan) are indoor; C and D (Lagao) are outdoor.
   const courts: Court[] = [
-    { id: 'court_1', name: 'Court A', status: 'occupied', hourly_rate: 500 },
-    { id: 'court_2', name: 'Court B', status: 'available', hourly_rate: 500 },
-    { id: 'court_3', name: 'Court C', status: 'occupied', hourly_rate: 650, member_rate: 550 },
-    { id: 'court_4', name: 'Court D', status: 'available', hourly_rate: 650, member_rate: 550 },
+    { id: 'court_1', name: 'Court A', status: 'occupied', hourly_rate: 500, court_type: 'indoor' },
+    { id: 'court_2', name: 'Court B', status: 'available', hourly_rate: 500, court_type: 'indoor' },
+    { id: 'court_3', name: 'Court C', status: 'occupied', hourly_rate: 650, member_rate: 550, court_type: 'outdoor' },
+    { id: 'court_4', name: 'Court D', status: 'available', hourly_rate: 650, member_rate: 550, court_type: 'outdoor' },
   ]
 
   const now = Date.now()
@@ -345,9 +346,10 @@ export function seed(): DemoDB {
     latitude: 7.103,
     longitude: 125.631,
   }
+  // Davao Court 2 is left "not set", as every court starts before its admin picks.
   const davaoCourts: Court[] = [
-    { id: 'court_davao_1', club_id: DEMO_DAVAO_CLUB_ID, venue_id: DEMO_DAVAO_VENUE_ID, name: 'Davao Court 1', status: 'available', hourly_rate: 450, member_rate: 400 },
-    { id: 'court_davao_2', club_id: DEMO_DAVAO_CLUB_ID, venue_id: DEMO_DAVAO_VENUE_ID, name: 'Davao Court 2', status: 'available', hourly_rate: 450, member_rate: 400 },
+    { id: 'court_davao_1', club_id: DEMO_DAVAO_CLUB_ID, venue_id: DEMO_DAVAO_VENUE_ID, name: 'Davao Court 1', status: 'available', hourly_rate: 450, member_rate: 400, court_type: 'indoor' },
+    { id: 'court_davao_2', club_id: DEMO_DAVAO_CLUB_ID, venue_id: DEMO_DAVAO_VENUE_ID, name: 'Davao Court 2', status: 'available', hourly_rate: 450, member_rate: 400, court_type: null },
   ]
   // Mia belongs to both clubs: each membership is owned by its club and has its own code.
   const davaoMembers: Member[] = [

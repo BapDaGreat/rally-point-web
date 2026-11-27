@@ -28,6 +28,7 @@ import type {
   Booking,
   CheckoutPaymentMethod,
   CourtDayAvailability,
+  CourtType,
   Member,
   Profile,
   TimeSlot,
@@ -42,6 +43,7 @@ import {
   appHour,
   checkoutState,
   courtRateFor,
+  courtTypeLabel,
   fmtDate,
   fmtDateTime,
   fmtTime,
@@ -50,6 +52,21 @@ import {
   peso,
   ymdLocal,
 } from '../types'
+
+const COURT_TYPE_CHOICES: { value: '' | CourtType; label: string }[] = [
+  { value: '', label: 'All' },
+  { value: 'indoor', label: 'Indoor' },
+  { value: 'outdoor', label: 'Outdoor' },
+]
+
+/**
+ * Only the courts of one type; every court for no type, or when no court here has a type
+ * (the choice is hidden then).
+ */
+function courtsOfType(rows: CourtDayAvailability[], type: '' | CourtType) {
+  if (!type || !rows.some((row) => row.court.court_type)) return rows
+  return rows.filter((row) => row.court.court_type === type)
+}
 
 /**
  * A visitor's pick, kept in this browser tab while they sign in. Signing in can reload this
@@ -539,6 +556,10 @@ export function MemberBook() {
   // player taps, or a pick saved before signing in, is never moved.
   const autoDateRef = useRef<'pending' | 'done'>(savedIntent ? 'done' : 'pending')
   const [autoMovedTo, setAutoMovedTo] = useState<string | null>(null)
+  // Indoor or outdoor courts only, once the player picks one. The ref lets a newly loaded day
+  // or venue choose its first court of that type.
+  const [courtTypeFilter, setCourtTypeFilter] = useState<'' | CourtType>('')
+  const courtTypeFilterRef = useRef<'' | CourtType>('')
   // "Change time" with a reference typed first asks whether the player has paid.
   const [confirmLeave, setConfirmLeave] = useState(false)
   const stayButton = useRef<HTMLButtonElement>(null)
@@ -708,9 +729,10 @@ export function MemberBook() {
     if (bootstrappedKey !== expectedBootstrapKey) return
     const cacheKey = `${routeClubSlug ?? activeClub?.slug ?? 'default'}:${venueId}:${dateYmd}`
     const pickCourtId = (rows: CourtDayAvailability[]) => {
+      const pool = courtsOfType(rows, courtTypeFilterRef.current)
       setCourtId((current) => {
-        if (current && rows.some((row) => row.court.id === current && row.court.status !== 'maintenance')) return current
-        const firstBookable = rows.find((row) => row.court.status !== 'maintenance') ?? rows[0]
+        if (current && pool.some((row) => row.court.id === current && row.court.status !== 'maintenance')) return current
+        const firstBookable = pool.find((row) => row.court.status !== 'maintenance') ?? pool[0]
         return firstBookable?.court.id ?? null
       })
     }
@@ -1199,6 +1221,22 @@ export function MemberBook() {
   const everyHourPassed = passedBefore > 0 && shownSlots.length === 0
   const dayIndex = days.findIndex((d) => d.ymd === dateYmd)
   const nextDay = dayIndex >= 0 ? days[dayIndex + 1] ?? null : null
+  // The indoor/outdoor choice shows only when a court here has a type.
+  const hasCourtTypes = avail.some((row) => row.court.court_type)
+  const shownCourts = courtsOfType(avail, courtTypeFilter)
+  const typeFilter = hasCourtTypes ? courtTypeFilter : ''
+  const noShownCourtOpen = Boolean(typeFilter) && !shownCourts.some((row) => row.court.status !== 'maintenance')
+
+  /** Shows only indoor or outdoor courts (or all again), moving the pick to a court that is shown. */
+  function chooseCourtType(type: '' | CourtType) {
+    courtTypeFilterRef.current = type
+    setCourtTypeFilter(type)
+    const pool = courtsOfType(avail, type)
+    if (pool.some((row) => row.court.id === courtId && row.court.status !== 'maintenance')) return
+    setCourtId(pool.find((row) => row.court.status !== 'maintenance')?.court.id ?? null)
+    setNotice(null)
+    setStartHour(null)
+  }
 
   /** Shows another day's times, starting the pick again. */
   function chooseDay(ymd: string) {
@@ -1609,8 +1647,31 @@ export function MemberBook() {
                   <>
                     <section className="enter-fade card p-3 space-y-3">
                       <p className="label px-1">Court</p>
+                      {hasCourtTypes ? (
+                        <div role="group" aria-label="Indoor or outdoor courts" className="flex flex-wrap gap-2">
+                          {COURT_TYPE_CHOICES.map((choice) => (
+                            <button
+                              key={choice.value || 'all'}
+                              type="button"
+                              className="chip-option"
+                              aria-pressed={typeFilter === choice.value}
+                              onClick={() => chooseCourtType(choice.value)}
+                            >
+                              {choice.label}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      {noShownCourtOpen ? (
+                        <p role="status" className="px-1 text-body text-muted">
+                          {shownCourts.length
+                            ? `Every ${typeFilter} court here is out of service.`
+                            : `No ${typeFilter} courts here.`}{' '}
+                          Pick All to see every court.
+                        </p>
+                      ) : null}
                       <div className="grid grid-cols-2 gap-2">
-                        {avail.map(({ court }) => {
+                        {shownCourts.map(({ court }) => {
                           const outOfService = court.status === 'maintenance'
                           const chosen = !outOfService && courtId === court.id
                           return (
@@ -1636,6 +1697,9 @@ export function MemberBook() {
                                 <Check size={18} className="absolute right-2 top-2 text-brand-700" aria-hidden />
                               ) : null}
                               <p className="pr-6 font-semibold text-ink">{court.name}</p>
+                              {courtTypeLabel(court.court_type) ? (
+                                <p className="text-body text-muted">{courtTypeLabel(court.court_type)}</p>
+                              ) : null}
                               <p className={`text-body tabular-nums ${outOfService ? 'text-muted' : 'text-ink'}`}>
                                 {outOfService ? 'Out of service' : `${peso(courtRateFor(court, member))}/hr`}
                               </p>

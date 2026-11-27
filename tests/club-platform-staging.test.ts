@@ -607,6 +607,40 @@ describe('staging releases', () => {
     expect(postflight).toContain('= 41')
   })
 
+  it('builds the coaches and court types release on the 41-migration state and re-runs every earlier check', async () => {
+    const { tournamentFixesRelease, coachesCourtTypesRelease, releaseManifest, releases } = await load()
+    const { coachesCourtTypesChecks } = await import('../scripts/club-platform-checks.mjs')
+    expect(coachesCourtTypesRelease.baseVersions).toHaveLength(41)
+    expect(coachesCourtTypesRelease.baseVersions.at(-1)).toBe('20261126110000')
+    expect(coachesCourtTypesRelease.migrations).toEqual(['20261127090000_public_coaches.sql', '20261127100000_court_types.sql'])
+    expect(coachesCourtTypesRelease.stateCheck).toEqual({ file: 'tournament_fixes_postflight.sql', kind: 'tournamentFixes' })
+    expect(coachesCourtTypesRelease.postChecks.map((check: { kind: string, ignore: string[] }) => [check.kind, [...check.ignore]]).slice(0, 3)).toEqual([
+      ['coachesCourtTypes', []],
+      ['tournamentFixes', ['ledger_has_tournament_fixes']],
+      ['leaderboardTournaments', ['ledger_has_leaderboard_tournaments']],
+    ])
+    expect(coachesCourtTypesRelease.postChecks).toHaveLength(tournamentFixesRelease.postChecks.length + 1)
+    const earlier = Object.values(releases).filter(release => release !== coachesCourtTypesRelease)
+      .flatMap((release: { dirs: object, databases: object }) => [...Object.values(release.dirs), ...Object.values(release.databases)])
+    expect([...Object.values(coachesCourtTypesRelease.dirs), ...Object.values(coachesCourtTypesRelease.databases)]
+      .filter(name => earlier.includes(name))).toEqual([])
+    const { contents } = releaseManifest(coachesCourtTypesRelease)
+    const coaches = contents.get('supabase/migrations/20261127090000_public_coaches.sql')?.toString('utf8') ?? ''
+    const courtTypes = contents.get('supabase/migrations/20261127100000_court_types.sql')?.toString('utf8') ?? ''
+    // Bookings and the other paused tables are never written; courts only through the admin function.
+    for (const migration of [coaches, courtTypes]) {
+      expect(migration).not.toMatch(/\b(insert into|delete from)\s+public\.(bookings|court_sessions|open_plays|open_play_signups|court_allocations|courts|transactions)\b/i)
+      expect(migration).not.toMatch(/\bupdate\s+public\.(bookings|court_sessions|open_plays|open_play_signups|court_allocations|transactions)\b/i)
+    }
+    expect(coaches).not.toMatch(/\b(insert into|update|delete from)\s+public\./i)
+    expect(courtTypes).toContain('grant execute on function public.admin_set_court_type(uuid, text) to authenticated')
+    expect(courtTypes).not.toMatch(/admin_set_court_type\(uuid, text\) to anon/)
+    const postflight = contents.get('supabase/verification/coaches_court_types_postflight.sql')?.toString('utf8') ?? ''
+    expect([...postflight.matchAll(/select \d+, '([a-z_]+)'/g)].map(match => match[1])).toEqual([...coachesCourtTypesChecks])
+    expect(postflight).toContain("version = '20261127100000'")
+    expect(postflight).toContain('= 43')
+  })
+
   it('hashes the release definition and every file, and returns the bytes it hashed', async () => {
     const { releaseManifest } = await load()
     const { dir, release } = releaseFixture()

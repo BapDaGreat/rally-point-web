@@ -51,4 +51,9 @@ export const releaseApprovals = Object.freeze({
   // restored copy of staging passed (all checks, isolation 55/55, local build matches), chose
   // "Apply to staging".
   'tournament-fixes-20261126': '36fe1cb23863ddd78d7827a3a345abdbc7622d16d7d8146152590646828cc0b5',
+  // Owner, 2026-11-26: indoor and outdoor courts (label, filters, counts; existing courts not set;
+  // prices per court), released together with PR #33's public coaches migration. After the capture
+  // (staging-backup-20261126-court-types-r1), the restore check and the dry run on a restored copy of
+  // staging passed (all checks, isolation 55/55, local build matches), chose "Apply to staging".
+  'coaches-court-types-20261126': '00b1ec38b08c54f1bcc115e7e9521c499804b952fdb1d99643d7fbaea10a4d26',
 })
