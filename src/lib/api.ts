@@ -2186,7 +2186,7 @@ export const api = {
 
     // ---- Court owners: call requests and owner invites ----
 
-    /** Open to visitors: a court owner asks Rally Point to call about listing their club. */
+    /** Open to visitors: a court owner asks bRineLy to call about listing their club. */
     async requestOwnerCall(input: OwnerCallRequestInput): Promise<string> {
       if (isDemoMode) return demoStore.requestOwnerCall(input)
       const { data, error } = await supabase!.rpc('request_owner_call', {
