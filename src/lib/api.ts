@@ -2048,12 +2048,13 @@ export const api = {
       )
     },
 
-    /** Sends a confirmed booking receipt via the Resend Edge Function (or simulates cleanly in demo mode). */
+    /** Sends a booking email card ('booking_submitted' or 'booking_confirmed') via the Resend Edge Function (or simulates cleanly in demo mode). */
     async sendBookingConfirmationEmail(opts: {
       booking: Booking
       clubName: string
       venueName?: string
       recipientEmail: string
+      kind?: 'booking_submitted' | 'booking_confirmed'
     }): Promise<{ sent: boolean; preview: string }> {
       const timeWindow = `${fmtDateTime(opts.booking.start_at)} – ${fmtTime(opts.booking.end_at)} (${opts.booking.hours}h)`
       const preview = `Receipt sent to ${opts.recipientEmail} for ${opts.booking.court?.name ?? 'Court'} · ${timeWindow}`
@@ -2061,6 +2062,7 @@ export const api = {
       try {
         const { error } = await supabase!.functions.invoke('send-booking-email', {
           body: {
+            kind: opts.kind ?? 'booking_confirmed',
             bookingId: opts.booking.id,
             clubName: opts.clubName,
             venueName: opts.venueName ?? null,
